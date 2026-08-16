@@ -4,42 +4,71 @@
 
 A tool that generates a complete design system from a small set of user inputs, then scaffolds a new project (in the user's chosen framework/stack) with that design system already wired in.
 
+## Why this project exists
+
+Two experiences motivate it:
+
+1. **Professional practice** — the user manages the design system for a service website's production team, and is migrating that team's workflows and design system to work well with Cursor and AI coding agents.
+2. **The ACIM app** — the user's first shipped app (Expo/React Native, NativeWind + react-native-reusables), which surfaced concrete lessons about what makes a design system easy or painful for an AI agent to build against correctly (see "Lessons from a previous project" below).
+
+The long-term goal is bigger than a design system generator: once this piece is solid, it becomes the first slice of a broader scaffolding tool for spinning up new apps/websites in general.
+
 ## Status
 
-Restarting from scratch (2026-08-15) under Sonnet, after an initial pass under Opus. Prior planning work from that earlier session exists in `docs/archive/` for reference, but nothing there is binding — we're re-deciding scope and approach here.
+Restarting under Sonnet (2026-08-15), after an initial planning pass under Opus. That earlier work has been reviewed and merged back into this file and into `docs/pipeline-plan.md`, rewritten in plainer language. The original Opus-authored files are kept verbatim in `docs/archive/` as a historical record — nothing there is more current or authoritative than what's written here now.
 
 ## The pipeline (high level)
 
-**Input:** "pretokens" — a small set of user-supplied inputs (main brand colors, corner-roundness style e.g. square/lowly-round/highly-round/squircle, etc. — full list still TBD).
+**Input:** a small set of user-supplied "pretokens" — brand colors and a base font, explored directly (e.g. as `#hex` values, a screenshot, or an optional Figma file), plus a few style choices picked from small preset menus (corner-roundness, spacing rhythm, type scale).
 
-**Output**, generated from those pretokens plus a chosen framework/stack:
+**Output**, generated from those inputs plus a chosen framework/stack:
 - Code design tokens (primitive + semantic) in the target platform's syntax
-- A Figma file populated with matching variables/styles — **optional step**, since the DS is fully usable from code tokens alone; useful when the user wants a visual/Figma-based way to manage the DS rather than hand-editing token code
-- Components from the user's chosen component library, styled to the generated DS
-- Agent-facing rules (so an AI coding agent uses the DS correctly)
+- A Figma file populated with matching variables/styles — **optional**, since the design system is fully usable from code alone
+- Components from the user's chosen component library, styled to the generated design system
+- Agent-facing rules, so an AI coding agent uses the design system correctly without re-deriving conventions
 - A full project scaffold, in the chosen framework, with all of the above wired in
 
-Also needed: a way to edit/manage the DS after initial generation, not just a one-time generator (treated as a distinct phase from first-time generation).
+There's also an ongoing editing/management layer: once a project is generated, its tokens stay editable (see "Architecture decisions" below) rather than the tool being purely one-shot.
 
 ## Architecture decisions so far
 
-- **The generated output (what a run produces)** is a normal, ready-to-code project — nothing exotic, just a real repo in the chosen framework with the DS already wired in.
-- **The generator doesn't maintain its own framework boilerplate.** It drives the *official* scaffolding CLI for whichever framework the user picks (`create-next-app`, `create-expo-app`, `vue create`, etc.) to get a fresh, current base, then layers DS generation on top. This avoids maintaining N stale framework boilerplates ourselves.
-- **The generator itself runs as a Claude Code skill for now**, not a standalone published CLI/package. It uses tools already available in a Claude Code session (shell commands, file writes, the Figma MCP). This matches the current "agent chat" interface and avoids building distribution/packaging machinery before the core DS-generation logic is proven out. Can be extracted into a standalone CLI later without losing the underlying logic.
+- **The generated output is a normal, ready-to-code project** — nothing exotic, just a real repo in the chosen framework with the design system already wired in.
+- **The generator drives the official scaffolding CLI** for whichever framework is chosen (`create-next-app`, `create-expo-app`, `vue create`, etc.) rather than maintaining our own copies of framework boilerplate, then layers design-system generation on top. Keeps every generated project on a current base without us having to maintain N stale boilerplates.
+- **The generator runs as a Claude Code skill for now** (working name: `/SDSGT-start`), not a published standalone tool. Matches the current agent-chat interface and avoids building distribution/packaging machinery before the core generation logic is proven. Can become a real standalone CLI later without losing the underlying logic.
+- **Code is the source of truth, not Figma.** The tool starts in code and pushes into Figma — never the other way around. Figma is a generated mirror, useful for visual editing, not the master copy.
+- **Tokens are stored in the W3C "DTCG" JSON format** (a standard, not something hand-rolled) and converted into each platform's real code — CSS, TypeScript, etc. — using a conversion tool called Style Dictionary.
+- **Figma push is optional.** Someone who doesn't want to touch Figma can manage every token directly in code.
+- **A generated project doesn't receive future tool updates** — if the SDSGT generator itself improves later, already-generated projects don't retroactively benefit (each one is frozen relative to the tool itself). But every generated project keeps a live **token sync** feature, so token *values* can keep being edited — in Figma or in code — and kept in sync with each other, going forward. This is different from re-running the whole generator, which is a deliberate, destructive "start over" action, not part of routine use.
+- **Corner-roundness ships as a small preset menu** (square / lowly-round / highly-round), chosen at generation time — the same mechanism used for spacing rhythm and type scale — rather than freeform input. A more exotic "squircle" shape (the smoothed corner style used on iOS app icons) is a deferred future addition, since it needs real extra drawing work on each platform, not just a bigger radius number.
+
+Full reasoning behind these, plus the rest of the settled decisions, live in `docs/pipeline-plan.md`.
+
+## Lessons from a previous project (ACIM app)
+
+Concrete, non-obvious things worth not re-learning the hard way:
+
+- **NativeWind's default `inlineRem` is 14, not 16** — it silently shrinks every rem-based size with no warning. If this project touches NativeWind, set this correctly from the start.
+- **`tailwind-merge` doesn't reliably override classes across differently-shaped Tailwind groups** (e.g. `px-4` vs. `pl-5`) — component variants need to account for this rather than assuming overrides always "just work."
+- **Vendored/CLI-installed components (shadcn-style) should be trimmed to only the variants actually used.** Once customized, never blindly re-run the install command to "update" them — there's no merge logic, it silently overwrites. Mark customized files clearly so an agent doesn't "fix" them by reflexively re-pulling.
+- **Keep design-tool credentials/accounts cleanly separate per project**, to avoid silent access failures.
+- **Settle token/style decisions once and document them** (font sizes, spacing, color roles) so they don't get re-argued per screen or component later.
 
 ## Open questions
 
-- Full list of pretokens beyond brand colors + corner-roundness style.
-- Which component library/libraries to support first (not yet chosen).
-- Whether a generated project can pull later DS updates ("re-sync"), or is frozen at generation time and only hand-edited after.
-- Token format standard for the code tokens (e.g. W3C Design Tokens / Style Dictionary vs. something hand-rolled) — not yet re-decided.
+- Which component library/libraries to support first — not chosen yet.
+- Token naming & structure conventions (how tokens are named, and how Figma variables map back to them) — deliberately not designed yet. Nothing else can really be built until this is sorted; see `docs/pipeline-plan.md`.
+- Squircle support — deferred until there's time to build proper per-platform drawing logic.
+
+Full list of remaining open and deferred items: see `docs/pipeline-plan.md`.
 
 ## Project docs
 
+- `docs/pipeline-plan.md` — the full working plan: how the generation pipeline works end to end, what's decided, what's still open. Start here for the detail behind the summary above.
 - `docs/figma-mcp-capabilities.md` — verified capabilities and caveats of the Figma MCP integration this project uses. Read when working on the Figma side of the pipeline.
+- `docs/archive/` — the original Opus-authored planning docs, kept verbatim as a historical record. Their content has been reviewed and folded into the files above, in plainer language.
 
 ## Working style
 
 - Keep explanations plain and non-technical where possible. The user is not a developer by background.
-- Explain a step in plain English before doing it, and confirm before making changes.
+- Explain a step in plain English before doing it, and confirm before making changes — prefer small, followable steps over large batched changes.
 - Avoid over-engineering — don't build things "just in case." Add what's needed when it's needed.
