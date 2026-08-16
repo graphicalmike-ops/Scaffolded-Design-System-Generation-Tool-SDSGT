@@ -1,6 +1,6 @@
 # Southleft Figma MCP — Write Capabilities (tested)
 
-**Tested:** 2026-08-10 against the SDSGT Figma file (`s9IbbpprCKxxD2sCaL2IBl`).
+**Tested:** 2026-08-10 against the DSAT Figma file (`s9IbbpprCKxxD2sCaL2IBl`).
 
 The Southleft Figma MCP (`mcp__figma-southleft__*`) can **create, edit, and delete** both variables and text/font styles. The full create → edit → delete cycle was verified end-to-end and cleanly reverted.
 
@@ -12,7 +12,7 @@ The Southleft Figma MCP (`mcp__figma-southleft__*`) can **create, edit, and dele
 
 **Takeaway:** Figma variables only cover color/number/string/boolean; shadows, fonts, etc. live as *styles*, but those styles are still fully readable/writable and therefore tokenizable.
 
-## Implication for SDSGT
+## Implication for DSAT
 
 It's viable to author a design system in Claude Code (**code = source of truth**) and **push** tokens into Figma as variables/styles (code → Figma direction), using Figma as a rendered mirror for designers rather than the master. This informs the still-open "token source of truth" scoping decision, and points toward code-as-source.
 
