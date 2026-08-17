@@ -2,7 +2,9 @@
 
 ## What this is
 
-A tool that generates a complete design system from a small set of user inputs, then scaffolds a new project (in the user's chosen framework/stack) with that design system already wired in.
+A tool that generates a complete tokenized design system from a small set of user inputs, then scaffolds a new project (in the user's chosen framework/stack) with that design system already wired in.
+
+**Terminology note:** when the user refers to SDSGT as "the tool" (or similar), that is not specifying its actual implementation form (skill, CLI command, GUI, etc.) — that form is a separate, still-open decision (see "Architecture decisions so far" below).
 
 ## Why this project exists
 
@@ -34,7 +36,7 @@ There's also an ongoing editing/management layer: once a project is generated, i
 
 - **The generated output is a normal, ready-to-code project** — nothing exotic, just a real repo in the chosen framework with the design system already wired in.
 - **The generator drives the official scaffolding CLI** for whichever framework is chosen (`create-next-app`, `create-expo-app`, `vue create`, etc.) rather than maintaining our own copies of framework boilerplate, then layers design-system generation on top. Keeps every generated project on a current base without us having to maintain N stale boilerplates.
-- **The generator runs as a Claude Code skill for now** (working name: `/SDSGT-start`), not a published standalone tool. Matches the current agent-chat interface and avoids building distribution/packaging machinery before the core generation logic is proven. Can become a real standalone CLI later without losing the underlying logic.
+- **The generator's actual logic lives in a CLI core, not inside any single agent's instructions.** A standalone command-line program holds 100% of the pipeline logic (token generation, Style Dictionary conversion, scaffold orchestration, agent-rules writing). Every AI assistant — Claude Code, Codex, Cursor — gets a thin wrapper that just tells it to run that program, rather than each one containing its own copy of the logic. The Claude Code skill (`/SDSGT-start`) is today's development interface and stays that way, but it's an adapter over the CLI, not the tool itself. This is more deterministic than a skill-only design (real code runs identically every time; an AI interpreting instructions can vary run to run), works across multiple agent platforms by construction, and means a future GUI can call the same CLI directly instead of needing a rewrite. Full reasoning in `docs/pipeline-plan.md`, "Tool architecture."
 - **Code is the source of truth, not Figma.** The tool starts in code and pushes into Figma — never the other way around. Figma is a generated mirror, useful for visual editing, not the master copy.
 - **Tokens are stored in the W3C "DTCG" JSON format** (a standard, not something hand-rolled) and converted into each platform's real code — CSS, TypeScript, etc. — using a conversion tool called Style Dictionary.
 - **Figma push is optional.** Someone who doesn't want to touch Figma can manage every token directly in code.
