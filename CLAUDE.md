@@ -17,7 +17,7 @@ The long-term goal is bigger than a design system generator: once this piece is 
 
 ## Status
 
-Restarting under Sonnet (2026-08-15), after an initial planning pass under Opus. That earlier work has been reviewed and merged back into this file and into `docs/pipeline-plan.md`, rewritten in plainer language. The original Opus-authored files are kept verbatim in `docs/archive/` as a historical record — nothing there is more current or authoritative than what's written here now.
+Restarting under Sonnet (2026-08-15), after an initial planning pass under Opus. That earlier work has been reviewed and merged back into this file and into `pipeline-plan.md`, rewritten in plainer language. The original Opus-authored files are kept verbatim in `docs/archive/` as a historical record — nothing there is more current or authoritative than what's written here now.
 
 ## The pipeline (high level)
 
@@ -36,14 +36,15 @@ There's also an ongoing editing/management layer: once a project is generated, i
 
 - **The generated output is a normal, ready-to-code project** — nothing exotic, just a real repo in the chosen framework with the design system already wired in.
 - **The generator drives the official scaffolding CLI** for whichever framework is chosen (`create-next-app`, `create-expo-app`, `vue create`, etc.) rather than maintaining our own copies of framework boilerplate, then layers design-system generation on top. Keeps every generated project on a current base without us having to maintain N stale boilerplates.
-- **The generator's actual logic lives in a CLI core, not inside any single agent's instructions.** A standalone command-line program holds 100% of the pipeline logic (token generation, Style Dictionary conversion, scaffold orchestration, agent-rules writing). Every AI assistant — Claude Code, Codex, Cursor — gets a thin wrapper that just tells it to run that program, rather than each one containing its own copy of the logic. The Claude Code skill (`/SDSGT-start`) is today's development interface and stays that way, but it's an adapter over the CLI, not the tool itself. This is more deterministic than a skill-only design (real code runs identically every time; an AI interpreting instructions can vary run to run), works across multiple agent platforms by construction, and means a future GUI can call the same CLI directly instead of needing a rewrite. Full reasoning in `docs/pipeline-plan.md`, "Tool architecture."
+- **The generator's actual logic lives in a CLI core, not inside any single agent's instructions.** A standalone command-line program holds 100% of the pipeline logic (token generation, Style Dictionary conversion, scaffold orchestration, agent-rules writing). Every AI assistant — Claude Code, Codex, Cursor — gets a thin wrapper that just tells it to run that program, rather than each one containing its own copy of the logic. The Claude Code skill (`/SDSGT-start`) is today's development interface and stays that way, but it's an adapter over the CLI, not the tool itself. This is more deterministic than a skill-only design (real code runs identically every time; an AI interpreting instructions can vary run to run), works across multiple agent platforms by construction, and means a future GUI can call the same CLI directly instead of needing a rewrite. Full reasoning in `pipeline-plan.md`, "Tool architecture."
+- **Determinism is a project-wide goal, not just the reasoning behind the CLI-core decision.** Given the same inputs, the pipeline should produce the same output every run. This shows up in more than one settled decision: the CLI-over-skill architecture above, and formulas (e.g. brand color → full palette) running once at promotion time and then getting baked into plain values instead of staying "live" (see "Formulas run once" in `pipeline-plan.md`). Where a step genuinely needs an AI's judgment — interpreting a screenshot into brand colors, the Figma component build-screenshot-check-adjust loop — that's a deliberate, scoped exception, not the default posture.
 - **Code is the source of truth, not Figma.** The tool starts in code and pushes into Figma — never the other way around. Figma is a generated mirror, useful for visual editing, not the master copy.
 - **Tokens are stored in the W3C "DTCG" JSON format** (a standard, not something hand-rolled) and converted into each platform's real code — CSS, TypeScript, etc. — using a conversion tool called Style Dictionary.
 - **Figma push is optional.** Someone who doesn't want to touch Figma can manage every token directly in code.
 - **A generated project doesn't receive future tool updates** — if the SDSGT generator itself improves later, already-generated projects don't retroactively benefit (each one is frozen relative to the tool itself). But every generated project keeps a live **token sync** feature, so token *values* can keep being edited — in Figma or in code — and kept in sync with each other, going forward. This is different from re-running the whole generator, which is a deliberate, destructive "start over" action, not part of routine use.
 - **Corner-roundness ships as a small preset menu** (square / lowly-round / highly-round), chosen at generation time — the same mechanism used for spacing rhythm and type scale — rather than freeform input. A more exotic "squircle" shape (the smoothed corner style used on iOS app icons) is a deferred future addition, since it needs real extra drawing work on each platform, not just a bigger radius number.
 
-Full reasoning behind these, plus the rest of the settled decisions, live in `docs/pipeline-plan.md`.
+Full reasoning behind these, plus the rest of the settled decisions, live in `pipeline-plan.md`.
 
 ## Lessons from a previous project (ACIM app)
 
@@ -58,14 +59,14 @@ Concrete, non-obvious things worth not re-learning the hard way:
 ## Open questions
 
 - Which component library/libraries to support first — not chosen yet.
-- Token naming & structure conventions (how tokens are named, and how Figma variables map back to them) — deliberately not designed yet. Nothing else can really be built until this is sorted; see `docs/pipeline-plan.md`.
+- Token naming & structure conventions (how tokens are named, and how Figma variables map back to them) — deliberately not designed yet. Nothing else can really be built until this is sorted; see `pipeline-plan.md`.
 - Squircle support — deferred until there's time to build proper per-platform drawing logic.
 
-Full list of remaining open and deferred items: see `docs/pipeline-plan.md`.
+Full list of remaining open and deferred items: see `pipeline-plan.md`.
 
 ## Project docs
 
-- `docs/pipeline-plan.md` — the full working plan: how the generation pipeline works end to end, what's decided, what's still open. Start here for the detail behind the summary above.
+- `pipeline-plan.md` — the full working plan: how the generation pipeline works end to end, what's decided, what's still open. Start here for the detail behind the summary above.
 - `docs/figma-mcp-capabilities.md` — verified capabilities and caveats of the Figma MCP integration this project uses. Read when working on the Figma side of the pipeline.
 - `docs/archive/` — the original Opus-authored planning docs, kept verbatim as a historical record. Their content has been reviewed and folded into the files above, in plainer language.
 

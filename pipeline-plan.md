@@ -109,7 +109,7 @@ What they are: unstructured swatches and samples on a Figma canvas — a rectang
 
 Generating from pretokens means going from a couple of raw picks to an entire system — not copying them 1:1. From one brand color, the tool derives tints/shades, hover/active/disabled states, semantic roles (background/foreground/border), and light + dark versions. From a font + base size, it derives a full type scale with roles (heading/body/caption). The generated system is a sensible default, not a final answer — the user prunes what isn't needed before it becomes canonical (in keeping with "don't build things just in case").
 
-This needs a naming convention so the tool knows what it's reading — e.g., a dedicated "Pretokens" area in the Figma file where a swatch's name carries meaning (`brand/primary`, `font/base`). That naming convention is still undecided — see "Blocking item" below.
+This needs a naming convention so the tool knows what it's reading — e.g., a dedicated "Pretokens" area in the Figma file where a swatch's name carries meaning (`brand/primary`, `font/base`). That naming convention is still undecided — see "Naming & structure conventions" below.
 
 Once pretokens are promoted into real tokens, the pretoken scratch area is spent — it's not touched again. Ongoing editing happens in the generated Figma projection instead (see next section). The rule that prevents confusion: **a token is only ever edited in one place at a time.**
 
@@ -187,7 +187,7 @@ This content lives in exactly one place, with everything else pointing to it rat
 | **Agent rules** (`CLAUDE.md` / `.cursor/rules` / `AGENTS.md`) | Not the full explanation — just a short pointer to the doc, plus the handful of hard always/never rules an agent needs on hand while working |
 | **Automated checks** | Whichever of these rules can actually be checked by a machine (e.g. contrast ratios) get run as validation against the token spec |
 
-**Automated contrast checking needs one more piece to work:** to check contrast, the tool needs to know which text color is meant to sit on which background color — the token spec alone doesn't say that. The plan is to have the token *naming convention* carry that information (e.g. a token named `text-on-primary` implies it's meant to sit on `primary`), which is nearly free once the naming convention exists (see "Blocking item" below). If that doesn't end up working, contrast falls back to being a written guideline rather than an automated check.
+**Automated contrast checking needs one more piece to work:** to check contrast, the tool needs to know which text color is meant to sit on which background color — the token spec alone doesn't say that. The plan is to have the token *naming convention* carry that information (e.g. a token named `text-on-primary` implies it's meant to sit on `primary`), which is nearly free once the naming convention exists (see "Naming & structure conventions" below). If that doesn't end up working, contrast falls back to being a written guideline rather than an automated check.
 
 Accessibility checks run once, at the moment seeds get promoted into tokens. If someone hand-edits tokens after that, they're doing so at their own risk of breaking one of these rules — promotion is the checkpoint, not a background process constantly watching for problems.
 
@@ -222,7 +222,7 @@ So a generated project's full agent-rules set is: `AGENTS.md` (canonical) + `CLA
 - **Tokens are stored in the W3C "DTCG" JSON format** — a standard format (not hand-rolled), readable by agents, and already spoken by Figma's own token tooling, which is what makes the Figma round-trip work cleanly.
 - **Style Dictionary is the tool that converts those tokens into real platform code** (CSS, TypeScript, etc.) — this is a firm choice, not one of several options left open.
 - **Figma "styles" (not just variables) are usable as tokens too.** Figma variables only hold color/number/string/boolean, so things like shadows and fonts live as Figma *styles* instead — but those are just as readable and writable via the Figma MCP, confirmed working for both effect styles (shadows) and text styles (fonts). See `docs/figma-mcp-capabilities.md`. A shadow token's pieces (blur, spread, offset, color) map onto primitive variables that get composed into a Figma effect style.
-- **The tool is platform-agnostic at the token level.** The spec itself doesn't know or care what platform it's for — the user picks a target framework, and the generator emits the right shape. Initially conceived as web (CSS variables/Tailwind theme) vs. React Native (TypeScript/NativeWind constants), but the intended scaffold list is broader: **Next.js, Vue.js, React Native, Kotlin (native Android), etc.** Kotlin is a meaningfully bigger lift than adding "one more CLI to drive" — it's true native, not JS-based, so it needs its own code-token output shape (not a variant of the CSS/TS work), not just a new `create-*-app` command. See "Still open" below.
+- **The tool is platform-agnostic at the token level.** The spec itself doesn't know or care what platform it's for — the user picks a target framework, and the generator emits the right shape. Initially conceived as web (CSS variables/Tailwind theme) vs. React Native (TypeScript/NativeWind constants), but the intended scaffold list is broader: **Next.js, Vue.js, React Native, Kotlin (native Android), native iOS (SwiftUI), etc.** Kotlin and native iOS are each a meaningfully bigger lift than adding "one more CLI to drive" — they're true native, not JS-based, so each needs its own code-token output shape (not a variant of the CSS/TS work), not just a new `create-*-app` command. See "Still open" below.
 - **Light/dark mode structure branches on the connected Figma file's plan, detected at connection time.** Figma's free tier only allows one "mode" per variable collection, so on a **free plan**, the tool creates two separately-named collections (`Tokens / Light` and `Tokens / Dark`) with identical variable names — no values are lost, it's just not a one-click toggle inside Figma the way a paid plan's "modes" feature would allow. On a **paid plan**, the tool instead pushes one collection with light and dark as two *modes* of the same collection, which is the more native Figma experience. Code-side, this distinction doesn't matter: light and dark are just two separate token sets either way, and Style Dictionary emits both regardless of which Figma structure was used. (Detecting the plan reliably still needs to be tested — see "Pre-launch validation" below.)
 - **Editing model = the layer-split described above.** Values you typed, and links between tokens, are freely editable in Figma and sync back cleanly. Auto-calculated results are edited through their inputs instead, or get "frozen" into an explicit override if someone edits the output directly.
 - **Formulas run once, then get locked into plain values** (see above) — this is what makes the editing model above actually work in practice, since there's no live formula left to silently overwrite someone's edit.
@@ -245,11 +245,14 @@ So a generated project's full agent-rules set is: `AGENTS.md` (canonical) + `CLA
 
 ## What actually needs to get built
 
-**1. Contracts** (has to be designed first — everything else depends on these)
+**1. Contracts** (build in parallel with Step 1 / seed input, not as a separate phase before it — see note below)
 - **Token spec** — the actual DTCG JSON shape for colors, type scale, spacing, corner-roundness, and how light/dark token sets are structured.
-- **Naming & structure conventions** — the token-naming rules and the Figma naming/collection rules, so promoting and pushing always agree on what maps to what. Covers the value-foundation groups too (spacing, breakpoints, grid, corner-roundness), not just color/type. **Still undecided — see "Blocking item" below.**
+- **Naming & structure conventions** — the token-naming rules and the Figma naming/collection rules, so promoting and pushing always agree on what maps to what. Covers the value-foundation groups too (spacing, breakpoints, grid, corner-roundness), not just color/type. **Still undecided — see "Naming & structure conventions" below.**
 - **Preset library** — the actual token files for each value-foundation menu (spacing / type-scale / corner-roundness), plus the one fixed-default set for breakpoints/grid.
 - **Rule-foundations doc** — the static `foundations-rules.md` itself (accessibility, touch targets, focus, states, do's/don'ts).
+- **Agent rules template** — the fixed `AGENTS.md` skeleton every generated project's `AGENTS.md` is populated from: pointers to `foundations-rules.md` and `design.md`, plus the fixed always/never rules (e.g. use semantic tokens, not primitives, for color and typography). `CLAUDE.md` and `.cursor/rules` stay thin mirrors of it, per "Agent rule files" above — not separate contracts of their own.
+
+> **Build-order note:** Contracts are technically seeds too — just predetermined ones (fixed by the tool's design) rather than user-inputted ones (like brand color or font). So instead of treating "Contracts" as a strict phase that must fully finish before Step 1 (seed input) can be touched, build them in parallel: flesh out seed input and the naming/token-spec conventions together, since seed input is the first thing that actually needs those conventions to exist. Test the pair together before moving on to Step 2 (promote).
 
 **2. Tools**
 - **Promote** — reads Figma variables, writes them into the token spec.
@@ -336,7 +339,7 @@ A couple of things worth noticing in these diagrams:
 ## Still open
 
 - **Which component library/libraries to support first** — not chosen yet.
-- **Which scaffold frameworks/platforms to support, and in what order** — the intended list includes Next.js, Vue.js, React Native, and Kotlin (native Android), but nothing's prioritized yet. Kotlin specifically needs its own code-token output work (real native, not a JS/CSS variant), so it's likely a later addition rather than a launch-day one.
+- **Which scaffold frameworks/platforms to support, and in what order** — the intended list includes Next.js, Vue.js, React Native, Kotlin (native Android), and native iOS (SwiftUI), but nothing's prioritized yet. Kotlin and native iOS each need their own code-token output work (real native, not a JS/CSS variant), so they're likely later additions rather than launch-day ones. Native iOS was added for parity with Kotlin (native Android) — until now the target list covered Android natively but iOS only indirectly, through React Native, not through true SwiftUI.
 - **Working pace for this project** — step-by-step confirmation (as with the ACIM app) vs. faster batched changes. (Current default: see "Working style" in `CLAUDE.md` — step-by-step, confirm before big changes.)
 - **When the design system extends into actual components** — this is where Layer 2 begins (see "Three layers" above). Deliberately not started until it's actually needed.
 - **What exactly the skill produces underneath** — a plain generated folder, or something more structured (an installable package, etc.) — and how the retained token-sync engine gets packaged into a generated project.
@@ -363,12 +366,12 @@ None of these block ongoing design work, but all five must be resolved before th
 - **Squircle as a corner-roundness option** — needs real per-platform drawing work (SVG/clip-path on web, custom masking on native) that doesn't exist yet. Revisit once the basic preset-menu roundness is working.
 - **Layer 2 (component library) and Layer 3 (framework scaffold)** — the outer two layers. Layer 2 carries most of the real difficulty (see "Three layers" above); tackle after Layer 1 is solid.
 
-## Blocking item: naming & structure conventions
+## Naming & structure conventions
 
 Both "promote" and "push" depend on one shared contract that doesn't exist yet: the actual token names, plus the Figma collection/naming rules (including the "Pretokens" area convention and the two-collection light/dark setup) — the thing that lets the tool reliably match a Figma variable back to its token. Several already-settled decisions assume this exists (semantic links, the baked-formula matching, reading pretokens at all).
 
-This is **deliberately deferred**, not an oversight — other decisions were intentionally settled first. But nothing else in "What actually needs to get built" can start until this is designed.
+This was **deliberately deferred**, not an oversight — other decisions were intentionally settled first. It's still undesigned, but it's no longer treated as a standalone gate that has to fully close before any building starts (see the build-order note under "What actually needs to get built"): it gets designed alongside Step 1 (seed input), since both are needed at the same point in the build.
 
 ## Next step
 
-Keep resolving what's listed under "Still open," then design the naming & structure conventions once ready to move toward actually building something.
+Start step-by-step build-and-test: flesh out Step 1 (seed input) together with the Contracts it depends on (token spec + naming & structure conventions), test that pair, then move to Step 2 (promote) and test it against Step 1, and so on — integrating each new step with what's already been tested rather than building all steps in isolation first. Keep resolving what's listed under "Still open" as it becomes relevant to whichever step is current.
