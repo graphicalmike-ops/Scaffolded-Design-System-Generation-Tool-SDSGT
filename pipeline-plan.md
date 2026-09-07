@@ -78,7 +78,7 @@ A user supplies a few raw creative decisions, the tool turns those into a full s
 ```mermaid
 flowchart TD
     presets["Presets / defaults<br/>spacing, breakpoints, grid, corner-roundness…<br/>(picked, not explored)"]
-    seeds["Seed inputs<br/>brand colors + font<br/>(chat #hex / screenshot / optional Figma file)"]
+    seeds["Seed inputs<br/>brand colors + font<br/>(seed-input form: hex + font pick,<br/>optional screenshot)"]
     spec["Code token spec — SOURCE OF TRUTH<br/>light/dark held as separate token sets"]
     codeTokens["Code tokens<br/>web or native, user's choice"]
     figmaPush["Figma push<br/>2 collections: Light + Dark"]
@@ -93,7 +93,7 @@ flowchart TD
     spec -->|generate| rulesDoc
 ```
 
-**1. Seed input** — the user supplies the raw creative decisions: brand colors (a hue is extracted, the rest gets derived) and a base font, plus the preset picks (spacing, corner-roundness, etc). These can arrive as raw `#hex` values in chat, a screenshot, or an optional Figma file — Figma is one possible channel, never required. This is also where two output-shape questions get asked, since they affect what "generate" produces later: **which target framework/platform** (Next.js, Vue.js, React Native, Kotlin, etc. — needed regardless of scaffolding, since it decides the code-token output shape) and **scaffold a full new project, or just hand back the design-system files** to drop into an existing one (see "Three layers" above).
+**1. Seed input** — the user supplies the raw creative decisions: brand colors (a hue is extracted, the rest gets derived) and a base font, plus the preset picks (spacing, corner-roundness, etc). These are gathered directly through the seed-input form — raw `#hex` values and a font pick — with an optional screenshot upload if someone wants the AI to read a value off an image first, rather than a dedicated Figma exploration step. This is also where two output-shape questions get asked, since they affect what "generate" produces later: **which target framework/platform** (Next.js, Vue.js, React Native, Kotlin, etc. — needed regardless of scaffolding, since it decides the code-token output shape) and **scaffold a full new project, or just hand back the design-system files** to drop into an existing one (see "Three layers" above).
 
 **2. Promote** — the seeds get turned into a real structured token system: **primitives** (computed once, then locked in as plain values) and **semantics** (real links back to those primitives). The moment this happens, code becomes the source of truth. (See "Formulas run once" below for why this matters.)
 
@@ -101,17 +101,15 @@ flowchart TD
 
 The pipeline asks for input at several points along the way, not all upfront in one form — seed inputs, preset picks, the status-color choice, and this Figma-management question all happen at the point they're actually needed.
 
-### Pretokens (the raw seeds)
+### Seed input (the raw brand colors + font)
 
-Pretokens are the *optional* Figma-based way to supply seeds — not the only way. The same brand-color-and-font seeds can just as easily be typed as `#hex` values in chat or shown as a screenshot. Use an actual Figma pretokens file only when someone wants to see color/font choices visually before deciding; skip it entirely when the values are already known.
+Brand colors and font are gathered directly through the seed-input form — no separate Figma exploration step. Colors are entered as `#hex` values in chat, and fonts are picked from a list, with an optional screenshot upload if someone wants the AI to read a value off an image first rather than typing it directly. Only brand colors and fonts get gathered this way — corner-roundness moved to the preset-menu path instead (see "Value-foundations" below), since it's a small, opinionated choice rather than something worth free-form exploring.
 
-What they are: unstructured swatches and samples on a Figma canvas — a rectangle filled with a candidate brand color, a text sample in a candidate font. Only brand colors and fonts get explored this way — corner-roundness moved to the preset-menu path instead (see "Value-foundations" below), since it's a small, opinionated choice rather than something worth free-form exploring.
+This drops the old "Pretokens" idea — a dedicated Figma page with named layers (`brand/primary`, `font/base`) that "promote" had to parse. There's nothing to parse anymore: the form's fields are already unambiguous, so the naming-convention work this used to require (see "Naming & structure conventions" below) no longer applies to seed input at all.
 
-Generating from pretokens means going from a couple of raw picks to an entire system — not copying them 1:1. From one brand color, the tool derives tints/shades, hover/active/disabled states, semantic roles (background/foreground/border), and light + dark versions. From a font + base size, it derives a full type scale with roles (heading/body/caption). The generated system is a sensible default, not a final answer — the user prunes what isn't needed before it becomes canonical (in keeping with "don't build things just in case").
+Generating from these seed inputs means going from a couple of raw picks to an entire system — not copying them 1:1. From one brand color, the tool derives tints/shades, hover/active/disabled states, semantic roles (background/foreground/border), and light + dark versions. From a font + base size, it derives a full type scale with roles (heading/body/caption). The generated system is a sensible default, not a final answer — the user prunes what isn't needed before it becomes canonical (in keeping with "don't build things just in case").
 
-This needs a naming convention so the tool knows what it's reading — e.g., a dedicated "Pretokens" area in the Figma file where a swatch's name carries meaning (`brand/primary`, `font/base`). That naming convention is still undecided — see "Naming & structure conventions" below.
-
-Once pretokens are promoted into real tokens, the pretoken scratch area is spent — it's not touched again. Ongoing editing happens in the generated Figma projection instead (see next section). The rule that prevents confusion: **a token is only ever edited in one place at a time.**
+Once the form's seed values are promoted into real tokens, they're simply primitives in the token spec from then on — there's no separate scratch area to retire. Ongoing editing happens in the generated Figma projection instead (see next section). The rule that prevents confusion: **a token is only ever edited in one place at a time.**
 
 ### Editing model: what can be changed in Figma and synced back
 
@@ -165,13 +163,13 @@ These don't go through the explore-and-promote loop the way brand color does —
 
 | How it starts | Examples | Decided by |
 |---|---|---|
-| **Explored per project** | brand colors, font | The user, via chat / screenshot / optional Figma file |
-| **Picked from a preset menu** | spacing rhythm, corner-roundness, type-scale ratio | The user, choosing from 2-3 options at generation time |
+| **Explored per project** | brand colors, font | The user, via the seed-input form (hex + font pick, optional screenshot) |
+| **Picked from a preset menu** | spacing rhythm, corner-roundness, type-scale ratio | The user, choosing from a 4-way menu (Tailwind / Bootstrap / Material Design 3 / Material Design 2) at generation time, recommended-matched to whichever target design language was already picked |
 | **Fixed default** | breakpoints, grid | Shipped as-is, no choice needed |
 
-The preset menus themselves ship as real token files (e.g. a `lowly-round` roundness file, a `linear-8` spacing file) — generation literally copies the chosen file into the project's token spec, so it's transparent and editable afterward, not a hidden config flag. The menus stay small and opinionated on purpose (2-3 good options, not an open-ended configurator) — the goal is a sane default in seconds, not infinite customization up front.
+The preset menus themselves ship as real token files (e.g. an `md3` roundness file, a `bootstrap` spacing file) — generation literally copies the chosen file into the project's token spec, so it's transparent and editable afterward, not a hidden config flag. The menus stay small and opinionated on purpose (four good options, not an open-ended configurator) — the goal is a sane default in seconds, not infinite customization up front.
 
-**Corner-roundness specifically** ships as a preset menu — **square / lowly-round / highly-round** — the same mechanism as spacing and type scale, rather than a freely-explored pretoken like color. A fourth option, **squircle** (the smoothed, flowing corner shape used on iOS app icons), is deliberately deferred rather than included now — it's not just a bigger radius value, it needs real platform-specific drawing work (SVG/clip-path on web, custom masking on native) that doesn't exist yet. See "Deferred," below.
+**Corner-roundness specifically** ships as the same 4-way preset menu as spacing and type-scale — matched to the design-language pick (Tailwind / Bootstrap / Material Design 3 / Material Design 2), not a tool-original 3-way preset — rather than a freely-explored pretoken like color. It uses one fixed set of role keys across all four presets (`none, sm, md, lg, xl, full`), only the values change per preset — see `contracts-proposals.md`, A6, for the exact numbers. A future option, **squircle** (the smoothed, flowing corner shape used on iOS app icons), is deliberately deferred rather than included now — it's not just a bigger radius value, it needs real platform-specific drawing work (SVG/clip-path on web, custom masking on native) that doesn't exist yet. See "Deferred," below.
 
 ### Rule-foundations — a static reference doc, not something generated
 
@@ -229,15 +227,15 @@ So a generated project's full agent-rules set is: `AGENTS.md` (canonical) + `CLA
 - **Foundational settings split into value-foundations (just more tokens) and rule-foundations (a static shipped doc)** — see above for the full reasoning. Motion and z-index/elevation are excluded entirely (too platform/library-specific); grid is code-only and doesn't push to Figma.
 - **The generator's logic lives in a CLI core; every AI assistant is a thin adapter over it, not a container for the logic itself.** The Claude Code skill (working name `/SDSGT-start`) is today's dev interface — the user runs it, it asks for the seed inputs, platform/framework, and preset choices, then runs the seed → promote → generate pipeline — but it's a wrapper around the CLI, not the tool itself. Not a clone-and-hand-edit repo. See "Tool architecture" above for the full reasoning (cross-agent support, determinism, and future-GUI readiness).
 - **Scaffolding a new project is optional, output-files-only is a first-class outcome, not a fallback.** At seed input, the tool asks (a) target framework/platform — always, since it decides the code-token output shape regardless of the next answer — and (b) whether to also run a full project scaffold or just hand back the design-system files for dropping into an existing project. See "Three layers" above.
-- **Every seed input is multi-channel, and Figma is optional on both ends.** Brand colors and font can arrive as `#hex` in chat, a screenshot, or an optional Figma file — no Figma file is ever required to generate a design system. Symmetrically, editing tokens through Figma afterward is also optional — someone can just edit the code tokens directly instead.
+- **Seed input happens through the form, and Figma involvement afterward is optional.** Brand colors and font are entered directly (`#hex` in chat, a font pick), with an optional screenshot upload if someone wants the AI to read a value off an image first — there's no dedicated Figma exploration step or "Pretokens" page. Downstream, editing tokens through Figma is still optional — someone can just edit the code tokens directly instead.
 - **There are two different Figma-to-code operations, and they're not interchangeable:**
-  1. **Promote-from-seeds** — the structural one. Reads the pretokens and (re)builds the entire token system from scratch. This is destructive (replaces the whole spec) — it's what happens the first time, or as a deliberate "throw away my earlier decisions and start over" reset. It is not part of routine day-to-day use.
+  1. **Promote-from-seeds** — the structural one. Reads the seed-input form values and (re)builds the entire token system from scratch. This is destructive (replaces the whole spec) — it's what happens the first time, or as a deliberate "throw away my earlier decisions and start over" reset. It is not part of routine day-to-day use.
   2. **Token sync** — the everyday one. Edits an existing value or link, syncs just that change back to code. Non-destructive, incremental, and this is the one piece that stays live inside a generated project after it's handed off.
 - **After a project is generated, it keeps only the token-sync engine — not the full generator.** From that point on, the intended way to change the design system is to edit token values/links directly (in Figma or code) and sync — not to re-run the full promote step, which would be the explicit "start over" path, chosen knowingly rather than accidentally.
 - **Token-sync staying live is not the same commitment as keeping agent-rules files in sync.** The Figma ↔ code *token* sync is a real, ongoing SDSGT responsibility (that's the whole point of the sync engine). Agent-rules-file drift (someone's `CLAUDE.md` growing project-specific notes that never make it into `AGENTS.md`) is explicitly **not** SDSGT's responsibility once a project is handed off — same boundary as "a generated project never receives retroactive updates," just applied to rules files instead of tokens. If someone switches tools months later, migrating that drift is on them (or a five-minute one-off task for whatever agent they switch to), not something SDSGT ships tooling for.
 - **Because of that boundary, the pushed Figma DS file must never contain agent-rules content — tokens/styles only.** Keeping the Figma file strictly to variables and styles (no agent-instruction data) is what lets the token-sync engine stay scoped to *just* tokens indefinitely, without ever needing to know about — or touch — `AGENTS.md`/`CLAUDE.md`/`.cursor/rules` or their drift. This is a generation-time constraint, not just a naming convention: the Figma push generator should have no code path that writes agent-rules content into the Figma file at all.
 - **A generated project never receives retroactive updates from the tool.** If the SDSGT generator improves later, that improvement doesn't flow into projects that were already generated — each one is frozen at the moment it was scaffolded. This matches the tool's actual purpose (hand someone a solid starting point, then it's theirs) and mirrors the same lesson from the ACIM app (vendored components don't get silently re-synced from upstream either).
-- **Corner-roundness ships as a small preset menu** (square / lowly-round / highly-round), the same mechanism as spacing rhythm and type scale — chosen at generation time, not explored per-project like color. Squircle is a deferred addition (see "Deferred," below) since it needs real platform-specific drawing work, not just a bigger number.
+- **Corner-roundness ships as a 4-way preset menu matching the design-language pick** (Tailwind / Bootstrap / Material Design 3 / Material Design 2), the same mechanism as spacing rhythm and type scale — chosen at generation time, not explored per-project like color. Uses one fixed set of role keys across all four presets (`none, sm, md, lg, xl, full`); only the values change. Squircle is a deferred addition (see "Deferred," below) since it needs real platform-specific drawing work, not just a bigger number.
 - **Agent rules use `AGENTS.md` as the platform-agnostic canonical file**, since no coding agent reads a truly universal instructions file today and `AGENTS.md` is the closest thing to a real cross-tool convention. `CLAUDE.md` imports it (via `@path` syntax) rather than duplicating it; `.cursor/rules` mirrors it since Cursor doesn't read `AGENTS.md` natively. See "Agent rule files" above.
 - **A generated project's agent-facing docs are two separate files, not one:** `foundations-rules.md` (static, universal a11y/token rules, same every project) and `design.md` (generated, project-specific — this project's actual tokens/components and how to use them). Agent rule files point to both. See "design.md" above.
 
@@ -257,6 +255,12 @@ So a generated project's full agent-rules set is: `AGENTS.md` (canonical) + `CLA
 **2. Tools**
 - **Promote** — reads Figma variables, writes them into the token spec.
 - **Generators** — turn the spec into code tokens (via Style Dictionary), a Figma push, agent rules (`AGENTS.md` canonical + `CLAUDE.md` + `.cursor/rules`), a platform-filtered copy of `foundations-rules.md`, and a generated `design.md` (this project's actual tokens/components — see "design.md" above). The Figma push is intended to work from a **hand-designed template file** (see "Pre-launch validation" below) rather than building the file's structure from raw API/MCP calls each run — the tool duplicates the template into the user's Figma account, then populates it with the generated token values. Not yet confirmed feasible.
+  - **Per-platform fidelity is generator work, not a spec concern.** The token spec (primitives + semantics) is one universal, platform-agnostic shape — see `contracts-proposals.md` Proposal 2. Making the output feel native to a specific framework/library happens here, at generation time, per target:
+    - **Tailwind-family (shadcn/ui, shadcn-vue, RNR):** positional relabel from our primitive ramp's step order onto Tailwind's own `50`–`950` key names.
+    - **MD2 (MUI, Vuetify):** same positional relabel onto MUI's `50`–`900` shape; derive `main`/`light`/`dark`/`contrastText` from the semantic layer plus the `static` white/black primitives.
+    - **Bootstrap (React-Bootstrap, bootstrap-vue-next):** write the semantic base color straight to `$primary`/`$secondary`/etc. and let Bootstrap's own Sass (`tint-color()`/`shade-color()`) derive everything else — no ramp translation needed. Same treatment for `radius.full`: the spec holds one canonical value (`9999`, see `contracts-proposals.md` A6) for every target including Bootstrap, but the Bootstrap generator is free to express it as `border-radius: 50rem` / the `.rounded-pill` utility in the real generated Sass — functionally identical, just Bootstrap's own idiom for "fully round."
+    - **Material Design 3 (Jetpack Compose Material3):** compute a real HCT tonal palette and `ColorScheme` (including elevation's tonal-surface overlay, not just a shadow) at generation time, seeded from the semantic brand/surface colors — using a proper, deterministic algorithm (e.g. Google's open-source Material Color Utilities), not an approximation sliced from the shared ramp. Same treatment resolves the earlier "MD3 elevation isn't a pure shadow" gap: the generator derives the tonal overlay from semantic surface + primary color rather than the shadow token trying to carry it.
+    - **SwiftUI native:** reads semantic tokens directly, no native structure to reconcile.
 - **Foundations sheet generator** — a visual reference sheet inside Figma. Deliberately built later, since it's the fragile, iterate-by-screenshot part — variables come first, the visual sheet comes second.
 
 **3. Harness** (what turns this from a one-off into a reusable tool)
@@ -289,9 +293,9 @@ flowchart TD
     CONTRACTS --> defaults["defaults/<br/>fixed value-foundations, no menu"]
     CONTRACTS --> rulesdoc["foundations-rules.md<br/>the rule-foundations source doc, static"]
 
-    presets --> spacingPreset["spacing.*.json<br/>linear-4 / linear-8 / geometric"]
-    presets --> typePreset["type-scale.*.json<br/>minor-third / major-third / perfect-fourth"]
-    presets --> roundPreset["roundness.*.json<br/>square / lowly-round / highly-round"]
+    presets --> spacingPreset["spacing.*.json<br/>tailwind / bootstrap / md3* / md2*<br/>(*md3, md2 reuse tailwind's scale)"]
+    presets --> typePreset["type-scale.*.json<br/>tailwind / bootstrap / md3 / md2"]
+    presets --> roundPreset["radius.*.json<br/>tailwind / bootstrap / md3 / md2"]
 
     defaults --> breakpoints["breakpoints.json"]
     defaults --> grid["grid.json"]
@@ -304,7 +308,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    explored["Explored seeds<br/>brand color + font<br/>chat / screenshot / optional Figma file"]
+    explored["Explored seeds<br/>brand color + font<br/>(seed-input form: hex + font pick,<br/>optional screenshot)"]
     preset["Preset picks<br/>spacing / type-scale / corner-roundness<br/>chosen file copied in"]
     default["Fixed defaults<br/>breakpoints + grid<br/>copied in"]
 
@@ -368,7 +372,7 @@ None of these block ongoing design work, but all five must be resolved before th
 
 ## Naming & structure conventions
 
-Both "promote" and "push" depend on one shared contract that doesn't exist yet: the actual token names, plus the Figma collection/naming rules (including the "Pretokens" area convention and the two-collection light/dark setup) — the thing that lets the tool reliably match a Figma variable back to its token. Several already-settled decisions assume this exists (semantic links, the baked-formula matching, reading pretokens at all).
+Both "promote" and "push" depend on one shared contract that doesn't exist yet: the actual token names, plus the Figma collection/naming rules (the two-collection light/dark setup) — the thing that lets the tool reliably match a Figma variable back to its token. Several already-settled decisions assume this exists (semantic links, the baked-formula matching). Note this is now scoped to Figma push/sync only — seed input no longer depends on it, since seeds come from the form rather than a parsed Figma naming convention (see "Seed input" above).
 
 This was **deliberately deferred**, not an oversight — other decisions were intentionally settled first. It's still undesigned, but it's no longer treated as a standalone gate that has to fully close before any building starts (see the build-order note under "What actually needs to get built"): it gets designed alongside Step 1 (seed input), since both are needed at the same point in the build.
 
