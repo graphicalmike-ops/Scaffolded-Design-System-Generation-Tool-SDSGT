@@ -1,0 +1,20 @@
+{
+  "scaffoldMode": "files-only",
+  "targetFramework": "nextjs",
+  "targetDesignLanguage": "tailwind",
+  "figmaManaged": false,
+  "lightDarkMode": "both",
+
+  "primaryColor": "#3B82F6",
+  "secondaryColor": "#F97316",
+  "neutralColorStyle": "brand-tinted",
+
+  "primaryFont": "Inter",
+  "secondaryFont": "Source Sans Pro",
+
+  "typeScalePreset": "tailwind",
+  "spacingPreset": "tailwind",
+  "radiusPreset": "tailwind",
+  "opacityPreset": "tailwind",
+  "shadowPreset": "tailwind"
+}

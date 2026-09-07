@@ -1,0 +1,15 @@
+{
+  "name": "sdsgt-cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "SDSGT pipeline CLI core (seed input -> promote). Local development only — not published.",
+  "scripts": {
+    "promote": "node src/cli.ts promote",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "scaffoldMode": "files-only",
+  "targetFramework": "swiftui",
+  "targetDesignLanguage": "md3",
+  "figmaManaged": false,
+  "lightDarkMode": "light",
+
+  "primaryColor": "#8B5CF6",
+  "neutralColorStyle": "pure-gray",
+
+  "primaryFont": "Roboto",
+
+  "typeScalePreset": "md3",
+  "spacingPreset": "md3",
+  "radiusPreset": "md3",
+  "opacityPreset": "tailwind",
+  "shadowPreset": "md3"
+}

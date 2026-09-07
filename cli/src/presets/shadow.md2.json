@@ -1,0 +1,9 @@
+{
+  "shadow": {
+    "sm": { "$type": "dimension", "$value": "1px" },
+    "md": { "$type": "dimension", "$value": "4px" },
+    "lg": { "$type": "dimension", "$value": "8px" },
+    "xl": { "$type": "dimension", "$value": "16px" },
+    "2xl": { "$type": "dimension", "$value": "24px" }
+  }
+}

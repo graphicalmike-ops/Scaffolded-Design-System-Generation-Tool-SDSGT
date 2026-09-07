@@ -1,0 +1,19 @@
+{
+  "grid": {
+    "compact": {
+      "columns": { "$type": "number", "$value": 4 },
+      "margin": { "$type": "dimension", "$value": "16px" },
+      "gutter": { "$type": "dimension", "$value": "16px" }
+    },
+    "medium": {
+      "columns": { "$type": "number", "$value": 8 },
+      "margin": { "$type": "dimension", "$value": "24px" },
+      "gutter": { "$type": "dimension", "$value": "24px" }
+    },
+    "expanded": {
+      "columns": { "$type": "number", "$value": 12 },
+      "margin": { "$type": "dimension", "$value": "24px" },
+      "gutter": { "$type": "dimension", "$value": "24px" }
+    }
+  }
+}
