@@ -3,3 +3,4 @@ dist/
 out/
 seeds/
 *.log
+qa-results/runs/

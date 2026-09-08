@@ -7,7 +7,8 @@
   "scripts": {
     "promote": "node src/cli.ts promote",
     "generate": "node src/cli.ts generate",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "qa:matrix": "node scripts/qa-matrix.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
