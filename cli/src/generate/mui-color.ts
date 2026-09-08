@@ -6,6 +6,15 @@
 // - tonal offset (0.2 light / 0.3 dark) + contrastThreshold (3):
 //   packages/mui-material/src/styles/createPalette.js, augmentColor()
 //
+// Verified against MUI 9.x (decided 2026-09-08, checked against the real
+// npm-published @mui/material@9.4.0 and @mui/system@9.4.0 tarballs, the
+// current latest — not just GitHub's unpinned default branch). This exact
+// formula (same constants, same per-channel math) has been unchanged across
+// MUI's 4/5/6/7/8/9 majors, so this isn't a fragile version-specific target
+// the way Bootstrap's radius variable names are — still worth re-checking
+// against real source if MUI ever changes it, rather than assuming it holds
+// forever.
+//
 // One deliberate departure from MUI's own literal defaults: contrastText
 // picks between OUR static.100/static.200 primitives (passed in by the
 // caller), not MUI's hardcoded '#fff' / 'rgba(0, 0, 0, 0.87)' — this stays

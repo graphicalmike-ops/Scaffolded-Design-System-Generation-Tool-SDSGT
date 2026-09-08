@@ -22,6 +22,14 @@
 //   contracts-and-seeds.md, "Radius."
 // Extended 2026-09-08 from an initially narrower $primary/$secondary-only
 // scope — see pipeline-plan.md, "Generators."
+//
+// Targets Bootstrap 5.3 (decided 2026-09-08, verified against the real
+// npm-published 5.3.8 source, the current latest) — the $border-radius-sm/
+// $border-radius/$border-radius-lg/$border-radius-pill variable names and
+// defaults (.25rem/.375rem/.5rem/50rem) are a Bootstrap 5.x convention,
+// not present in Bootstrap 4. This is a documentation/output-shape target,
+// not an npm dependency — the CLI doesn't install `bootstrap` itself, it
+// only generates Sass that assumes this version's variable names exist.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

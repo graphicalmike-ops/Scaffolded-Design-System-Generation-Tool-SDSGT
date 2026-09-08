@@ -22,6 +22,15 @@
 // the consuming app switches between them itself (e.g. via
 // @Environment(\.colorScheme)), Generate doesn't invent an auto-switching
 // mechanism any more than the CSS or Kotlin outputs do.
+//
+// No iOS/Swift version target decided or needed here (checked 2026-09-08,
+// alongside deciding Bootstrap 5.3/MUI 9.x/Compose Material3 1.4.0 as
+// targets for the other three generators) — Color(red:green:blue:opacity:)
+// is a plain SwiftUI initializer available since iOS 13, so this generator
+// has no version-gated API to pin. A real iOS/Swift deployment-target
+// decision still exists for Layer 2/3 (SwiftUI-native component library,
+// Xcode project scaffolding) — deliberately left open until that work is
+// actually built, not decided speculatively now.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

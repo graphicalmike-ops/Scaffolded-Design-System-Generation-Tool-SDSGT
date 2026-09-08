@@ -43,6 +43,17 @@
 //   skipped, not approximated, if a mismatched Tailwind/Bootstrap `shadow`
 //   composite preset was chosen instead (contracts-and-seeds.md: "never
 //   assume one shadow shape covers every preset").
+//
+// Targets Jetpack Compose Material3 1.4.0 (decided 2026-09-08) — the
+// current latest STABLE release (1.5.0 exists but is alpha-only as of this
+// decision). Verified against the real material3-1.4.0-sources.jar from
+// Google's Maven repo, not GitHub's unpinned default branch: the 48-field
+// ColorScheme(...) constructor (including the *Fixed/*FixedDim/
+// *FixedVariant roles, which weren't part of the original M3 release) and
+// the surfaceColorAtElevation formula above both match byte-for-byte. This
+// is a documentation/output-shape target, not an npm dependency — the CLI
+// doesn't install any Compose artifact itself, it only generates Kotlin
+// that assumes this version's ColorScheme shape exists.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
