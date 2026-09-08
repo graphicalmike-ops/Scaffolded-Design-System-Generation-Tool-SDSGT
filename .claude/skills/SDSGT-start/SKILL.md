@@ -86,6 +86,14 @@ override any of the four independently — they don't have to move together.
   are stored for when Generate/scaffold/Figma-push get built — say plainly
   that picking `Scaffold` or `Figma-managed` today doesn't yet trigger
   scaffolding or a Figma push.
+- **This skill doesn't run `generate` yet — only `promote`.** When it's Next.js
+  + Tailwind (row 2 = `Next.js`, row 3 = `Tailwind`), the real generator that
+  exists today is `node src/cli.ts generate --tailwind`, which targets
+  **Tailwind v4** specifically — a CSS `@theme` block, not a
+  `tailwind.config.js`/`.ts` file. Decided 2026-09-08, see "Generators" in
+  `pipeline-plan.md`. If this skill's flow ever gets extended to call
+  `generate` automatically, use that flag for a Next.js + Tailwind project —
+  don't re-ask which Tailwind version.
 - **`AskUserQuestion` requires at least 2 options per question.** A
   single-option "just click Continue" question is invalid and will error.
   Every disclosure row (10, 16, 19, 20) uses `Continue` /
@@ -124,9 +132,10 @@ override any of the four independently — they don't have to move together.
    fails (no network, font not found): skip it and continue: `promote` still
    runs fine without font files, the report just falls back to its default
    system-font stack.
-6. Run, from the `cli/` directory:
+6. Run, from the `cli/` directory (quote `--out` — the default output folder
+   names have spaces in them, and so will these per-project ones):
    ```
-   node src/cli.ts promote --config seeds/<short-project-slug>.json --out out/tokens/<short-project-slug> --fonts-dir seeds/<short-project-slug>-fonts
+   node src/cli.ts promote --config seeds/<short-project-slug>.json --out "out/DTCG Token spec (non-consumables)/<short-project-slug>" --fonts-dir seeds/<short-project-slug>-fonts
    ```
    Omit `--fonts-dir` if step 5 didn't produce any font files.
 7. Report back in plain language: how many token files were written and

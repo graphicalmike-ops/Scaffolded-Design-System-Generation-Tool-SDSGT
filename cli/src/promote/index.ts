@@ -56,9 +56,15 @@ export function promote(seed: SeedConfig, options: PromoteOptions = {}): Promote
     ? generateRamp(hexToHsl(seed.secondaryColor))
     : undefined;
 
+  // An achromatic brand color (s=0) has no real hue — hexToHsl still returns
+  // h=0 (red) for it, since hue is mathematically undefined at zero
+  // saturation, not because red is meaningful here. Tinting the neutral
+  // ramp with that fabricated hue at a real 6% saturation produced a
+  // visible reddish cast on what should stay pure gray; fall back to s=0
+  // (matching the achromatic brand ramp's own actual appearance) instead.
   const neutralBase: HSL =
     seed.neutralColorStyle === "brand-tinted"
-      ? { h: brandHsl.h, s: 6, l: 50 }
+      ? { h: brandHsl.h, s: brandHsl.s === 0 ? 0 : 6, l: 50 }
       : { h: 0, s: 0, l: 50 };
   const neutralRamp = generateRamp(neutralBase);
 

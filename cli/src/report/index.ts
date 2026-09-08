@@ -196,7 +196,7 @@ export function buildReportHtml(seed: SeedConfig, data: ReportData): string {
           (g) => `<div class="token-group">
             <div class="token-group-title">${escapeHtml(g.title)}</div>
             <div class="token-grid">${g.tokens
-              .map(([name, hex]) => `<div><span><span class="swab" style="background:${hex}"></span>${name}</span><code>${hex}</code></div>`)
+              .map(([name, hex]) => `<div class="token-item"><div class="token-label"><span class="swab" style="background:${hex}"></span>${name}</div><code class="token-hex">${hex}</code></div>`)
               .join("")}</div>
           </div>`,
         )
@@ -370,9 +370,10 @@ export function buildReportHtml(seed: SeedConfig, data: ReportData): string {
   .token-group { max-width: 340px; margin-bottom: 18px; }
   .token-group:last-child { margin-bottom: 0; }
   .token-group-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.6; margin-bottom: 8px; }
-  .token-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; font-size: 11.5px; }
-  .token-grid div { display: flex; justify-content: space-between; gap: 8px; }
-  .token-grid code { font-size: 10.5px; opacity: 0.65; }
+  .token-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; font-size: 11.5px; }
+  .token-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .token-label { display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .token-hex { font-size: 10.5px; opacity: 0.65; padding-left: 16px; }
   .swab { width: 11px; height: 11px; border-radius: 3px; display: inline-block; margin-right: 5px; border: 1px solid rgba(127,127,127,0.3); vertical-align: -1px; }
   .type-row { display: flex; gap: 22px; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--border); }
   .type-row:first-of-type { border-top: none; }

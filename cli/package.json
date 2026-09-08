@@ -3,13 +3,17 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "SDSGT pipeline CLI core (seed input -> promote). Local development only — not published.",
+  "description": "SDSGT pipeline CLI core (seed input -> promote -> generate). Local development only — not published.",
   "scripts": {
     "promote": "node src/cli.ts promote",
+    "generate": "node src/cli.ts generate",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/node": "^22.10.0"
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "style-dictionary": "^5.5.3"
   }
 }
