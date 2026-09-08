@@ -93,7 +93,25 @@ override any of the four independently — they don't have to move together.
   `tailwind.config.js`/`.ts` file. Decided 2026-09-08, see "Generators" in
   `pipeline-plan.md`. If this skill's flow ever gets extended to call
   `generate` automatically, use that flag for a Next.js + Tailwind project —
-  don't re-ask which Tailwind version.
+  don't re-ask which Tailwind version. Same treatment for React-Bootstrap/
+  bootstrap-vue-next (row 3 = `Bootstrap`): `node src/cli.ts generate
+  --bootstrap` writes a Sass `_variables.scss` partial
+  (`$primary`/`$secondary`/`$success`/`$danger`/`$warning`/`$info` plus a
+  few `$border-radius-*` variables) — decided/extended 2026-09-08, see
+  "Generators" in `pipeline-plan.md`. Same treatment for MUI/Vuetify/RN
+  Paper (row 3 = `Material Design 2`): `node src/cli.ts generate --md2`
+  writes a relabeled `colors.ts` ramp plus a derived `palette.ts`
+  (`main`/`light`/`dark`/`contrastText`, computed with MUI's own real
+  formula) — see "Generators" in `pipeline-plan.md`. Same treatment for
+  Jetpack Compose Material3 (row 3 = `Material Design 3`): `node src/cli.ts
+  generate --md3` writes a Kotlin `Color.kt` with a real HCT-derived
+  `LightColorScheme`/`DarkColorScheme` (via Google's Material Color
+  Utilities) plus precomputed elevation overlays — see "Generators" in
+  `pipeline-plan.md`. Same treatment for SwiftUI native (row 2 = `SwiftUI`):
+  `node src/cli.ts generate --swiftui` writes a Swift `DesignTokens.swift`
+  with the resolved semantic color tokens as native `Color` values, split
+  into `DesignTokens.Light`/`DesignTokens.Dark` — see "Generators" in
+  `pipeline-plan.md`. All five Generate targets are now built this way.
 - **`AskUserQuestion` requires at least 2 options per question.** A
   single-option "just click Continue" question is invalid and will error.
   Every disclosure row (10, 16, 19, 20) uses `Continue` /

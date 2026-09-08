@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { promote } from "./promote/index.ts";
 import { generateCodeTokens } from "./generate/index.ts";
 import { generateTailwindTheme } from "./generate/tailwind.ts";
+import { generateBootstrapVariables } from "./generate/bootstrap.ts";
+import { generateMd2 } from "./generate/md2.ts";
+import { generateMd3 } from "./generate/md3.ts";
+import { generateSwiftUI } from "./generate/swiftui.ts";
 import type { SeedConfig } from "./types/seed-config.ts";
 import type { FontFilesMap } from "./report/index.ts";
 
@@ -66,11 +70,26 @@ const DEFAULT_CODE_DIR = "out/Code tokens (consumables)";
 const USAGE = [
   "Usage:",
   '  node src/cli.ts promote --config <path> --out "<dir>" [--fonts-dir <dir>]',
-  '  node src/cli.ts generate --tokens-dir "<dir>" --out "<dir>" [--tailwind]',
+  '  node src/cli.ts generate --tokens-dir "<dir>" --out "<dir>" [--tailwind] [--bootstrap]',
   "    --tailwind: also emit a Tailwind v4 @theme block with the primitive",
   "    color ramp relabeled onto Tailwind's native 50-950 keys. Only correct",
   "    for a Next.js/Vue.js + Tailwind project — Generate can't tell what the",
   "    original seed's target was, so this is opt-in, not auto-detected.",
+  "    --bootstrap: also emit a Bootstrap Sass variables partial",
+  "    ($primary/$secondary/$success/$danger/$warning/$info plus a few",
+  "    $border-radius-* variables). Only correct for a React-Bootstrap/",
+  "    bootstrap-vue-next project — opt-in, not auto-detected, same reason",
+  "    as --tailwind above.",
+  "    --md2: also emit MUI-shaped TS files (relabeled 50-900 color ramp +",
+  "    a derived main/light/dark/contrastText palette). Only correct for a",
+  "    MUI/Vuetify/RN Paper project — opt-in, same reason as --tailwind.",
+  "    --md3: also emit a Kotlin Color.kt with a real HCT-derived",
+  "    LightColorScheme/DarkColorScheme (via Google's Material Color",
+  "    Utilities) plus precomputed elevation overlays. Only correct for a",
+  "    Jetpack Compose Material3 project — opt-in, same reason as --tailwind.",
+  "    --swiftui: also emit a Swift DesignTokens.swift with the resolved",
+  "    semantic color tokens as native Color values. Only correct for a",
+  "    SwiftUI native iOS project — opt-in, same reason as --tailwind.",
 ].join("\n");
 
 function runPromote(rest: string[]) {
@@ -140,7 +159,15 @@ async function runGenerate(rest: string[]) {
   // the caller has to say so explicitly rather than Generate guessing.
   const tailwindFiles = args.tailwind !== undefined ? (await generateTailwindTheme(tokensDir, outDir)).filesWritten : [];
 
-  const allFiles = [...filesWritten, ...tailwindFiles];
+  // Same opt-in reasoning as --tailwind above — Generate can't tell what the
+  // original seed's targetFramework/targetDesignLanguage was, so the caller
+  // has to say so explicitly.
+  const bootstrapFiles = args.bootstrap !== undefined ? generateBootstrapVariables(tokensDir, outDir).filesWritten : [];
+  const md2Files = args.md2 !== undefined ? generateMd2(tokensDir, outDir).filesWritten : [];
+  const md3Files = args.md3 !== undefined ? generateMd3(tokensDir, outDir).filesWritten : [];
+  const swiftuiFiles = args.swiftui !== undefined ? generateSwiftUI(tokensDir, outDir).filesWritten : [];
+
+  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...swiftuiFiles];
   console.log(`Wrote ${allFiles.length} code-token file(s) to ${outDir}/:`);
   for (const f of allFiles) {
     console.log(`  - ${f}`);
