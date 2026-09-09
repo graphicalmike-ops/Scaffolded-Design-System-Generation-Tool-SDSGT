@@ -40,7 +40,7 @@ import { readJson, type ColorPrimitivesFile, type RadiusFile } from "./read-toke
 // "6px" -> ".375rem", at this spec's fixed 16px root (same root used
 // everywhere else in the token spec) — Bootstrap's own Sass variables are
 // conventionally written in rem with the leading zero dropped.
-function pxToRem(pxValue: string): string {
+export function pxToRem(pxValue: string): string {
   const rem = parseFloat(pxValue) / 16;
   const withoutLeadingZero = rem.toString().replace(/^0\./, ".");
   return `${withoutLeadingZero}rem`;
@@ -50,14 +50,14 @@ function pxToRem(pxValue: string): string {
 // 3=warning, 4=info, 5=promo. Bootstrap's danger/success/warning/info are
 // the same four roles under Bootstrap's own names; promo has no Bootstrap
 // equivalent and is deliberately omitted, not approximated.
-const STATUS_ROLE_TO_BOOTSTRAP: Record<string, string> = {
+export const STATUS_ROLE_TO_BOOTSTRAP: Record<string, string> = {
   "1": "danger",
   "2": "success",
   "3": "warning",
   "4": "info",
 };
 
-const RADIUS_KEY_TO_BOOTSTRAP: Record<string, string> = {
+export const RADIUS_KEY_TO_BOOTSTRAP: Record<string, string> = {
   sm: "border-radius-sm",
   md: "border-radius",
   lg: "border-radius-lg",

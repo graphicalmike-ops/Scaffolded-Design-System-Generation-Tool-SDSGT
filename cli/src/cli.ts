@@ -2,13 +2,16 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { promote } from "./promote/index.ts";
+import { buildFigmaPushPlan } from "./promote/figma-plan.ts";
 import { generateCodeTokens } from "./generate/index.ts";
 import { generateTailwindTheme } from "./generate/tailwind.ts";
 import { generateBootstrapVariables } from "./generate/bootstrap.ts";
 import { generateMd2 } from "./generate/md2.ts";
 import { generateMd3 } from "./generate/md3.ts";
 import { generateSwiftUI } from "./generate/swiftui.ts";
-import type { SeedConfig } from "./types/seed-config.ts";
+import { writeProjectDocs } from "./generate/project-docs.ts";
+import { buildTailwindDemo, buildBootstrapDemo, buildMuiDemo, buildMd3Demo, buildSwiftUIDemo } from "./generate/demo.ts";
+import type { SeedConfig, TargetFramework } from "./types/seed-config.ts";
 import type { FontFilesMap } from "./report/index.ts";
 
 // A flag with no following value (or immediately followed by another flag,
@@ -90,6 +93,20 @@ const USAGE = [
   "    --swiftui: also emit a Swift DesignTokens.swift with the resolved",
   "    semantic color tokens as native Color values. Only correct for a",
   "    SwiftUI native iOS project — opt-in, same reason as --tailwind.",
+  "",
+  "  Every generate run also writes AGENTS.md, foundations-rules.md, and",
+  "  design.md (see contracts-and-seeds.md/pipeline-plan.md, \"Agent rule",
+  "  files\") — unconditional, not gated by any platform flag. Each platform",
+  "  flag above additionally writes a matching",
+  "  <platform>-design-system-demo.html proof-of-work page next to its code",
+  "  files, using the same visual template as promote's report.html but",
+  "  relabeled with that platform's own real generated identifiers.",
+  "",
+  "    --framework <nextjs|vuejs|react-native|kotlin|swiftui>: states the",
+  "    original seed's targetFramework, same opt-in reasoning as the",
+  "    platform flags above. Only affects AGENTS.md's NativeWind rule, which",
+  "    only applies to a React Native + Tailwind (NativeWind) project —",
+  "    omitted entirely if this flag isn't passed, or isn't react-native.",
 ].join("\n");
 
 function runPromote(rest: string[]) {
@@ -124,7 +141,15 @@ function runPromote(rest: string[]) {
   }
   writeFileSync(join(outDir, "report.html"), reportHtml, "utf-8");
 
-  console.log(`Wrote ${Object.keys(files).length} token files + report.html to ${outDir}/`);
+  // Written unconditionally, same "harmless if unused" treatment as
+  // report.html — pure, deterministic, network-free (see figma-plan.ts's
+  // file header). The actual push only happens if the seed's figmaManaged
+  // is true and a real Figma connection exists, but the plan itself costs
+  // nothing to compute either way.
+  const figmaPlan = buildFigmaPushPlan(outDir);
+  writeFileSync(join(outDir, "figma-push-plan.json"), `${JSON.stringify(figmaPlan, null, 2)}\n`, "utf-8");
+
+  console.log(`Wrote ${Object.keys(files).length} token files + report.html + figma-push-plan.json to ${outDir}/`);
 
   // Advisory only — flagged here (and in report.html) if a future check
   // populates `warnings`, but never blocks generation. See
@@ -167,7 +192,25 @@ async function runGenerate(rest: string[]) {
   const md3Files = args.md3 !== undefined ? generateMd3(tokensDir, outDir).filesWritten : [];
   const swiftuiFiles = args.swiftui !== undefined ? generateSwiftUI(tokensDir, outDir).filesWritten : [];
 
-  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...swiftuiFiles];
+  // Proof-of-work demo pages — one per platform flag actually passed, same
+  // opt-in reasoning as the code-token generators above. See generate/demo.ts.
+  const demoFiles = [
+    ...(args.tailwind !== undefined ? buildTailwindDemo(tokensDir, outDir, tailwindFiles).filesWritten : []),
+    ...(args.bootstrap !== undefined ? buildBootstrapDemo(tokensDir, outDir, bootstrapFiles).filesWritten : []),
+    ...(args.md2 !== undefined ? buildMuiDemo(tokensDir, outDir, md2Files).filesWritten : []),
+    ...(args.md3 !== undefined ? buildMd3Demo(tokensDir, outDir, md3Files).filesWritten : []),
+    ...(args.swiftui !== undefined ? buildSwiftUIDemo(tokensDir, outDir, swiftuiFiles).filesWritten : []),
+  ];
+
+  // Unconditional — every generate run gets its agent-facing docs, not
+  // gated by any platform flag. See generate/project-docs.ts.
+  const framework = args.framework as TargetFramework | undefined;
+  const docFiles = writeProjectDocs(outDir, {
+    hasTailwind: args.tailwind !== undefined,
+    isReactNative: framework === "react-native",
+  }).filesWritten;
+
+  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...swiftuiFiles, ...demoFiles, ...docFiles];
   console.log(`Wrote ${allFiles.length} code-token file(s) to ${outDir}/:`);
   for (const f of allFiles) {
     console.log(`  - ${f}`);

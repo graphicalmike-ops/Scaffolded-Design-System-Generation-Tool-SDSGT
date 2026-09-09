@@ -38,13 +38,13 @@ import { join } from "node:path";
 import { LIGHT_FILE, DARK_FILE, type GenerateResult } from "./index.ts";
 import { readJson, type ColorPrimitivesFile } from "./read-tokens.ts";
 
-interface SemanticToken {
+export interface SemanticToken {
   $value: string;
 }
 
-type SemanticTree = { [key: string]: SemanticToken | SemanticTree };
+export type SemanticTree = { [key: string]: SemanticToken | SemanticTree };
 
-interface SemanticFile {
+export interface SemanticFile {
   color: { semantic: SemanticTree };
 }
 
@@ -68,7 +68,7 @@ function rgbaToFloats(rgba: string): [number, number, number, number] {
 // hex. Path depth varies: brand/brand-secondary/neutral/static are 2 levels
 // deep (group.step), status is 3 (status.role.tone) — walk generically
 // rather than assuming a fixed depth.
-function resolveAlias(ref: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
+export function resolveAlias(ref: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
   const [, , ...steps] = ref.replace(/[{}]/g, "").split(".");
   let node: unknown = primitives;
   for (const step of steps) {
@@ -79,7 +79,7 @@ function resolveAlias(ref: string, primitives: ColorPrimitivesFile["color"]["pri
   return resolved;
 }
 
-function swiftColorLiteral(rawValue: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
+export function swiftColorLiteral(rawValue: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
   if (rawValue.startsWith("rgba")) {
     const [r, g, b, a] = rgbaToFloats(rawValue);
     return `Color(red: ${r.toFixed(3)}, green: ${g.toFixed(3)}, blue: ${b.toFixed(3)}, opacity: ${a.toFixed(3)})`;
@@ -95,11 +95,11 @@ function toPascalSegment(segment: string): string {
 }
 
 // ["action", "primary-hover"] -> "actionPrimaryHover"
-function toSwiftPropertyName(path: string[]): string {
+export function toSwiftPropertyName(path: string[]): string {
   return path.map((segment, i) => (i === 0 ? segment.split("-").map((w, j) => (j === 0 ? w : toPascalSegment(w))).join("") : toPascalSegment(segment))).join("");
 }
 
-function flattenTokens(tree: SemanticTree, path: string[] = []): Array<{ name: string; value: string }> {
+export function flattenTokens(tree: SemanticTree, path: string[] = []): Array<{ name: string; value: string }> {
   const result: Array<{ name: string; value: string }> = [];
   for (const [key, node] of Object.entries(tree)) {
     const nextPath = [...path, key];

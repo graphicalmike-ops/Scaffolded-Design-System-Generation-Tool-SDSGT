@@ -28,7 +28,7 @@ import { augmentColor, type MuiColorGroup } from "./mui-color.ts";
 
 // Per contracts-and-seeds.md, "Positional relabel," MD2 column. `1100` is
 // intentionally absent — MD2's native shape stops at `900`.
-const STEP_RELABEL: Record<string, string> = {
+export const STEP_RELABEL: Record<string, string> = {
   "100": "50",
   "200": "100",
   "300": "200",
@@ -62,7 +62,7 @@ function tsColorGroupLiteral(group: MuiColorGroup): string {
 // Per "Boilerplate status-color formula": role 1=error, 2=success,
 // 3=warning, 4=info, 5=promo. Promo has no MUI palette slot and is
 // deliberately omitted, not approximated — same as Bootstrap's treatment.
-const STATUS_ROLE_TO_MUI: Record<string, string> = {
+export const STATUS_ROLE_TO_MUI: Record<string, string> = {
   "1": "error",
   "2": "success",
   "3": "warning",

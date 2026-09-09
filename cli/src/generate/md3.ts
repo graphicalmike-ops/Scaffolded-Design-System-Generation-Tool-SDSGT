@@ -89,7 +89,7 @@ function sanitizeDegrees(hue: number): number {
   return ((hue % 360) + 360) % 360;
 }
 
-function buildScheme(
+export function buildScheme(
   primaryHex: string,
   secondaryHex: string | undefined,
   neutralHex: string,
@@ -129,7 +129,7 @@ function buildScheme(
 // order verified from the real Compose source (ColorScheme.kt) — emitted
 // with named arguments below, so exact declared order doesn't matter for
 // compiling, only that every name is present and spelled correctly.
-const COLOR_SCHEME_ROLES = [
+export const COLOR_SCHEME_ROLES = [
   "primary", "onPrimary", "primaryContainer", "onPrimaryContainer", "inversePrimary",
   "secondary", "onSecondary", "secondaryContainer", "onSecondaryContainer",
   "tertiary", "onTertiary", "tertiaryContainer", "onTertiaryContainer",
@@ -162,7 +162,7 @@ function colorSchemeKotlin(scheme: DynamicScheme, valName: string): string {
 // androidx.compose.material3's ColorScheme.kt — surfaceTint at this alpha,
 // alpha-composited over surface (standard "over" compositing, since surface
 // is always opaque).
-function surfaceColorAtElevation(surfaceHex: string, surfaceTintHex: string, elevationDp: number): string {
+export function surfaceColorAtElevation(surfaceHex: string, surfaceTintHex: string, elevationDp: number): string {
   if (elevationDp === 0) return surfaceHex;
   const alpha = (4.5 * Math.log(elevationDp + 1) + 2) / 100;
   const surface = argbFromHex(surfaceHex);
@@ -178,11 +178,11 @@ function surfaceColorAtElevation(surfaceHex: string, surfaceTintHex: string, ele
   return `#${r}${g}${b}`.toUpperCase();
 }
 
-interface ShadowFile {
+export interface ShadowFile {
   shadow: Record<string, { $type: string; $value: unknown }>;
 }
 
-const SHADOW_KEYS = ["sm", "md", "lg", "xl", "2xl"] as const;
+export const SHADOW_KEYS = ["sm", "md", "lg", "xl", "2xl"] as const;
 
 function elevationOverlayKotlin(
   shadow: ShadowFile["shadow"] | undefined,

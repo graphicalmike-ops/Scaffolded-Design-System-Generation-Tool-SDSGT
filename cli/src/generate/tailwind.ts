@@ -37,7 +37,7 @@ import {
 // brand-secondary/neutral use this — static (white/black) and status (5
 // roles x 2 tones) don't use the 100-1100 ramp numbering at all, so they
 // pass through with their own path segment unchanged.
-const STEP_RELABEL: Record<string, string> = {
+export const STEP_RELABEL: Record<string, string> = {
   "100": "50",
   "200": "100",
   "300": "200",
