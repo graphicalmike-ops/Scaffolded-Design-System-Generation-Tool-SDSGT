@@ -129,6 +129,14 @@ export function buildPageStyleCss({ fontFacesCss, brandHex, bodyFont, headingFon
   .stage-banner strong { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; }
   .stage-banner.agnostic { border-left: 4px solid var(--text-disabled); color: var(--text-secondary); }
   .stage-banner.adapted { border-left: 4px solid var(--brand); }
+  .comp-btn-outline { background: transparent; border: 1px solid currentColor; }
+  .comp-card { border: 1px solid var(--border); padding: 18px; margin-bottom: 20px; max-width: 320px; }
+  .comp-card-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  .comp-card-body { font-size: 12.5px; margin-bottom: 14px; line-height: 1.5; }
+  .comp-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; max-width: 280px; margin-bottom: 20px; }
+  .comp-input { padding: 8px 10px; border: 1px solid; font-size: 13px; font-family: inherit; font-weight: 400; }
+  .comp-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 600; text-transform: capitalize; margin: 0 6px 6px 0; }
+  .comp-alert { padding: 12px 14px; font-size: 12.5px; line-height: 1.5; max-width: 420px; }
   @media (max-width: 480px) {
     .run-grid, .token-grid { grid-template-columns: 1fr; }
   }

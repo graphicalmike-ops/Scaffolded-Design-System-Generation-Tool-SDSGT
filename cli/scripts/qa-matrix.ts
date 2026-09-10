@@ -18,11 +18,15 @@ import { generateBootstrapVariables } from "../src/generate/bootstrap.ts";
 import { generateMd2 } from "../src/generate/md2.ts";
 import { generateMd3 } from "../src/generate/md3.ts";
 import { generateSwiftUI } from "../src/generate/swiftui.ts";
+import { generateShadcn } from "../src/generate/shadcn.ts";
+import { generateRnr } from "../src/generate/rnr.ts";
+import { generateRnPaper } from "../src/generate/rn-paper.ts";
+import { generateVuetify } from "../src/generate/vuetify.ts";
 import type { SeedConfig } from "../src/types/seed-config.ts";
 
 import { getSeedCases } from "./qa-matrix/matrix.ts";
 import { runCliCases, CLI_CASE_IDS } from "./qa-matrix/cli-cases.ts";
-import { checkCss, checkTailwind, checkBootstrap, checkMd2, checkMd3, checkSwiftui } from "./qa-matrix/checks.ts";
+import { checkCss, checkTailwind, checkBootstrap, checkMd2, checkMd3, checkSwiftui, checkShadcn, checkRnr, checkRnPaper, checkVuetify } from "./qa-matrix/checks.ts";
 import { renderTable, renderSummaryLine, writeRunResults } from "./qa-matrix/report.ts";
 import { ALL_PLATFORMS, verdictFromChecks } from "./qa-matrix/types.ts";
 import type { CaseRunResult, CheckResult, PlatformFlag, QaCase } from "./qa-matrix/types.ts";
@@ -37,7 +41,7 @@ const USAGE = [
   "  --case=<id[,id...]>    Run only the named case IDs.",
   "  --group=<g[,g...]>     Run only these groups: core, achromatic, mismatch, baseline, boundary, cli.",
   "  --language=<l[,l...]>  Run only seed cases whose targetDesignLanguage is one of these (tailwind, bootstrap, md3, md2).",
-  "  --platform=<p[,p...]>  Restrict which generate flag(s)/checks run per seed case: tailwind, bootstrap, md2, md3, swiftui.",
+  "  --platform=<p[,p...]>  Restrict which generate flag(s)/checks run per seed case: tailwind, bootstrap, md2, md3, swiftui, shadcn, rnr, rn-paper, vuetify (all built).",
   "                         (Plain CSS checks always run regardless — it's the always-on base platform.)",
   "  --batch=<i>/<n>        Split the resolved case list into n fixed-order chunks, run chunk i (1-indexed).",
   "  --out=<dir>            Override the run's output directory (default: a timestamped dir under qa-results/runs/).",
@@ -184,6 +188,30 @@ async function runSeedCase(qc: QaCase, runDir: string, platforms: PlatformFlag[]
           const r = generateSwiftUI(tokensDir, codeDir);
           generatedFiles.push(...r.filesWritten);
           checks.push(...checkSwiftui(tokensDir, codeDir, qc.seed));
+          break;
+        }
+        case "shadcn": {
+          const r = generateShadcn(tokensDir, codeDir);
+          generatedFiles.push(...r.filesWritten);
+          checks.push(...checkShadcn(tokensDir, codeDir, qc.seed));
+          break;
+        }
+        case "rnr": {
+          const r = generateRnr(tokensDir, codeDir);
+          generatedFiles.push(...r.filesWritten);
+          checks.push(...checkRnr(tokensDir, codeDir, qc.seed));
+          break;
+        }
+        case "rn-paper": {
+          const r = generateRnPaper(tokensDir, codeDir);
+          generatedFiles.push(...r.filesWritten);
+          checks.push(...checkRnPaper(tokensDir, codeDir, qc.seed));
+          break;
+        }
+        case "vuetify": {
+          const r = generateVuetify(tokensDir, codeDir);
+          generatedFiles.push(...r.filesWritten);
+          checks.push(...checkVuetify(tokensDir, codeDir, qc.seed));
           break;
         }
       }

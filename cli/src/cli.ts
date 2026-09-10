@@ -9,8 +9,12 @@ import { generateBootstrapVariables } from "./generate/bootstrap.ts";
 import { generateMd2 } from "./generate/md2.ts";
 import { generateMd3 } from "./generate/md3.ts";
 import { generateSwiftUI } from "./generate/swiftui.ts";
+import { generateShadcn } from "./generate/shadcn.ts";
+import { generateRnr } from "./generate/rnr.ts";
+import { generateRnPaper } from "./generate/rn-paper.ts";
+import { generateVuetify } from "./generate/vuetify.ts";
 import { writeProjectDocs } from "./generate/project-docs.ts";
-import { buildTailwindDemo, buildBootstrapDemo, buildMuiDemo, buildMd3Demo, buildSwiftUIDemo } from "./generate/demo.ts";
+import { buildTailwindDemo, buildBootstrapDemo, buildMuiDemo, buildMd3Demo, buildSwiftUIDemo, buildShadcnDemo, buildRnrDemo, buildRnPaperDemo, buildVuetifyDemo } from "./generate/demo.ts";
 import type { SeedConfig, TargetFramework } from "./types/seed-config.ts";
 import type { FontFilesMap } from "./report/index.ts";
 
@@ -80,9 +84,11 @@ const USAGE = [
   "    original seed's target was, so this is opt-in, not auto-detected.",
   "    --bootstrap: also emit a Bootstrap Sass variables partial",
   "    ($primary/$secondary/$success/$danger/$warning/$info plus a few",
-  "    $border-radius-* variables). Only correct for a React-Bootstrap/",
-  "    bootstrap-vue-next project — opt-in, not auto-detected, same reason",
-  "    as --tailwind above.",
+  "    $border-radius-* variables). Serves React-Bootstrap and",
+  "    bootstrap-vue-next as-is — both consume plain Bootstrap Sass",
+  "    variables directly, with no separate variable convention of their",
+  "    own (verified — contracts-and-seeds.md, \"shadcn/ui theming\"'s",
+  "    sibling note). Opt-in, not auto-detected, same reason as --tailwind.",
   "    --md2: also emit MUI-shaped TS files (relabeled 50-900 color ramp +",
   "    a derived main/light/dark/contrastText palette). Only correct for a",
   "    MUI/Vuetify/RN Paper project — opt-in, same reason as --tailwind.",
@@ -93,6 +99,35 @@ const USAGE = [
   "    --swiftui: also emit a Swift DesignTokens.swift with the resolved",
   "    semantic color tokens as native Color values. Only correct for a",
   "    SwiftUI native iOS project — opt-in, same reason as --tailwind.",
+  "    --shadcn: also emit a shadcn/ui theme.css with SDSGT's semantic",
+  "    tokens mapped onto shadcn's own CSS variable names (--primary,",
+  "    --card, --muted, etc.) plus SDSGT status-role extensions",
+  "    (--success/--warning/--info/--promo) shadcn has no native slot for.",
+  "    Uses shadcn's own .dark class selector, not this project's usual",
+  "    [data-theme=\"dark\"] convention — see contracts-and-seeds.md,",
+  "    \"shadcn/ui theming.\" This only emits the theme file — it does not",
+  "    run `shadcn init`/`shadcn add` or install any components. Also",
+  "    serves shadcn-vue as-is (verified — identical CSS variable",
+  "    convention). Opt-in, same reason as --tailwind.",
+  "    --rnr: also emit a React Native Reusables (RNR) theme — global.css",
+  "    (same semantic mapping as --shadcn, but raw \"H S% L%\" triplets, not",
+  "    hex — NativeWind's own requirement) plus constants.ts (NAV_THEME,",
+  "    React Navigation's own Theme.colors shape). Only correct for an",
+  "    Expo/React Native + NativeWind + RNR project — opt-in, same reason",
+  "    as --tailwind. See contracts-and-seeds.md, \"React Native Reusables",
+  "    (RNR) theming.\"",
+  "    --rn-paper: also emit a React Native Paper MD3 theme.ts (real HCT",
+  "    ColorScheme, reusing the same computation as --md3, reshaped onto",
+  "    Paper's own MD3Theme.colors role subset plus its shadow/",
+  "    surfaceDisabled/onSurfaceDisabled/backdrop/elevation extras). Only",
+  "    correct for a React Native Paper project — opt-in, same reason as",
+  "    --tailwind. See contracts-and-seeds.md, \"React Native Paper theming.\"",
+  "    --vuetify: also emit a Vuetify 4 theme.ts (lightTheme/darkTheme,",
+  "    each a ThemeDefinition — primary/secondary/background/surface/",
+  "    error/info/success/warning; Vuetify's own runtime derives on-*/",
+  "    lighten/darken variants from these). Only correct for a Vuetify",
+  "    project — opt-in, same reason as --tailwind. See",
+  "    contracts-and-seeds.md, \"Vuetify theming.\"",
   "",
   "  Every generate run also writes AGENTS.md, foundations-rules.md, and",
   "  design.md (see contracts-and-seeds.md/pipeline-plan.md, \"Agent rule",
@@ -191,6 +226,10 @@ async function runGenerate(rest: string[]) {
   const md2Files = args.md2 !== undefined ? generateMd2(tokensDir, outDir).filesWritten : [];
   const md3Files = args.md3 !== undefined ? generateMd3(tokensDir, outDir).filesWritten : [];
   const swiftuiFiles = args.swiftui !== undefined ? generateSwiftUI(tokensDir, outDir).filesWritten : [];
+  const shadcnFiles = args.shadcn !== undefined ? generateShadcn(tokensDir, outDir).filesWritten : [];
+  const rnrFiles = args.rnr !== undefined ? generateRnr(tokensDir, outDir).filesWritten : [];
+  const rnPaperFiles = args["rn-paper"] !== undefined ? generateRnPaper(tokensDir, outDir).filesWritten : [];
+  const vuetifyFiles = args.vuetify !== undefined ? generateVuetify(tokensDir, outDir).filesWritten : [];
 
   // Proof-of-work demo pages — one per platform flag actually passed, same
   // opt-in reasoning as the code-token generators above. See generate/demo.ts.
@@ -200,6 +239,10 @@ async function runGenerate(rest: string[]) {
     ...(args.md2 !== undefined ? buildMuiDemo(tokensDir, outDir, md2Files).filesWritten : []),
     ...(args.md3 !== undefined ? buildMd3Demo(tokensDir, outDir, md3Files).filesWritten : []),
     ...(args.swiftui !== undefined ? buildSwiftUIDemo(tokensDir, outDir, swiftuiFiles).filesWritten : []),
+    ...(args.shadcn !== undefined ? buildShadcnDemo(tokensDir, outDir, shadcnFiles).filesWritten : []),
+    ...(args.rnr !== undefined ? buildRnrDemo(tokensDir, outDir, rnrFiles).filesWritten : []),
+    ...(args["rn-paper"] !== undefined ? buildRnPaperDemo(tokensDir, outDir, rnPaperFiles).filesWritten : []),
+    ...(args.vuetify !== undefined ? buildVuetifyDemo(tokensDir, outDir, vuetifyFiles).filesWritten : []),
   ];
 
   // Unconditional — every generate run gets its agent-facing docs, not
@@ -208,9 +251,13 @@ async function runGenerate(rest: string[]) {
   const docFiles = writeProjectDocs(outDir, {
     hasTailwind: args.tailwind !== undefined,
     isReactNative: framework === "react-native",
+    hasShadcn: args.shadcn !== undefined,
+    hasRnr: args.rnr !== undefined,
+    hasRnPaper: args["rn-paper"] !== undefined,
+    hasVuetify: args.vuetify !== undefined,
   }).filesWritten;
 
-  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...swiftuiFiles, ...demoFiles, ...docFiles];
+  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...swiftuiFiles, ...shadcnFiles, ...rnrFiles, ...rnPaperFiles, ...vuetifyFiles, ...demoFiles, ...docFiles];
   console.log(`Wrote ${allFiles.length} code-token file(s) to ${outDir}/:`);
   for (const f of allFiles) {
     console.log(`  - ${f}`);

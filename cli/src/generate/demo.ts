@@ -35,13 +35,17 @@ import { argbFromHex, hexFromArgb } from "@material/material-color-utilities";
 import { escapeHtml, textOn, shadowDisplay, buildPageStyleCss, stageBannerHtml } from "../report/html-utils.ts";
 import type { TypographySpecimen } from "../report/index.ts";
 import { LIGHT_FILE, DARK_FILE, type GenerateResult } from "./index.ts";
-import { readJson, type ColorPrimitivesFile, type RadiusFile } from "./read-tokens.ts";
+import { readJson, resolveAlias, type ColorPrimitivesFile, type RadiusFile, type SemanticFile } from "./read-tokens.ts";
 import { STEP_RELABEL as TAILWIND_STEP_RELABEL } from "./tailwind.ts";
 import { STEP_RELABEL as MUI_STEP_RELABEL, STATUS_ROLE_TO_MUI } from "./md2.ts";
 import { STATUS_ROLE_TO_BOOTSTRAP, RADIUS_KEY_TO_BOOTSTRAP, pxToRem } from "./bootstrap.ts";
 import { buildScheme, COLOR_SCHEME_ROLES, surfaceColorAtElevation, SHADOW_KEYS, type ShadowFile } from "./md3.ts";
 import { augmentColor } from "./mui-color.ts";
-import { resolveAlias, toSwiftPropertyName } from "./swiftui.ts";
+import { toSwiftPropertyName } from "./swiftui.ts";
+import { resolveShadcnVars } from "./shadcn.ts";
+import { hexToHslTriplet } from "./rnr.ts";
+import { PAPER_SCHEME_ROLES } from "./rn-paper.ts";
+import { STATUS_ROLE_TO_VUETIFY, resolveSemanticPath } from "./vuetify.ts";
 
 type Primitives = ColorPrimitivesFile["color"]["primitive"];
 type StatusRoleNum = "1" | "2" | "3" | "4" | "5";
@@ -488,6 +492,88 @@ function writeDemo(outDir: string, filename: string, html: string): GenerateResu
   return { filesWritten: [filename] };
 }
 
+const STATUS_BADGE_ROLES = ["destructive", "success", "warning", "info", "promo"] as const;
+
+// Shared by every Layer 2 demo page (shadcn/RNR/RN Paper/Vuetify) — hand-built
+// HTML/CSS previews of common UI patterns (button, card, field, status
+// badges, alert), NOT real installed library component code (that's
+// separate, not-yet-built work — see each page's own "Not yet built for
+// this target" section). Colors are resolved uniformly via
+// resolveShadcnVars for every caller, not each platform's own native color
+// computation (RN Paper's HCT roles, Vuetify's base-color set) — this
+// section is illustrative, not a claim about any one library's exact
+// runtime output, and resolveShadcnVars is already the tested, bug-fixed
+// full semantic resolution this project has (see shadcn.ts's
+// --destructive-foreground fix) rather than three more per-platform color
+// mappings for a section that doesn't need per-platform exactness.
+function componentsSectionHtml(tokensDir: string, platformLabel: string): string {
+  const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
+  const primitives = color.primitive;
+  const radiusToken = tryReadJson<RadiusFile>(join(tokensDir, "radius.json"))?.radius.md;
+  const radiusPx = radiusToken ? parseFloat(String(radiusToken.$value)) : 6;
+
+  const hasLight = existsSync(join(tokensDir, LIGHT_FILE));
+  const hasDark = existsSync(join(tokensDir, DARK_FILE));
+  const modes: Array<"light" | "dark"> = [...(hasLight ? (["light"] as const) : []), ...(hasDark ? (["dark"] as const) : [])];
+
+  const panelHtml = (mode: "light" | "dark") => {
+    const file = mode === "light" ? LIGHT_FILE : DARK_FILE;
+    const { color: semanticRoot } = readJson<SemanticFile>(join(tokensDir, file));
+    const vars = resolveShadcnVars(semanticRoot.semantic, primitives);
+    const byVar = new Map(vars.map((v) => [v.cssVar, v.hex]));
+    const get = (k: string) => byVar.get(k) ?? "#000000";
+    const hasSecondary = byVar.has("--secondary");
+
+    const badgesHtml = STATUS_BADGE_ROLES.map(
+      (role) =>
+        `<span class="comp-badge" style="background:${get(`--${role}`)};color:${get(`--${role}-foreground`)}">${role}</span>`,
+    ).join("");
+
+    return `<div class="semantic-panel${mode === "dark" ? " dark" : ""}" data-mode="${mode}">
+        <div class="demo-row">
+          <button class="demo-btn" style="background:${get("--primary")};color:${get("--primary-foreground")};border-radius:${radiusPx}px">Primary</button>
+          ${hasSecondary ? `<button class="demo-btn" style="background:${get("--secondary")};color:${get("--secondary-foreground")};border-radius:${radiusPx}px">Secondary</button>` : ""}
+          <button class="demo-btn comp-btn-outline" style="color:${get("--foreground")};border-color:${get("--border")};border-radius:${radiusPx}px">Outline</button>
+          <button class="demo-btn" style="background:${get("--muted")};color:${get("--muted-foreground")};border-radius:${radiusPx}px" disabled>Disabled</button>
+        </div>
+
+        <div class="comp-card" style="background:${get("--card")};color:${get("--card-foreground")};border-color:${get("--border")};border-radius:${radiusPx + 4}px">
+          <div class="comp-card-title">Card title</div>
+          <div class="comp-card-body" style="color:${get("--muted-foreground")}">A short description of this card's contents, styled with the generated design system.</div>
+          <button class="demo-btn" style="background:${get("--primary")};color:${get("--primary-foreground")};border-radius:${radiusPx}px">Action</button>
+        </div>
+
+        <label class="comp-field" style="color:${get("--foreground")}">
+          Label
+          <input class="comp-input" type="text" placeholder="Placeholder text" disabled style="background:${get("--background")};color:${get("--foreground")};border-color:${get("--border")};border-radius:${radiusPx}px" />
+        </label>
+
+        <div class="demo-row" style="margin-bottom:12px">${badgesHtml}</div>
+
+        <div class="comp-alert" style="background:${get("--info")};color:${get("--info-foreground")};border-radius:${radiusPx}px">This is an informational alert, styled with the <code>info</code> status token.</div>
+      </div>`;
+  };
+
+  const toggleHtml =
+    modes.length > 1
+      ? `<div class="mode-toggle" role="group" aria-label="Preview mode">
+          <button type="button" class="mode-btn" data-target="light" aria-pressed="true" onclick="setMode('light')">Light</button>
+          <button type="button" class="mode-btn" data-target="dark" aria-pressed="false" onclick="setMode('dark')">Dark</button>
+        </div>`
+      : `<p class="single-mode-note">Generated for ${modes[0]} mode only.</p>`;
+
+  return `<section>
+    <h2>Components preview</h2>
+    ${stageBannerHtml(
+      "agnostic",
+      "Not real components",
+      ` Everything below is a plain HTML/CSS mockup (button, card, form field, status badges, alert) styled from this project's own resolved semantic tokens — <strong>not</strong> real installed ${escapeHtml(platformLabel)} component code. This report has no pipeline for installing, building, or rendering an actual ${escapeHtml(platformLabel)} component yet (see "Not yet built for this target" below), so this preview approximates the look using the same colors shown in the mapping above, not ${escapeHtml(platformLabel)}'s own exact rendered output.`,
+    )}
+    ${toggleHtml}
+    ${modes.map((m) => panelHtml(m)).join("\n")}
+  </section>`;
+}
+
 // ============================================================
 // Tailwind v4
 // ============================================================
@@ -810,4 +896,283 @@ export function buildSwiftUIDemo(tokensDir: string, outDir: string, platformFile
   });
 
   return writeDemo(outDir, "swiftui-design-system-demo.html", html);
+}
+
+// ============================================================
+// shadcn/ui (Layer 2, slice 1 — see generate/shadcn.ts)
+// ============================================================
+
+export function buildShadcnDemo(tokensDir: string, outDir: string, platformFiles: string[]): GenerateResult {
+  const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
+  const primitives = color.primitive;
+  const hasLight = existsSync(join(tokensDir, LIGHT_FILE));
+  const hasDark = existsSync(join(tokensDir, DARK_FILE));
+  const modes: Array<"light" | "dark"> = [...(hasLight ? (["light"] as const) : []), ...(hasDark ? (["dark"] as const) : [])];
+  const groups = loadCommonGroups(tokensDir);
+
+  const varsPanelHtml = (mode: "light" | "dark") => {
+    const file = mode === "light" ? LIGHT_FILE : DARK_FILE;
+    const { color: semanticRoot } = readJson<SemanticFile>(join(tokensDir, file));
+    const vars = resolveShadcnVars(semanticRoot.semantic, primitives);
+    const itemsHtml = vars
+      .map(
+        ({ cssVar, hex }) =>
+          `<div class="token-item"><div class="token-label"><span class="swab" style="background:${hex}"></span>${escapeHtml(cssVar)}</div><code class="token-hex">${escapeHtml(hex)}</code></div>`,
+      )
+      .join("");
+    const primaryHex = vars.find((v) => v.cssVar === "--primary")?.hex ?? "#000000";
+    const hasSecondary = vars.some((v) => v.cssVar === "--secondary");
+    return `<div class="semantic-panel${mode === "dark" ? " dark" : ""}" data-mode="${mode}">
+        <div class="demo-row">
+          <button class="demo-btn" style="background:${primaryHex};color:${textOnAny(primaryHex)}" disabled>--primary</button>
+          ${hasSecondary ? `<button class="demo-btn secondary" disabled>--secondary</button>` : ""}
+        </div>
+        <div class="token-group"><div class="token-group-title">CSS variables</div><div class="token-grid">${itemsHtml}</div></div>
+      </div>`;
+  };
+
+  const toggleHtml =
+    modes.length > 1
+      ? `<div class="mode-toggle" role="group" aria-label="Preview mode">
+          <button type="button" class="mode-btn" data-target="light" aria-pressed="true" onclick="setMode('light')">Light</button>
+          <button type="button" class="mode-btn" data-target="dark" aria-pressed="false" onclick="setMode('dark')">Dark</button>
+        </div>`
+      : `<p class="single-mode-note">Generated for ${modes[0]} mode only.</p>`;
+
+  const bodyHtml = `
+  <section>
+    <h2>shadcn/ui CSS variables</h2>
+    <p class="single-mode-note">SDSGT's semantic tokens resolved onto shadcn/ui's own variable contract (<code>--primary</code>, <code>--card</code>, <code>--muted</code>, etc.), written to <code>theme.css</code> under shadcn's own <code>.dark</code> class selector — not this project's usual <code>[data-theme="dark"]</code>. <code>--success</code>/<code>--warning</code>/<code>--info</code>/<code>--promo</code> (+ <code>-foreground</code> pairs) are SDSGT additions — shadcn only defines <code>--destructive</code> natively. See contracts-and-seeds.md, "shadcn/ui theming."</p>
+    ${toggleHtml}
+    ${modes.map((m) => varsPanelHtml(m)).join("\n")}
+  </section>
+
+  ${componentsSectionHtml(tokensDir, "shadcn/ui")}
+
+  <section>
+    <h2>Not yet built for this target</h2>
+    <p class="single-mode-note">This is the theme-variable mapping only. Actually running <code>shadcn init</code>/<code>shadcn add &lt;component&gt;</code>, choosing a curated component list, and marking vendored files as customized is separate, not-yet-built work — flagged as a gap, not fabricated here.</p>
+  </section>
+  ${commonValueSections(groups)}`;
+
+  const html = renderDemoPage({
+    platformTitle: "shadcn/ui",
+    adaptedSummary:
+      "Semantic color tokens are resolved onto shadcn/ui's own CSS variable names (<code>--primary</code>, <code>--card</code>, etc.) and written to <code>theme.css</code>, meant to be this project's actual <code>globals.css</code> — plus SDSGT extensions (<code>--success</code>/<code>--warning</code>/<code>--info</code>/<code>--promo</code>) for the status roles shadcn has no native slot for.",
+    brandHex: primitives.brand["600"].$value,
+    headingFont: groups.headingFont,
+    bodyFont: groups.bodyFont,
+    runFields: [
+      ["Platform", "shadcn/ui (CLI v4, verified 2026-09-10)"],
+      ["Naming", "CSS custom properties (shadcn's own variable contract)"],
+    ],
+    bodyHtml,
+    generatedFiles: [...platformFiles, ...baseCssFiles(hasLight, hasDark)],
+    hasBothModes: modes.length > 1,
+  });
+
+  return writeDemo(outDir, "shadcn-design-system-demo.html", html);
+}
+
+// ============================================================
+// React Native Reusables (RNR) (Layer 2, slice 2 — see generate/rnr.ts)
+// ============================================================
+
+export function buildRnrDemo(tokensDir: string, outDir: string, platformFiles: string[]): GenerateResult {
+  const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
+  const primitives = color.primitive;
+  const hasLight = existsSync(join(tokensDir, LIGHT_FILE));
+  const hasDark = existsSync(join(tokensDir, DARK_FILE));
+  const modes: Array<"light" | "dark"> = [...(hasLight ? (["light"] as const) : []), ...(hasDark ? (["dark"] as const) : [])];
+  const groups = loadCommonGroups(tokensDir);
+
+  const varsPanelHtml = (mode: "light" | "dark") => {
+    const file = mode === "light" ? LIGHT_FILE : DARK_FILE;
+    const { color: semanticRoot } = readJson<SemanticFile>(join(tokensDir, file));
+    const vars = resolveShadcnVars(semanticRoot.semantic, primitives).filter((v) => v.cssVar !== "--destructive-foreground");
+    const itemsHtml = vars
+      .map(
+        ({ cssVar, hex }) =>
+          `<div class="token-item"><div class="token-label"><span class="swab" style="background:${hex}"></span>${escapeHtml(cssVar)}</div><code class="token-hex">${escapeHtml(hexToHslTriplet(hex))}</code></div>`,
+      )
+      .join("");
+    const primaryHex = vars.find((v) => v.cssVar === "--primary")?.hex ?? "#000000";
+    const hasSecondary = vars.some((v) => v.cssVar === "--secondary");
+    return `<div class="semantic-panel${mode === "dark" ? " dark" : ""}" data-mode="${mode}">
+        <div class="demo-row">
+          <button class="demo-btn" style="background:${primaryHex};color:${textOnAny(primaryHex)}" disabled>--primary</button>
+          ${hasSecondary ? `<button class="demo-btn secondary" disabled>--secondary</button>` : ""}
+        </div>
+        <div class="token-group"><div class="token-group-title">global.css variables (raw "H S% L%" triplet)</div><div class="token-grid">${itemsHtml}</div></div>
+      </div>`;
+  };
+
+  const toggleHtml =
+    modes.length > 1
+      ? `<div class="mode-toggle" role="group" aria-label="Preview mode">
+          <button type="button" class="mode-btn" data-target="light" aria-pressed="true" onclick="setMode('light')">Light</button>
+          <button type="button" class="mode-btn" data-target="dark" aria-pressed="false" onclick="setMode('dark')">Dark</button>
+        </div>`
+      : `<p class="single-mode-note">Generated for ${modes[0]} mode only.</p>`;
+
+  const bodyHtml = `
+  <section>
+    <h2>RNR (React Native Reusables) theme</h2>
+    <p class="single-mode-note">Same semantic mapping as shadcn/ui — RNR is explicitly "shadcn for React Native" — but written as raw <code>H S% L%</code> triplets in <code>global.css</code>, not hex: NativeWind's <code>tailwind.config.js</code> wraps these in <code>hsl(var(--x))</code> itself, and a hex string there would be invalid CSS. See contracts-and-seeds.md, "React Native Reusables (RNR) theming."</p>
+    ${toggleHtml}
+    ${modes.map((m) => varsPanelHtml(m)).join("\n")}
+  </section>
+
+  <section>
+    <h2>constants.ts — NAV_THEME</h2>
+    <p class="single-mode-note">React Navigation's own <code>Theme.colors</code> shape (<code>primary</code>/<code>background</code>/<code>card</code>/<code>text</code>/<code>border</code>/<code>notification</code>) — spread into <code>DefaultTheme</code>/<code>DarkTheme</code>'s own <code>colors</code>, not a full replacement <code>Theme</code>.</p>
+  </section>
+
+  ${componentsSectionHtml(tokensDir, "RNR")}
+
+  <section>
+    <h2>Not yet built for this target</h2>
+    <p class="single-mode-note">This is the theme-variable mapping only. Actually running RNR's own component-add command, choosing a curated component list, and marking vendored files as customized is separate, not-yet-built work — flagged as a gap, not fabricated here.</p>
+  </section>
+  ${commonValueSections(groups)}`;
+
+  const html = renderDemoPage({
+    platformTitle: "React Native Reusables",
+    adaptedSummary:
+      "Semantic color tokens are resolved onto the same variable names shadcn/ui uses, written as raw <code>H S% L%</code> triplets to <code>global.css</code> (NativeWind's own requirement), plus a <code>NAV_THEME</code> object in <code>constants.ts</code> matching React Navigation's own <code>Theme.colors</code> shape.",
+    brandHex: primitives.brand["600"].$value,
+    headingFont: groups.headingFont,
+    bodyFont: groups.bodyFont,
+    runFields: [
+      ["Platform", "React Native Reusables (RNR)"],
+      ["Naming", "CSS custom properties (raw HSL triplet) + NAV_THEME"],
+    ],
+    bodyHtml,
+    generatedFiles: [...platformFiles, ...baseCssFiles(hasLight, hasDark)],
+    hasBothModes: modes.length > 1,
+  });
+
+  return writeDemo(outDir, "rnr-design-system-demo.html", html);
+}
+
+// ============================================================
+// React Native Paper (Layer 2, slice 2 — see generate/rn-paper.ts)
+// ============================================================
+
+export function buildRnPaperDemo(tokensDir: string, outDir: string, platformFiles: string[]): GenerateResult {
+  const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
+  const primitives = color.primitive;
+  const primaryHex = primitives.brand["600"].$value;
+  const secondaryHex = primitives["brand-secondary"]?.["600"].$value;
+  const neutralHex = primitives.neutral["600"].$value;
+  const errorHex = primitives.status["1"]["200"].$value;
+
+  const lightScheme = buildScheme(primaryHex, secondaryHex, neutralHex, errorHex, false);
+  const darkScheme = buildScheme(primaryHex, secondaryHex, neutralHex, errorHex, true);
+
+  const schemeRowsHtml = (scheme: typeof lightScheme, valName: string) =>
+    PAPER_SCHEME_ROLES.map((role) => {
+      const hex = hexFromArgb((scheme as unknown as Record<string, number>)[role]).toUpperCase();
+      return `<div class="token-item"><div class="token-label"><span class="swab" style="background:${hex}"></span>${valName}.colors.${role}</div><code class="token-hex">${hex}</code></div>`;
+    }).join("");
+
+  const bodyHtml = `
+  <section>
+    <h2>MD3Theme.colors (real HCT ColorScheme)</h2>
+    <p class="single-mode-note">Same real HCT tonal palette + ColorScheme computation as the MD3/Jetpack Compose generator (<code>--md3</code>), reshaped onto Paper's own <code>MD3Theme.colors</code> role subset. Written to <code>theme.ts</code>, spreading Paper's own <code>MD3LightTheme</code>/<code>MD3DarkTheme</code> as the base.</p>
+    <div class="token-group"><div class="token-group-title">LightTheme.colors</div><div class="token-grid">${schemeRowsHtml(lightScheme, "LightTheme")}</div></div>
+    <div class="token-group"><div class="token-group-title">DarkTheme.colors</div><div class="token-grid">${schemeRowsHtml(darkScheme, "DarkTheme")}</div></div>
+  </section>
+
+  <section>
+    <h2>Paper-only extras</h2>
+    <p class="single-mode-note"><code>shadow</code>/<code>surfaceDisabled</code>/<code>onSurfaceDisabled</code>/<code>backdrop</code>/<code>elevation</code> aren't part of Compose's <code>ColorScheme</code> — verified against Paper's own real MD3LightTheme source (contracts-and-seeds.md, "React Native Paper theming"): <code>shadow</code> is fixed pure black, <code>surfaceDisabled</code>/<code>onSurfaceDisabled</code> are <code>onSurface</code> at 12%/38% alpha, <code>backdrop</code> reuses this project's own <code>overlay.scrim</code> token directly rather than a re-derived formula, and <code>elevation.level0-5</code> uses MD3's fixed dp scale (0/1/3/6/8/12) via the same <code>surfaceColorAtElevation()</code> formula the MD3/Compose generator uses.</p>
+  </section>
+
+  ${componentsSectionHtml(tokensDir, "React Native Paper")}
+
+  <section>
+    <h2>Not yet built for this target</h2>
+    <p class="single-mode-note">This is the theme-variable mapping only. Actually installing React Native Paper components or choosing a curated component list is separate, not-yet-built work — flagged as a gap, not fabricated here.</p>
+  </section>`;
+
+  const html = renderDemoPage({
+    platformTitle: "React Native Paper (MD3)",
+    adaptedSummary:
+      "A real HCT tonal palette and <code>ColorScheme</code> is computed via Google's Material Color Utilities (same computation as <code>--md3</code>) and reshaped onto React Native Paper's own <code>MD3Theme.colors</code> role set, written as TypeScript (<code>theme.ts</code>).",
+    brandHex: primaryHex,
+    headingFont: "system-ui",
+    bodyFont: "system-ui",
+    runFields: [
+      ["Platform", "React Native Paper (npm 5.15.3, MD3)"],
+      ["Naming", "MD3Theme.colors fields"],
+    ],
+    bodyHtml,
+    generatedFiles: [...platformFiles],
+    hasBothModes: false,
+  });
+
+  return writeDemo(outDir, "rn-paper-design-system-demo.html", html);
+}
+
+// ============================================================
+// Vuetify 4 (Layer 2, slice 2 — see generate/vuetify.ts)
+// ============================================================
+
+export function buildVuetifyDemo(tokensDir: string, outDir: string, platformFiles: string[]): GenerateResult {
+  const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
+  const primitives = color.primitive;
+  const hasLight = existsSync(join(tokensDir, LIGHT_FILE));
+  const hasDark = existsSync(join(tokensDir, DARK_FILE));
+  const groups = loadCommonGroups(tokensDir);
+
+  const swatchesFor = (mode: "light" | "dark") => {
+    const semanticFile = join(tokensDir, mode === "light" ? LIGHT_FILE : DARK_FILE);
+    const entries: Array<{ name: string; hex: string }> = [
+      { name: "primary", hex: primitives.brand["600"].$value },
+      ...(primitives["brand-secondary"] ? [{ name: "secondary", hex: primitives["brand-secondary"]["600"].$value }] : []),
+      { name: "background", hex: resolveSemanticPath(semanticFile, "background", "primary", primitives) },
+      { name: "surface", hex: resolveSemanticPath(semanticFile, "background", "surface", primitives) },
+      ...Object.entries(STATUS_ROLE_TO_VUETIFY)
+        .map(([role, name]) => ({ name, hex: primitives.status[role]?.["200"].$value }))
+        .filter((x): x is { name: string; hex: string } => Boolean(x.hex)),
+    ];
+    return `<div class="token-group"><div class="token-group-title">${mode}Theme.colors</div><div class="token-grid">${entries
+      .map((e) => `<div class="token-item"><div class="token-label"><span class="swab" style="background:${e.hex}"></span>${e.name}</div><code class="token-hex">${e.hex}</code></div>`)
+      .join("")}</div></div>`;
+  };
+
+  const bodyHtml = `
+  <section>
+    <h2>Vuetify theme colors</h2>
+    <p class="single-mode-note">A small, curated base-color set — Vuetify's own runtime derives <code>on-*</code> contrast pairs and <code>lighten-N</code>/<code>darken-N</code> tint variants from these, same pattern as Bootstrap's own Sass deriving tints from just <code>$primary</code>. Written to <code>theme.ts</code> as <code>lightTheme</code>/<code>darkTheme</code>, each a real Vuetify <code>ThemeDefinition</code>.</p>
+    ${hasLight ? swatchesFor("light") : ""}
+    ${hasDark ? swatchesFor("dark") : ""}
+  </section>
+
+  ${componentsSectionHtml(tokensDir, "Vuetify")}
+
+  <section>
+    <h2>Not yet built for this target</h2>
+    <p class="single-mode-note">This is the theme-variable mapping only. Actually installing Vuetify components or choosing a curated component list is separate, not-yet-built work — flagged as a gap, not fabricated here.</p>
+  </section>
+  ${commonValueSections(groups)}`;
+
+  const html = renderDemoPage({
+    platformTitle: "Vuetify 4",
+    adaptedSummary:
+      "This project's brand/background/surface/status colors are written as a Vuetify <code>ThemeDefinition</code> (<code>theme.ts</code>) — Vuetify's own runtime derives every <code>on-*</code>/lighten/darken variant from these base colors.",
+    brandHex: primitives.brand["600"].$value,
+    headingFont: groups.headingFont,
+    bodyFont: groups.bodyFont,
+    runFields: [
+      ["Platform", "Vuetify 4 (current npm latest)"],
+      ["Naming", "ThemeDefinition colors"],
+    ],
+    bodyHtml,
+    generatedFiles: [...platformFiles, ...baseCssFiles(hasLight, hasDark)],
+    hasBothModes: hasLight && hasDark,
+  });
+
+  return writeDemo(outDir, "vuetify-design-system-demo.html", html);
 }

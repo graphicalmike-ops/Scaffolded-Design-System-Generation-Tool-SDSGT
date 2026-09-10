@@ -555,3 +555,426 @@ export function checkSwiftui(tokensDir: string, codeOutDir: string, seed: SeedCo
 
   return results;
 }
+
+// ---------------------------------------------------------------------------
+// shadcn/ui (Layer 2, slice 1 — see generate/shadcn.ts)
+// ---------------------------------------------------------------------------
+
+// Var names hardcoded here rather than imported from shadcn.ts — same
+// discipline as checkBootstrap/checkMd2 above, so a check verifies the
+// generator's actual output against the documented contract, not against
+// its own source agreeing with itself.
+const SHADCN_CORE_VARS = [
+  "--background",
+  "--foreground",
+  "--card",
+  "--card-foreground",
+  "--popover",
+  "--popover-foreground",
+  "--primary",
+  "--primary-foreground",
+  "--accent",
+  "--accent-foreground",
+  "--destructive",
+  "--destructive-foreground",
+  "--border",
+  "--input",
+  "--ring",
+  "--muted",
+  "--muted-foreground",
+];
+
+const SHADCN_STATUS_EXTRA_VARS = ["--success", "--success-foreground", "--warning", "--warning-foreground", "--info", "--info-foreground", "--promo", "--promo-foreground"];
+
+// theme.css holds both blocks in one file (unlike the base CSS platform's
+// separate light.css/dark.css), so extractCssProps needs each block
+// isolated first — otherwise a shared var name in both blocks would
+// collapse to whichever match comes last.
+function splitRootAndDark(css: string): { root: string; dark: string | null } {
+  const darkIdx = css.indexOf(".dark {");
+  if (darkIdx === -1) return { root: css, dark: null };
+  return { root: css.slice(0, darkIdx), dark: css.slice(darkIdx) };
+}
+
+export function checkShadcn(tokensDir: string, codeOutDir: string, seed: SeedConfig): CheckResult[] {
+  const results: CheckResult[] = [];
+  const { hasLight, hasDark } = modeExpectations(seed);
+  const cssPath = join(codeOutDir, "shadcn", "theme.css");
+  const css = readIfExists(cssPath);
+  if (!css) {
+    results.push(fail("shadcn/theme.css exists", "shadcn", "file present", "missing"));
+    return results;
+  }
+  results.push(pass("shadcn/theme.css exists", "shadcn"));
+
+  const bBal = braceBalance(css);
+  results.push(bBal === 0 ? pass("theme.css braces balanced", "shadcn") : fail("theme.css braces balanced", "shadcn", "0", String(bBal)));
+
+  const hasDarkBlock = css.includes(".dark {");
+  results.push(
+    hasDarkBlock === hasDark
+      ? pass(".dark block present iff color.semantic.dark.json exists", "shadcn")
+      : fail(".dark block present iff color.semantic.dark.json exists", "shadcn", String(hasDark), String(hasDarkBlock)),
+  );
+
+  const { root, dark } = splitRootAndDark(css);
+  const rootProps = extractCssProps(root);
+  const darkProps = dark ? extractCssProps(dark) : null;
+
+  results.push(
+    rootProps.has("radius")
+      ? pass("--radius present in :root", "shadcn")
+      : fail("--radius present in :root", "shadcn", "present", "missing"),
+  );
+
+  // :root only carries color values when a light mode exists (see
+  // generate/shadcn.ts's file header) — a dark-only project's :root
+  // intentionally has just --radius.
+  const colorBlocks: Array<{ label: string; props: Map<string, string> | null }> = [];
+  if (hasLight) colorBlocks.push({ label: ":root", props: rootProps });
+  if (hasDark) colorBlocks.push({ label: ".dark", props: darkProps });
+
+  for (const { label, props } of colorBlocks) {
+    for (const name of SHADCN_CORE_VARS) {
+      const key = name.slice(2);
+      results.push(
+        props?.has(key)
+          ? pass(`${name} present in ${label}`, "shadcn")
+          : fail(`${name} present in ${label}`, "shadcn", "present", "missing"),
+      );
+    }
+    for (const name of SHADCN_STATUS_EXTRA_VARS) {
+      const key = name.slice(2);
+      results.push(
+        props?.has(key)
+          ? pass(`${name} present in ${label}`, "shadcn")
+          : fail(`${name} present in ${label}`, "shadcn", "present", "missing"),
+      );
+    }
+  }
+
+  // Bug class #4 (same as checkBootstrap): --secondary/--secondary-foreground
+  // present iff the seed supplied a secondary brand color.
+  const hasSecondaryColor = Boolean(seed.secondaryColor);
+  for (const { label, props } of colorBlocks) {
+    const hasSecondaryVar = props?.has("secondary") ?? false;
+    results.push(
+      hasSecondaryVar === hasSecondaryColor
+        ? pass(`--secondary present in ${label} iff secondaryColor supplied`, "shadcn")
+        : fail(`--secondary present in ${label} iff secondaryColor supplied`, "shadcn", String(hasSecondaryColor), String(hasSecondaryVar)),
+    );
+  }
+
+  // Same light/dark-divergence guard as checkCss — catches a resolution/
+  // merge bug where dark silently inherited light's value.
+  if (hasLight && hasDark && rootProps.has("background") && darkProps?.has("background")) {
+    results.push(
+      rootProps.get("background") !== darkProps.get("background")
+        ? pass("light/dark --background values differ", "shadcn")
+        : fail("light/dark --background values differ", "shadcn", "different values", `both = ${rootProps.get("background")}`, "possible light/dark resolution bug"),
+    );
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// React Native Reusables (RNR) (Layer 2, slice 2 — see generate/rnr.ts)
+// ---------------------------------------------------------------------------
+
+// Same list as shadcn's, minus --destructive-foreground — RNR's own real
+// file has no foreground pair for destructive (see generate/rnr.ts header).
+const RNR_CORE_VARS = ["--background", "--foreground", "--card", "--card-foreground", "--popover", "--popover-foreground", "--primary", "--primary-foreground", "--accent", "--accent-foreground", "--destructive", "--border", "--input", "--ring", "--muted", "--muted-foreground"];
+
+// A raw "H S% L%" triplet, no hsl() wrapper — e.g. "0 0% 100%" or
+// "220 70% 50.5%". Anchored so a stray hex/oklch value would fail to match.
+const HSL_TRIPLET = /^\d+(\.\d+)? \d+(\.\d+)?% \d+(\.\d+)?%$/;
+
+function splitRootAndDarkRnr(css: string): { root: string; dark: string | null } {
+  const darkIdx = css.indexOf(".dark:root {");
+  if (darkIdx === -1) return { root: css, dark: null };
+  return { root: css.slice(0, darkIdx), dark: css.slice(darkIdx) };
+}
+
+export function checkRnr(tokensDir: string, codeOutDir: string, seed: SeedConfig): CheckResult[] {
+  const results: CheckResult[] = [];
+  const { hasLight, hasDark } = modeExpectations(seed);
+
+  const cssPath = join(codeOutDir, "rnr", "global.css");
+  const css = readIfExists(cssPath);
+  if (!css) {
+    results.push(fail("rnr/global.css exists", "rnr", "file present", "missing"));
+    return results;
+  }
+  results.push(pass("rnr/global.css exists", "rnr"));
+
+  const bBal = braceBalance(css);
+  results.push(bBal === 0 ? pass("global.css braces balanced", "rnr") : fail("global.css braces balanced", "rnr", "0", String(bBal)));
+
+  const hasDarkBlock = css.includes(".dark:root {");
+  results.push(
+    hasDarkBlock === hasDark
+      ? pass(".dark:root block present iff color.semantic.dark.json exists", "rnr")
+      : fail(".dark:root block present iff color.semantic.dark.json exists", "rnr", String(hasDark), String(hasDarkBlock)),
+  );
+
+  const { root, dark } = splitRootAndDarkRnr(css);
+  const rootProps = extractCssProps(root);
+  const darkProps = dark ? extractCssProps(dark) : null;
+
+  results.push(rootProps.has("radius") ? pass("--radius present in :root", "rnr") : fail("--radius present in :root", "rnr", "present", "missing"));
+
+  const colorBlocks: Array<{ label: string; props: Map<string, string> | null }> = [];
+  if (hasLight) colorBlocks.push({ label: ":root", props: rootProps });
+  if (hasDark) colorBlocks.push({ label: ".dark:root", props: darkProps });
+
+  for (const { label, props } of colorBlocks) {
+    for (const name of RNR_CORE_VARS) {
+      const key = name.slice(2);
+      results.push(props?.has(key) ? pass(`${name} present in ${label}`, "rnr") : fail(`${name} present in ${label}`, "rnr", "present", "missing"));
+    }
+    // Every present color value must be a raw HSL triplet, not hex/oklch —
+    // this is the actual bug class this generator exists to avoid (see
+    // generate/rnr.ts's file header on why hex breaks NativeWind's hsl()
+    // wrapper).
+    const nonTriplet = [...(props?.entries() ?? [])].filter(([k]) => k !== "radius").find(([, v]) => !HSL_TRIPLET.test(v));
+    results.push(
+      nonTriplet === undefined
+        ? pass(`every color value in ${label} is a raw HSL triplet`, "rnr")
+        : fail(`every color value in ${label} is a raw HSL triplet`, "rnr", "H S% L%", `--${nonTriplet[0]}: ${nonTriplet[1]}`),
+    );
+  }
+
+  const hasSecondaryColor = Boolean(seed.secondaryColor);
+  for (const { label, props } of colorBlocks) {
+    const hasSecondaryVar = props?.has("secondary") ?? false;
+    results.push(
+      hasSecondaryVar === hasSecondaryColor
+        ? pass(`--secondary present in ${label} iff secondaryColor supplied`, "rnr")
+        : fail(`--secondary present in ${label} iff secondaryColor supplied`, "rnr", String(hasSecondaryColor), String(hasSecondaryVar)),
+    );
+  }
+
+  if (hasLight && hasDark && rootProps.has("background") && darkProps?.has("background")) {
+    results.push(
+      rootProps.get("background") !== darkProps.get("background")
+        ? pass("light/dark --background values differ", "rnr")
+        : fail("light/dark --background values differ", "rnr", "different values", `both = ${rootProps.get("background")}`, "possible light/dark resolution bug"),
+    );
+  }
+
+  const tsPath = join(codeOutDir, "rnr", "constants.ts");
+  const ts = readIfExists(tsPath);
+  if (!ts) {
+    results.push(fail("rnr/constants.ts exists", "rnr", "file present", "missing"));
+    return results;
+  }
+  results.push(pass("rnr/constants.ts exists", "rnr"));
+
+  const NAV_KEYS = ["primary", "background", "card", "text", "border", "notification"];
+  for (const mode of ["light", "dark"] as const) {
+    const expected = mode === "light" ? hasLight : hasDark;
+    const blockMatch = ts.match(new RegExp(`${mode}: \\{([^}]*)\\}`));
+    const present = Boolean(blockMatch);
+    results.push(
+      present === expected
+        ? pass(`NAV_THEME.${mode} present iff color.semantic.${mode}.json exists`, "rnr")
+        : fail(`NAV_THEME.${mode} present iff color.semantic.${mode}.json exists`, "rnr", String(expected), String(present)),
+    );
+    if (blockMatch) {
+      const missingKey = NAV_KEYS.find((k) => !blockMatch[1].includes(`${k}:`));
+      results.push(
+        missingKey === undefined
+          ? pass(`NAV_THEME.${mode} has all 6 React Navigation Theme.colors keys`, "rnr")
+          : fail(`NAV_THEME.${mode} has all 6 React Navigation Theme.colors keys`, "rnr", NAV_KEYS.join(","), `missing ${missingKey}`),
+      );
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// React Native Paper (Layer 2, slice 2 — see generate/rn-paper.ts)
+// ---------------------------------------------------------------------------
+
+// Paper's real MD3Theme.colors subset (hardcoded here, not imported from
+// rn-paper.ts — same discipline as every other checker in this file).
+const PAPER_CORE_ROLES = [
+  "primary", "onPrimary", "primaryContainer", "onPrimaryContainer",
+  "secondary", "onSecondary", "secondaryContainer", "onSecondaryContainer",
+  "tertiary", "onTertiary", "tertiaryContainer", "onTertiaryContainer",
+  "error", "onError", "errorContainer", "onErrorContainer",
+  "background", "onBackground",
+  "surface", "onSurface", "surfaceVariant", "onSurfaceVariant",
+  "outline", "outlineVariant",
+  "inverseSurface", "inverseOnSurface", "inversePrimary",
+  "scrim",
+];
+const PAPER_EXTRA_KEYS = ["shadow", "surfaceDisabled", "onSurfaceDisabled", "backdrop", "elevation"];
+const PAPER_ELEVATION_LEVELS = ["level0", "level1", "level2", "level3", "level4", "level5"];
+
+export function checkRnPaper(tokensDir: string, codeOutDir: string, seed: SeedConfig): CheckResult[] {
+  const results: CheckResult[] = [];
+  const { hasLight, hasDark } = modeExpectations(seed);
+
+  const tsPath = join(codeOutDir, "rn-paper", "theme.ts");
+  const ts = readIfExists(tsPath);
+  if (!ts) {
+    results.push(fail("rn-paper/theme.ts exists", "rn-paper", "file present", "missing"));
+    return results;
+  }
+  results.push(pass("rn-paper/theme.ts exists", "rn-paper"));
+
+  const bBal = braceBalance(ts);
+  results.push(bBal === 0 ? pass("theme.ts braces balanced", "rn-paper") : fail("theme.ts braces balanced", "rn-paper", "0", String(bBal)));
+
+  for (const [themeName, expected] of [["LightTheme", hasLight], ["DarkTheme", hasDark]] as const) {
+    const present = ts.includes(`export const ${themeName} =`);
+    results.push(
+      present === expected
+        ? pass(`${themeName} present iff its color.semantic.<mode>.json exists`, "rn-paper")
+        : fail(`${themeName} present iff its color.semantic.<mode>.json exists`, "rn-paper", String(expected), String(present)),
+    );
+  }
+
+  // Check each present theme block contains every expected key — extract
+  // the block from `export const <Name> = {` to the next `export const` or
+  // end of file (simple, no nested-brace parsing needed at this depth).
+  for (const [themeName, expected] of [["LightTheme", hasLight], ["DarkTheme", hasDark]] as const) {
+    if (!expected) continue;
+    const start = ts.indexOf(`export const ${themeName} =`);
+    const nextExport = ts.indexOf("export const", start + 1);
+    const block = nextExport === -1 ? ts.slice(start) : ts.slice(start, nextExport);
+
+    const missingRole = PAPER_CORE_ROLES.find((r) => !block.includes(`${r}: '#`));
+    results.push(
+      missingRole === undefined
+        ? pass(`${themeName} has every Paper MD3Theme.colors core role`, "rn-paper")
+        : fail(`${themeName} has every Paper MD3Theme.colors core role`, "rn-paper", "present", `missing ${missingRole}`),
+    );
+
+    const missingExtra = PAPER_EXTRA_KEYS.find((k) => !block.includes(`${k}:`));
+    results.push(
+      missingExtra === undefined
+        ? pass(`${themeName} has shadow/surfaceDisabled/onSurfaceDisabled/backdrop/elevation`, "rn-paper")
+        : fail(`${themeName} has shadow/surfaceDisabled/onSurfaceDisabled/backdrop/elevation`, "rn-paper", "present", `missing ${missingExtra}`),
+    );
+
+    const missingLevel = PAPER_ELEVATION_LEVELS.find((l) => !block.includes(`${l}:`));
+    results.push(
+      missingLevel === undefined
+        ? pass(`${themeName}.elevation has all 6 levels`, "rn-paper")
+        : fail(`${themeName}.elevation has all 6 levels`, "rn-paper", "present", `missing ${missingLevel}`),
+    );
+
+    results.push(
+      block.includes("shadow: '#000000'")
+        ? pass(`${themeName}.shadow is fixed pure black`, "rn-paper")
+        : fail(`${themeName}.shadow is fixed pure black`, "rn-paper", "#000000", "different value"),
+    );
+  }
+
+  // Same light/dark-divergence guard as every other checker here. Anchored
+  // to `export const <Name>Theme =`, not a bare "LightTheme"/"DarkTheme"
+  // substring match — both also appear inside the file's own import line
+  // (`MD3LightTheme as DefaultLightTheme, MD3DarkTheme as ...`), which sits
+  // BEFORE both export blocks. An unanchored match against "DarkTheme"
+  // would start searching from that import line and pick up LightTheme's
+  // own background value first — caught by actually running this checker
+  // against the QA matrix and seeing every both-modes case "fail" despite
+  // the real generated file visibly having two different values.
+  if (hasLight && hasDark) {
+    const lightBg = ts.match(/export const LightTheme[\s\S]*?\bbackground: '(#[0-9A-Fa-f]{6})'/)?.[1];
+    const darkBg = ts.match(/export const DarkTheme[\s\S]*?\bbackground: '(#[0-9A-Fa-f]{6})'/)?.[1];
+    results.push(
+      lightBg !== undefined && darkBg !== undefined && lightBg !== darkBg
+        ? pass("light/dark background values differ", "rn-paper")
+        : fail("light/dark background values differ", "rn-paper", "different values", `light=${lightBg}, dark=${darkBg}`, "possible HCT scheme computation bug"),
+    );
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Vuetify (Layer 2, slice 2 — see generate/vuetify.ts)
+// ---------------------------------------------------------------------------
+
+const VUETIFY_STATUS_NAMES = ["error", "success", "warning", "info"];
+
+export function checkVuetify(tokensDir: string, codeOutDir: string, seed: SeedConfig): CheckResult[] {
+  const results: CheckResult[] = [];
+  const { hasLight, hasDark } = modeExpectations(seed);
+
+  const tsPath = join(codeOutDir, "vuetify", "theme.ts");
+  const ts = readIfExists(tsPath);
+  if (!ts) {
+    results.push(fail("vuetify/theme.ts exists", "vuetify", "file present", "missing"));
+    return results;
+  }
+  results.push(pass("vuetify/theme.ts exists", "vuetify"));
+
+  const bBal = braceBalance(ts);
+  results.push(bBal === 0 ? pass("theme.ts braces balanced", "vuetify") : fail("theme.ts braces balanced", "vuetify", "0", String(bBal)));
+
+  for (const [themeName, expected] of [["lightTheme", hasLight], ["darkTheme", hasDark]] as const) {
+    const present = ts.includes(`export const ${themeName} =`);
+    results.push(
+      present === expected
+        ? pass(`${themeName} present iff its color.semantic.<mode>.json exists`, "vuetify")
+        : fail(`${themeName} present iff its color.semantic.<mode>.json exists`, "vuetify", String(expected), String(present)),
+    );
+  }
+
+  results.push(
+    !ts.includes("export const lightTheme =") || ts.includes("dark: false,")
+      ? pass("lightTheme has dark: false", "vuetify")
+      : fail("lightTheme has dark: false", "vuetify", "dark: false", "missing/wrong"),
+  );
+  results.push(
+    !ts.includes("export const darkTheme =") || ts.includes("dark: true,")
+      ? pass("darkTheme has dark: true", "vuetify")
+      : fail("darkTheme has dark: true", "vuetify", "dark: true", "missing/wrong"),
+  );
+
+  for (const [themeName, expected] of [["lightTheme", hasLight], ["darkTheme", hasDark]] as const) {
+    if (!expected) continue;
+    const start = ts.indexOf(`export const ${themeName} =`);
+    const nextExport = ts.indexOf("export const", start + 1);
+    const block = nextExport === -1 ? ts.slice(start) : ts.slice(start, nextExport);
+
+    results.push(block.includes("primary:") ? pass(`${themeName} has primary`, "vuetify") : fail(`${themeName} has primary`, "vuetify", "present", "missing"));
+    results.push(block.includes("background:") ? pass(`${themeName} has background`, "vuetify") : fail(`${themeName} has background`, "vuetify", "present", "missing"));
+    results.push(block.includes("surface:") ? pass(`${themeName} has surface`, "vuetify") : fail(`${themeName} has surface`, "vuetify", "present", "missing"));
+
+    const missingStatus = VUETIFY_STATUS_NAMES.find((s) => !block.includes(`${s}:`));
+    results.push(
+      missingStatus === undefined
+        ? pass(`${themeName} has error/success/warning/info`, "vuetify")
+        : fail(`${themeName} has error/success/warning/info`, "vuetify", "present", `missing ${missingStatus}`),
+    );
+
+    const hasSecondaryColor = Boolean(seed.secondaryColor);
+    const hasSecondaryVar = block.includes("secondary:");
+    results.push(
+      hasSecondaryVar === hasSecondaryColor
+        ? pass(`${themeName} has secondary iff secondaryColor supplied`, "vuetify")
+        : fail(`${themeName} has secondary iff secondaryColor supplied`, "vuetify", String(hasSecondaryColor), String(hasSecondaryVar)),
+    );
+  }
+
+  // Same light/dark-divergence guard as every other checker here — anchored
+  // to `export const <name>Theme =`, same lesson learned from checkRnPaper.
+  if (hasLight && hasDark) {
+    const lightBg = ts.match(/export const lightTheme[\s\S]*?\bbackground: '(#[0-9A-Fa-f]{6})'/)?.[1];
+    const darkBg = ts.match(/export const darkTheme[\s\S]*?\bbackground: '(#[0-9A-Fa-f]{6})'/)?.[1];
+    results.push(
+      lightBg !== undefined && darkBg !== undefined && lightBg !== darkBg
+        ? pass("light/dark background values differ", "vuetify")
+        : fail("light/dark background values differ", "vuetify", "different values", `light=${lightBg}, dark=${darkBg}`, "possible resolution bug"),
+    );
+  }
+
+  return results;
+}

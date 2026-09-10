@@ -36,21 +36,17 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { LIGHT_FILE, DARK_FILE, type GenerateResult } from "./index.ts";
-import { readJson, type ColorPrimitivesFile } from "./read-tokens.ts";
+import {
+  readJson,
+  resolveAlias,
+  isSemanticToken,
+  type ColorPrimitivesFile,
+  type SemanticToken,
+  type SemanticTree,
+  type SemanticFile,
+} from "./read-tokens.ts";
 
-export interface SemanticToken {
-  $value: string;
-}
-
-export type SemanticTree = { [key: string]: SemanticToken | SemanticTree };
-
-export interface SemanticFile {
-  color: { semantic: SemanticTree };
-}
-
-function isToken(node: SemanticToken | SemanticTree): node is SemanticToken {
-  return typeof (node as SemanticToken).$value === "string";
-}
+export type { SemanticToken, SemanticTree, SemanticFile };
 
 function hexToFloats(hex: string): [number, number, number] {
   const clean = hex.replace("#", "");
@@ -62,21 +58,6 @@ function hexToFloats(hex: string): [number, number, number] {
 function rgbaToFloats(rgba: string): [number, number, number, number] {
   const [r, g, b, a] = rgba.replace(/rgba?\(|\)/g, "").split(",").map((s) => parseFloat(s.trim()));
   return [r / 255, g / 255, b / 255, a ?? 1];
-}
-
-// "{color.primitive.neutral.100}" -> the neutral primitive group's "100"
-// hex. Path depth varies: brand/brand-secondary/neutral/static are 2 levels
-// deep (group.step), status is 3 (status.role.tone) — walk generically
-// rather than assuming a fixed depth.
-export function resolveAlias(ref: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
-  const [, , ...steps] = ref.replace(/[{}]/g, "").split(".");
-  let node: unknown = primitives;
-  for (const step of steps) {
-    node = (node as Record<string, unknown> | undefined)?.[step];
-  }
-  const resolved = (node as { $value?: string } | undefined)?.$value;
-  if (!resolved) throw new Error(`Unresolvable color alias: ${ref}`);
-  return resolved;
 }
 
 export function swiftColorLiteral(rawValue: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
@@ -103,7 +84,7 @@ export function flattenTokens(tree: SemanticTree, path: string[] = []): Array<{ 
   const result: Array<{ name: string; value: string }> = [];
   for (const [key, node] of Object.entries(tree)) {
     const nextPath = [...path, key];
-    if (isToken(node)) {
+    if (isSemanticToken(node)) {
       result.push({ name: toSwiftPropertyName(nextPath), value: node.$value });
     } else {
       result.push(...flattenTokens(node, nextPath));

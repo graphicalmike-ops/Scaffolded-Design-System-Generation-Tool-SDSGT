@@ -3,8 +3,8 @@
 
 import type { SeedConfig } from "../../src/types/seed-config.ts";
 
-export type PlatformFlag = "tailwind" | "bootstrap" | "md2" | "md3" | "swiftui";
-export const ALL_PLATFORMS: PlatformFlag[] = ["tailwind", "bootstrap", "md2", "md3", "swiftui"];
+export type PlatformFlag = "tailwind" | "bootstrap" | "md2" | "md3" | "swiftui" | "shadcn" | "rnr" | "rn-paper" | "vuetify";
+export const ALL_PLATFORMS: PlatformFlag[] = ["tailwind", "bootstrap", "md2", "md3", "swiftui", "shadcn", "rnr", "rn-paper", "vuetify"];
 
 export type CaseGroup = "core" | "achromatic" | "mismatch" | "baseline" | "boundary" | "cli";
 

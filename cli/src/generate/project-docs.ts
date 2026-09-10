@@ -107,12 +107,54 @@ export interface AgentRulesOptions {
   // React Native + Tailwind (RNR), not React Native on its own (e.g. RN
   // Paper/MD2 has no NativeWind involved at all).
   isReactNative: boolean;
+  // Whether --shadcn was passed. Gates the two shadcn-specific always/never
+  // rules below — see generate/shadcn.ts and contracts-and-seeds.md,
+  // "shadcn/ui theming."
+  hasShadcn: boolean;
+  // Whether --rnr was passed. Gates the RNR-specific always/never rules —
+  // see generate/rnr.ts and contracts-and-seeds.md, "React Native
+  // Reusables (RNR) theming."
+  hasRnr: boolean;
+  // Whether --rn-paper was passed. Gates the RN Paper-specific always/never
+  // rule — see generate/rn-paper.ts and contracts-and-seeds.md, "React
+  // Native Paper theming."
+  hasRnPaper: boolean;
+  // Whether --vuetify was passed. Gates the Vuetify-specific always/never
+  // rule — see generate/vuetify.ts and contracts-and-seeds.md, "Vuetify
+  // theming."
+  hasVuetify: boolean;
 }
 
-function buildAgentsMd({ hasTailwind, isReactNative }: AgentRulesOptions): string {
+function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify }: AgentRulesOptions): string {
   const rules: string[] = [
     "Never blindly re-run a vendored component's install/add command once it's been customized. There's no merge logic — it silently overwrites. Mark customized files clearly.",
   ];
+
+  if (hasShadcn) {
+    rules.push(
+      "shadcn/ui's own CSS variable names (`--primary`, `--card`, etc.) are aliased to this project's semantic tokens in `shadcn/theme.css`. Edit the semantic tokens and re-run `generate`, don't hand-edit `theme.css`'s values directly. *(This project targets shadcn/ui.)*",
+      "Never blindly re-run `shadcn add <component>` on a component that's already been customized — same reasoning as the general vendored-component rule above, called out explicitly since shadcn is this project's component library. *(This project targets shadcn/ui.)*",
+    );
+  }
+
+  if (hasRnr) {
+    rules.push(
+      "RNR's CSS variables (`--primary`, `--card`, etc., in `rnr/global.css`) and `rnr/constants.ts`'s `NAV_THEME` must stay in sync — they're generated from the same tokens, but are two separate files. Edit the semantic tokens and re-run `generate`, don't hand-edit either file directly. *(This project targets React Native Reusables.)*",
+      "Never blindly re-run RNR's own component-add command on a component that's already been customized — same reasoning as the general vendored-component rule above. *(This project targets React Native Reusables.)*",
+    );
+  }
+
+  if (hasRnPaper) {
+    rules.push(
+      "React Native Paper's `theme.ts` (`rn-paper/theme.ts`) is generated from this project's tokens via the same real HCT color computation as `--md3`. Edit the semantic/brand tokens and re-run `generate`, don't hand-edit `theme.ts`'s color values directly. *(This project targets React Native Paper.)*",
+    );
+  }
+
+  if (hasVuetify) {
+    rules.push(
+      "Vuetify's `theme.ts` (`vuetify/theme.ts`) supplies only the base colors (primary/secondary/background/surface/error/info/success/warning) — Vuetify's own runtime derives on-*/lighten/darken variants from these. Edit the semantic/brand tokens and re-run `generate`, don't hand-edit `theme.ts` or fight Vuetify's derived variants directly. *(This project targets Vuetify.)*",
+    );
+  }
 
   if (isReactNative && hasTailwind) {
     rules.push(

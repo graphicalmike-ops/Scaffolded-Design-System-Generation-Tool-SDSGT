@@ -36,3 +36,39 @@ export interface RadiusFile {
 export function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;
 }
+
+// Shared shape for color.semantic.<mode>.json, and the alias-resolution
+// logic every reader of it needs — moved here from swiftui.ts (its original
+// home) once shadcn.ts needed the exact same resolution logic. Semantic
+// tokens are almost all DTCG aliases (`$value: "{color.primitive.neutral.
+// 100}"`), not baked hex — see contracts-and-seeds.md, "Alias vs. baked
+// value." The two already-baked exceptions (action.*-disabled,
+// overlay.scrim) pass through their own literal value untouched.
+export interface SemanticToken {
+  $value: string;
+}
+
+export type SemanticTree = { [key: string]: SemanticToken | SemanticTree };
+
+export interface SemanticFile {
+  color: { semantic: SemanticTree };
+}
+
+export function isSemanticToken(node: SemanticToken | SemanticTree): node is SemanticToken {
+  return typeof (node as SemanticToken).$value === "string";
+}
+
+// "{color.primitive.neutral.100}" -> the neutral primitive group's "100"
+// hex. Path depth varies: brand/brand-secondary/neutral/static are 2 levels
+// deep (group.step), status is 3 (status.role.tone) — walk generically
+// rather than assuming a fixed depth.
+export function resolveAlias(ref: string, primitives: ColorPrimitivesFile["color"]["primitive"]): string {
+  const [, , ...steps] = ref.replace(/[{}]/g, "").split(".");
+  let node: unknown = primitives;
+  for (const step of steps) {
+    node = (node as Record<string, unknown> | undefined)?.[step];
+  }
+  const resolved = (node as { $value?: string } | undefined)?.$value;
+  if (!resolved) throw new Error(`Unresolvable color alias: ${ref}`);
+  return resolved;
+}
