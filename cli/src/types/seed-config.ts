@@ -10,11 +10,35 @@ export type DesignLanguage = "tailwind" | "bootstrap" | "md3" | "md2";
 export type LightDarkMode = "light" | "dark" | "both";
 export type NeutralColorStyle = "brand-tinted" | "pure-gray";
 export type OpacityPreset = "tailwind" | "bootstrap";
+// One per framework's "Suggestion logic" table in the SDSGT-start skill /
+// contracts-and-seeds.md's "Seed inputs" table. "shadcn" also covers
+// shadcn-vue and "react-bootstrap" also covers bootstrap-vue-next — both
+// pairs reuse the same generator output as-is (verified — contracts-and-
+// seeds.md, "shadcn/ui theming"/"React Native Reusables (RNR) theming").
+export type ComponentLibrary =
+  | "shadcn" // Next.js + Tailwind, or Vue.js + Tailwind (shadcn-vue)
+  | "mui" // Next.js + MD3/MD2
+  | "react-bootstrap" // Next.js + Bootstrap, or Vue.js + Bootstrap (bootstrap-vue-next)
+  | "vuetify" // Vue.js + MD3/MD2
+  | "rnr" // React Native + Tailwind
+  | "rn-paper" // React Native + MD3/MD2
+  | "compose-material3" // Kotlin (only option)
+  | "swiftui-native"; // SwiftUI (only option)
 
 export interface SeedConfig {
   scaffoldMode: ScaffoldMode;
   targetFramework: TargetFramework;
   targetDesignLanguage: DesignLanguage;
+  // Only present when the framework/design-language combo has a real
+  // component-library choice (Bootstrap has none for React Native/Kotlin/
+  // iOS — see the SDSGT-start skill's "Suggestion logic"). Drives which
+  // extra `generate` flag gets passed alongside the base platform flag:
+  // "shadcn"/"rnr"/"rn-paper"/"vuetify" map to --shadcn/--rnr/--rn-paper/
+  // --vuetify; every other value already resolves via the base platform
+  // flag alone (--md2/--bootstrap/--md3/--swiftui) with no extra flag
+  // needed. This is theme-mapping only — no real component source is
+  // vendored yet. See docs/layer2-layer3-plan.md, Subject 1 and 2.
+  componentLibrary?: ComponentLibrary;
   figmaManaged: boolean;
   // Only present when figmaManaged is true — the Figma file the user wants
   // this project's tokens pushed into. Not read by promote() itself (same

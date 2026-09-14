@@ -11,7 +11,10 @@
     "qa:matrix": "node scripts/qa-matrix.ts"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.10.0",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.7.0"
   },
   "dependencies": {

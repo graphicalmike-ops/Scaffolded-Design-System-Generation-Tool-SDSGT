@@ -133,7 +133,7 @@ function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPap
   if (hasShadcn) {
     rules.push(
       "shadcn/ui's own CSS variable names (`--primary`, `--card`, etc.) are aliased to this project's semantic tokens in `shadcn/theme.css`. Edit the semantic tokens and re-run `generate`, don't hand-edit `theme.css`'s values directly. *(This project targets shadcn/ui.)*",
-      "Never blindly re-run `shadcn add <component>` on a component that's already been customized — same reasoning as the general vendored-component rule above, called out explicitly since shadcn is this project's component library. *(This project targets shadcn/ui.)*",
+      "Never blindly re-run `shadcn add <component>` on a component that's already been customized — same reasoning as the general vendored-component rule above, called out explicitly since shadcn is this project's component library. If this project was scaffolded with real components vendored, check `sdsgt-vendored-components.json` at the project root first: it lists each vendored file's original content hash. A hash that still matches means the file is untouched and safe to re-vendor; a hash that no longer matches means it's been customized — leave it alone and tell the user, don't silently overwrite it. *(This project targets shadcn/ui.)*",
     );
   }
 

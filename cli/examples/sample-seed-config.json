@@ -2,6 +2,7 @@
   "scaffoldMode": "files-only",
   "targetFramework": "nextjs",
   "targetDesignLanguage": "tailwind",
+  "componentLibrary": "shadcn",
   "figmaManaged": false,
   "lightDarkMode": "both",
 

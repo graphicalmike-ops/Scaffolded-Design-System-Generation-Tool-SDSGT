@@ -133,13 +133,21 @@ export async function generateTailwindTheme(tokensDir: string, outDir: string): 
         filter: (t) => isDarkFile(t.filePath),
         // Tailwind v4 has no built-in dark-mode @theme variant — scope the
         // override under the same [data-theme="dark"] selector the plain
-        // CSS platform uses, nested inside @theme so Tailwind still reads
-        // these as theme values, not arbitrary custom properties. Style
-        // Dictionary's css/variables format accepts `selector` as an array
-        // for exactly this — properly nested with matching braces, not
-        // string concatenation (verified against the format's actual
-        // nestInSelector implementation, not assumed).
-        options: { selector: ['[data-theme="dark"]', "@theme"] },
+        // CSS platform uses. Deliberately PLAIN custom properties here, NOT
+        // nested inside another @theme block — confirmed by a real build
+        // (2026-09-12, via a scaffolded Next.js project actually compiled
+        // with Tailwind v4) that @theme is not scopable this way: Tailwind
+        // hoists any @theme block straight to the root regardless of what
+        // selector it's nested inside, so a nested `[data-theme="dark"] {
+        // @theme { ... } }` silently overwrote the light values globally
+        // instead of only applying under that selector — a real, previously
+        // undetected bug (see qa-matrix's new real-build check, below,
+        // which now catches exactly this class of bug; the old check only
+        // verified the generated file's raw text, not real compiled
+        // behavior). Plain custom properties don't have this problem —
+        // they respect the selector they're written under normally, the
+        // same way any ordinary CSS custom property does.
+        options: { selector: '[data-theme="dark"]' },
       },
     ];
     if (!hasLight) {

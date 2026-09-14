@@ -11,10 +11,13 @@
 // value assertions grounded in each generator's own narrow, documented
 // output contract, not a generic parse.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+
+import postcss from "postcss";
+import tailwindPostcss from "@tailwindcss/postcss";
 
 import type { SeedConfig } from "../../src/types/seed-config.ts";
 import type { CheckResult } from "./types.ts";
@@ -246,6 +249,86 @@ export function checkTailwind(tokensDir: string, codeOutDir: string, seed: SeedC
     if (text) {
       const b = braceBalance(text);
       results.push(b === 0 ? pass(`${file} braces balanced`, "tailwind") : fail(`${file} braces balanced`, "tailwind", "0", String(b)));
+    }
+  }
+
+  return results;
+}
+
+// Real Tailwind v4 build — catches bugs the raw-text checks above can't:
+// whether the generated CSS actually behaves correctly once run through a
+// real Tailwind compiler, not just whether the right strings appear in the
+// source file. Added 2026-09-12 after exactly this class of bug shipped
+// undetected: theme-dark.css used to nest @theme inside
+// `[data-theme="dark"]`, which Tailwind silently hoists to the root instead
+// of scoping — so dark values overwrote light ones everywhere, all the
+// time, not just under that selector. The string checks above still passed
+// throughout, since `[data-theme="dark"]` and balanced braces were both
+// present in the raw file; only actually compiling it and inspecting the
+// real output caught the bug (first exposed when a real Next.js scaffold
+// ran this CSS through Tailwind for the first time — see
+// docs/layer2-layer3-plan.md, Subject 3). The entry file is written
+// directly into codeOutDir/tailwind/ (not a separate temp location) so
+// Tailwind's own `@import "tailwindcss"` resolves against this project's
+// real node_modules — that resolution walks up from wherever the CSS file
+// sits, and codeOutDir is always a subdirectory of cli/ (verified — see
+// CLI_ROOT above), so it finds cli/node_modules/tailwindcss without any
+// copying. Deleted again in a `finally`, so it never lingers in the run's
+// output.
+export async function checkTailwindRealBuild(codeOutDir: string, seed: SeedConfig): Promise<CheckResult[]> {
+  const results: CheckResult[] = [];
+  const { hasLight, hasDark } = modeExpectations(seed);
+  const twDir = join(codeOutDir, "tailwind");
+  const entryPath = join(twDir, "_qa-real-build-entry.css");
+
+  const imports = ['@import "tailwindcss";', '@import "./theme.css";'];
+  if (hasLight) imports.push('@import "./theme-light.css";');
+  if (hasDark) imports.push('@import "./theme-dark.css";');
+  writeFileSync(entryPath, `${imports.join("\n")}\n`, "utf-8");
+
+  try {
+    const source = readFileSync(entryPath, "utf-8");
+    const { css: compiled } = await postcss([tailwindPostcss()]).process(source, { from: entryPath });
+    results.push(pass("real Tailwind v4 build compiles with no errors", "tailwind"));
+
+    if (hasLight && hasDark) {
+      // The one specific bug class this check exists to catch: a scoped
+      // override silently overwriting the default value everywhere instead
+      // of only applying under its own selector.
+      const occurrences = compiled.match(/--color-semantic-background-primary:\s*[^;}]+/g) ?? [];
+      const uniqueValues = new Set(occurrences.map((o) => o.split(":")[1].trim()));
+      results.push(
+        uniqueValues.size === 2
+          ? pass("light and dark background-primary compile to two distinct values, not one merged value", "tailwind")
+          : fail(
+              "light and dark background-primary compile to two distinct values, not one merged value",
+              "tailwind",
+              "2 distinct values",
+              `${uniqueValues.size} distinct value(s): ${[...uniqueValues].join(", ")}`,
+              "a dark override is silently overwriting light globally instead of being scoped — see theme-dark.css's selector handling in generate/tailwind.ts",
+            ),
+      );
+
+      const darkScoped = /\[data-theme=("|)dark("|)\][^{]*\{[^}]*--color-semantic-background-primary[^}]*\}/.test(compiled);
+      results.push(
+        darkScoped
+          ? pass('dark background-primary is scoped under [data-theme="dark"] in the compiled CSS', "tailwind")
+          : fail(
+              'dark background-primary is scoped under [data-theme="dark"] in the compiled CSS',
+              "tailwind",
+              '[data-theme="dark"] { ... } rule containing background-primary',
+              "no such scoped rule found in the compiled output",
+            ),
+      );
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    results.push(fail("real Tailwind v4 build compiles with no errors", "tailwind", "no errors", "Tailwind/PostCSS reported an error", message.slice(0, 500)));
+  } finally {
+    try {
+      unlinkSync(entryPath);
+    } catch {
+      // best-effort cleanup — a leftover temp entry file isn't worth failing the check over
     }
   }
 
@@ -894,6 +977,26 @@ export function checkRnPaper(tokensDir: string, codeOutDir: string, seed: SeedCo
     );
   }
 
+  // Pattern A integration snippet (docs/layer2-layer3-plan.md, Subject 2) —
+  // SETUP.md must exist and must import exactly the theme export(s) that
+  // actually exist in theme.ts, no more, no less (catches a stale snippet
+  // referencing a mode that was never generated).
+  const setupPath = join(codeOutDir, "rn-paper", "SETUP.md");
+  const setup = readIfExists(setupPath);
+  if (!setup) {
+    results.push(fail("rn-paper/SETUP.md exists", "rn-paper", "file present", "missing"));
+  } else {
+    results.push(pass("rn-paper/SETUP.md exists", "rn-paper"));
+    for (const [themeName, expected] of [["LightTheme", hasLight], ["DarkTheme", hasDark]] as const) {
+      const imported = setup.includes(`{ ${themeName} }`) || setup.includes(`{ ${themeName},`) || setup.includes(`, ${themeName} }`);
+      results.push(
+        imported === expected
+          ? pass(`SETUP.md imports ${themeName} iff it exists in theme.ts`, "rn-paper")
+          : fail(`SETUP.md imports ${themeName} iff it exists in theme.ts`, "rn-paper", String(expected), String(imported)),
+      );
+    }
+  }
+
   return results;
 }
 
@@ -973,6 +1076,31 @@ export function checkVuetify(tokensDir: string, codeOutDir: string, seed: SeedCo
       lightBg !== undefined && darkBg !== undefined && lightBg !== darkBg
         ? pass("light/dark background values differ", "vuetify")
         : fail("light/dark background values differ", "vuetify", "different values", `light=${lightBg}, dark=${darkBg}`, "possible resolution bug"),
+    );
+  }
+
+  // Pattern A integration snippet (docs/layer2-layer3-plan.md, Subject 2) —
+  // SETUP.md must exist and must import exactly the theme export(s) that
+  // actually exist in theme.ts, same discipline as checkRnPaper above.
+  const setupPath = join(codeOutDir, "vuetify", "SETUP.md");
+  const setup = readIfExists(setupPath);
+  if (!setup) {
+    results.push(fail("vuetify/SETUP.md exists", "vuetify", "file present", "missing"));
+  } else {
+    results.push(pass("vuetify/SETUP.md exists", "vuetify"));
+    for (const [themeName, expected] of [["lightTheme", hasLight], ["darkTheme", hasDark]] as const) {
+      const imported = setup.includes(`{ ${themeName} }`) || setup.includes(`{ ${themeName},`) || setup.includes(`, ${themeName} }`);
+      results.push(
+        imported === expected
+          ? pass(`SETUP.md imports ${themeName} iff it exists in theme.ts`, "vuetify")
+          : fail(`SETUP.md imports ${themeName} iff it exists in theme.ts`, "vuetify", String(expected), String(imported)),
+      );
+    }
+    const expectedDefault = hasLight ? "defaultTheme: 'light'" : "defaultTheme: 'dark'";
+    results.push(
+      setup.includes(expectedDefault)
+        ? pass("SETUP.md defaultTheme matches an actually-present mode", "vuetify")
+        : fail("SETUP.md defaultTheme matches an actually-present mode", "vuetify", expectedDefault, "different/missing"),
     );
   }
 

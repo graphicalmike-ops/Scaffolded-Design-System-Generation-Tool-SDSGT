@@ -26,7 +26,7 @@ import type { SeedConfig } from "../src/types/seed-config.ts";
 
 import { getSeedCases } from "./qa-matrix/matrix.ts";
 import { runCliCases, CLI_CASE_IDS } from "./qa-matrix/cli-cases.ts";
-import { checkCss, checkTailwind, checkBootstrap, checkMd2, checkMd3, checkSwiftui, checkShadcn, checkRnr, checkRnPaper, checkVuetify } from "./qa-matrix/checks.ts";
+import { checkCss, checkTailwind, checkTailwindRealBuild, checkBootstrap, checkMd2, checkMd3, checkSwiftui, checkShadcn, checkRnr, checkRnPaper, checkVuetify } from "./qa-matrix/checks.ts";
 import { renderTable, renderSummaryLine, writeRunResults } from "./qa-matrix/report.ts";
 import { ALL_PLATFORMS, verdictFromChecks } from "./qa-matrix/types.ts";
 import type { CaseRunResult, CheckResult, PlatformFlag, QaCase } from "./qa-matrix/types.ts";
@@ -164,6 +164,7 @@ async function runSeedCase(qc: QaCase, runDir: string, platforms: PlatformFlag[]
           const r = await generateTailwindTheme(tokensDir, codeDir);
           generatedFiles.push(...r.filesWritten);
           checks.push(...checkTailwind(tokensDir, codeDir, qc.seed));
+          checks.push(...(await checkTailwindRealBuild(codeDir, qc.seed)));
           break;
         }
         case "bootstrap": {

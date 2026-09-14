@@ -72,6 +72,75 @@ function themeColorsBlock(
   return lines.join("\n");
 }
 
+// Pattern A integration snippet (pipeline-plan.md / docs/layer2-layer3-plan.md,
+// Subject 2). Verified against Vuetify's own real installation docs
+// (packages/docs/src/pages/en/getting-started/installation.md, master
+// branch, 2026-09-11): `npm create vuetify` / create-vuetify only scaffolds
+// a brand-new project — it has no mode for adding Vuetify to an existing
+// one. No Layer 3 project exists yet for this pipeline to scaffold anyway,
+// so the correct path is the plain manual install Vuetify itself documents
+// for existing projects, not attempting to shell out to create-vuetify.
+// Deterministic — same template every run, branched only on which of
+// theme.ts's exports actually exist (hasLight/hasDark), same conditional
+// treatment as themeColorsBlock() above.
+function buildVuetifySetup(hasLight: boolean, hasDark: boolean): string {
+  const themeEntries: string[] = [];
+  if (hasLight) themeEntries.push("      light: lightTheme,");
+  if (hasDark) themeEntries.push("      dark: darkTheme,");
+  const importNames = [hasLight ? "lightTheme" : null, hasDark ? "darkTheme" : null].filter(Boolean).join(", ");
+  const defaultTheme = hasLight ? "light" : "dark";
+
+  const pluginSnippet = [
+    "```ts",
+    "import { createApp } from 'vue';",
+    "import 'vuetify/styles';",
+    "import { createVuetify } from 'vuetify';",
+    "import * as components from 'vuetify/components';",
+    "import * as directives from 'vuetify/directives';",
+    `import { ${importNames} } from './theme';`,
+    "import App from './App.vue';",
+    "",
+    "const vuetify = createVuetify({",
+    "  components,",
+    "  directives,",
+    "  theme: {",
+    `    defaultTheme: '${defaultTheme}',`,
+    "    themes: {",
+    ...themeEntries,
+    "    },",
+    "  },",
+    "});",
+    "",
+    "createApp(App).use(vuetify).mount('#app');",
+    "```",
+  ].join("\n");
+
+  return [
+    "# Vuetify — theme setup",
+    "",
+    "Generated alongside `theme.ts` — this is instructions, not itself part of",
+    "the app. `npm create vuetify` / `create-vuetify` only scaffolds a",
+    "brand-new project — it can't target an existing one (verified against",
+    "Vuetify's own installation docs, 2026-09-11) — so this is the plain manual",
+    "install Vuetify itself documents for adding it to an existing project.",
+    "This is still theme-only — no components are vendored by this step.",
+    "",
+    "## 1. Install",
+    "",
+    "```",
+    "npm install vuetify",
+    "```",
+    "",
+    "## 2. Wire it into your app's entry file",
+    "",
+    "Copy `theme.ts` (generated next to this file) into your project, then wire",
+    "it into your entry file (typically `main.ts`):",
+    "",
+    pluginSnippet,
+    "",
+  ].join("\n");
+}
+
 export function generateVuetify(tokensDir: string, outDir: string): GenerateResult {
   const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
   const primitives = color.primitive;
@@ -106,6 +175,7 @@ export function generateVuetify(tokensDir: string, outDir: string): GenerateResu
   const buildPath = join(outDir, "vuetify");
   mkdirSync(buildPath, { recursive: true });
   writeFileSync(join(buildPath, "theme.ts"), content, "utf-8");
+  writeFileSync(join(buildPath, "SETUP.md"), buildVuetifySetup(hasLight, hasDark), "utf-8");
 
-  return { filesWritten: ["vuetify/theme.ts"] };
+  return { filesWritten: ["vuetify/theme.ts", "vuetify/SETUP.md"] };
 }

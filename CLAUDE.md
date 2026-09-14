@@ -58,8 +58,7 @@ Concrete, non-obvious things worth not re-learning the hard way:
 
 ## Open questions
 
-- Which component library/libraries to support first — not chosen yet.
-- Token naming & structure conventions (how tokens are named, and how Figma variables map back to them) — deliberately not designed yet. Nothing else can really be built until this is sorted; see `pipeline-plan.md`.
+- Which framework to scaffold first (Layer 3), and how to actually vendor real components (Layer 2's harder half) — see `docs/layer2-layer3-plan.md`.
 - Squircle support — deferred until there's time to build proper per-platform drawing logic.
 
 Full list of remaining open and deferred items: see `pipeline-plan.md`.

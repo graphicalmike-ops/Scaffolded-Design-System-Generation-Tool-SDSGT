@@ -8,7 +8,9 @@ import { generateTailwindTheme } from "./generate/tailwind.ts";
 import { generateBootstrapVariables } from "./generate/bootstrap.ts";
 import { generateMd2 } from "./generate/md2.ts";
 import { generateMd3 } from "./generate/md3.ts";
+import { generateKotlinScaffoldGuide } from "./generate/kotlin-scaffold-guide.ts";
 import { generateSwiftUI } from "./generate/swiftui.ts";
+import { generateSwiftUIScaffoldGuide } from "./generate/swiftui-scaffold-guide.ts";
 import { generateShadcn } from "./generate/shadcn.ts";
 import { generateRnr } from "./generate/rnr.ts";
 import { generateRnPaper } from "./generate/rn-paper.ts";
@@ -17,6 +19,12 @@ import { writeProjectDocs } from "./generate/project-docs.ts";
 import { buildTailwindDemo, buildBootstrapDemo, buildMuiDemo, buildMd3Demo, buildSwiftUIDemo, buildShadcnDemo, buildRnrDemo, buildRnPaperDemo, buildVuetifyDemo } from "./generate/demo.ts";
 import type { SeedConfig, TargetFramework } from "./types/seed-config.ts";
 import type { FontFilesMap } from "./report/index.ts";
+import { slugFont, FONT_WEIGHTS } from "./shared/font-slug.ts";
+import { scaffoldNextjs } from "./scaffold/nextjs.ts";
+import { scaffoldVuejs } from "./scaffold/vuejs.ts";
+import { scaffoldVuejsVuetify } from "./scaffold/vuejs-vuetify.ts";
+import { scaffoldReactNative } from "./scaffold/react-native.ts";
+import { scaffoldReactNativePaper } from "./scaffold/react-native-paper.ts";
 
 // A flag with no following value (or immediately followed by another flag,
 // e.g. `--tailwind --out foo`) is a boolean flag — present means true, not
@@ -40,24 +48,16 @@ function parseArgs(argv: string[]) {
   return args;
 }
 
-// Naming convention a caller (e.g. the SDSGT-start skill, which can reach
-// the network) must follow when dropping font files for `promote` to embed:
-// <fonts-dir>/<slugified family name>-<weight>.woff2 — e.g. "Source Sans Pro"
-// weight 600 -> "source-sans-pro-600.woff2". 400/600/700 are the only
-// weights typography.primitive ever generates, so those are the only ones
-// looked up. Missing files are skipped silently — the report just falls
-// back to its default system-font stack for that family/weight.
-function slugFont(name: string): string {
-  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
+// Missing files are skipped silently — the report just falls back to its
+// default system-font stack for that family/weight. Naming convention
+// (slugFont/FONT_WEIGHTS) lives in shared/font-slug.ts since the Next.js
+// scaffold step needs to look up these exact same files later.
 function loadFontFiles(fontsDir: string | undefined, seed: SeedConfig): FontFilesMap | undefined {
   if (!fontsDir) return undefined;
   const families = [seed.primaryFont, seed.secondaryFont].filter((f): f is string => Boolean(f));
-  const weights = [400, 600, 700] as const;
   const result: FontFilesMap = {};
   for (const family of families) {
-    for (const weight of weights) {
+    for (const weight of FONT_WEIGHTS) {
       const path = join(fontsDir, `${slugFont(family)}-${weight}.woff2`);
       if (existsSync(path)) {
         result[family] ??= {};
@@ -96,9 +96,24 @@ const USAGE = [
   "    LightColorScheme/DarkColorScheme (via Google's Material Color",
   "    Utilities) plus precomputed elevation overlays. Only correct for a",
   "    Jetpack Compose Material3 project — opt-in, same reason as --tailwind.",
+  "    Also writes md3/SCAFFOLD_GUIDE.md — Kotlin/Compose has no official",
+  "    non-interactive scaffolding CLI (verified: no `android create`",
+  "    command exists, `gradle init` only makes generic Kotlin JVM apps, not",
+  "    real Android apps, and Android Studio has no headless project-",
+  "    creation mode), so there's no `scaffold --framework kotlin` step —",
+  "    this guide is Layer 3's answer instead, with your own real generated",
+  "    values already filled in. See generate/kotlin-scaffold-guide.ts.",
   "    --swiftui: also emit a Swift DesignTokens.swift with the resolved",
   "    semantic color tokens as native Color values. Only correct for a",
   "    SwiftUI native iOS project — opt-in, same reason as --tailwind.",
+  "    Also writes swiftui/Theme.swift (a real dynamic light/dark wrapper —",
+  "    DesignTokens.swift's own flat enums have no built-in switching",
+  "    mechanism) and swiftui/SCAFFOLD_GUIDE.md. Same reason as --md3's own",
+  "    guide: no official non-interactive Xcode/SwiftUI scaffolding CLI",
+  "    exists either (verified: no xcodebuild project-creation action,",
+  "    `swift package init` has no iOS-app template type, Xcode's own",
+  "    templates aren't exposed via any documented CLI). See",
+  "    generate/swiftui-scaffold-guide.ts.",
   "    --shadcn: also emit a shadcn/ui theme.css with SDSGT's semantic",
   "    tokens mapped onto shadcn's own CSS variable names (--primary,",
   "    --card, --muted, etc.) plus SDSGT status-role extensions",
@@ -142,6 +157,80 @@ const USAGE = [
   "    platform flags above. Only affects AGENTS.md's NativeWind rule, which",
   "    only applies to a React Native + Tailwind (NativeWind) project —",
   "    omitted entirely if this flag isn't passed, or isn't react-native.",
+  "",
+  '  node src/cli.ts scaffold --framework nextjs --code-dir "<dir>" --out "<dir>" [--shadcn] [--fonts-dir <dir>]',
+  "    Layer 3 (pipeline-plan.md, \"Who this is for, and the bar for 'done'\").",
+  "    Drives the official create-next-app CLI non-interactively, then layers",
+  "    this pipeline's already-generated Tailwind theme on top — colors,",
+  "    fonts, and agent-rules files all wired in, ready to `npm run dev`.",
+  "    --code-dir must point at a `generate --tailwind --framework nextjs`",
+  "    run's --out directory. --out is where the new project gets created —",
+  "    it must not already exist yet. --fonts-dir is optional and takes the",
+  "    exact same files/naming convention as promote's own --fonts-dir; if",
+  "    given, real font files get copied in and used for real (no font",
+  "    files: falls back to a system-font default for that family, same as",
+  "    promote's report.html).",
+  "    --shadcn: also drives shadcn's own CLI non-interactively (`init -d -y`",
+  "    then `add --all -y`) — every shadcn/ui component, already vendored and",
+  "    already styled with this project's real brand colors. Requires",
+  "    --code-dir to also have shadcn/theme.css (i.e. `generate --tailwind",
+  "    --shadcn --framework nextjs`, both flags together). Writes",
+  "    sdsgt-vendored-components.json (a hash per vendored file) so a future",
+  "    re-vendor can tell an untouched component from a customized one — see",
+  "    contracts-and-seeds.md, \"Next.js scaffold,\" for the full merge",
+  "    strategy and why it's a safe CSS-cascade append, not a parse/replace.",
+  "",
+  '  node src/cli.ts scaffold --framework vuejs --code-dir "<dir>" --out "<dir>" [--shadcn] [--fonts-dir <dir>]',
+  "    Drives the official create-vue CLI non-interactively, wires Tailwind",
+  "    v4 in (create-vue has no built-in --tailwind flag, so this runs its",
+  "    own npm install for tailwindcss + @tailwindcss/vite), then layers",
+  "    tokens/fonts/agent-docs on top the same way the Next.js path does.",
+  "    --code-dir must point at a `generate --tailwind --framework vuejs`",
+  "    run's --out directory. Writes a project .npmrc",
+  "    (legacy-peer-deps=true) — needed for a real, current version drift",
+  "    between create-vue's own oxlint/eslint-plugin-oxlint devDependencies,",
+  "    not something this pipeline introduced; see scaffold/vuejs.ts.",
+  "    --shadcn: drives shadcn-vue's own CLI non-interactively the same way",
+  "    --shadcn works for Next.js. Requires --code-dir to also have",
+  "    shadcn/theme.css (`generate --tailwind --shadcn --framework vuejs`).",
+  "",
+  '  node src/cli.ts scaffold --framework vuejs --vuetify --code-dir "<dir>" --out "<dir>" [--fonts-dir <dir>]',
+  "    A separate path from the Tailwind one above — drives the official",
+  "    create-vuetify CLI non-interactively (Material Design via Vuetify's",
+  "    own component styling, not Tailwind) and wires in this pipeline's",
+  "    generated Vuetify theme. --code-dir must point at a `generate",
+  "    --vuetify --framework vuejs` run's --out directory. See",
+  "    scaffold/vuejs-vuetify.ts for the full reasoning.",
+  "",
+  '  node src/cli.ts scaffold --framework react-native --code-dir "<dir>" --out "<dir>" [--rnr]',
+  "    Drives create-expo-app non-interactively, then wires NativeWind v4 in",
+  "    by hand (create-expo-app has no built-in NativeWind template). --code-",
+  "    dir must point at a `generate --rnr --framework react-native` run's",
+  "    --out directory — NOT --tailwind: NativeWind v4 has a hard peer",
+  "    dependency on Tailwind v3, incompatible with this pipeline's v4-shaped",
+  "    --tailwind output, so this reuses --rnr's already Tailwind-v3-shaped",
+  "    theme instead. No font files wired in (a real, documented gap — React",
+  "    Native needs .ttf/.otf via expo-font, not the .woff2 files this",
+  "    pipeline fetches) — see scaffold/react-native.ts for the full reasoning.",
+  "    --rnr: real React Native Reusables vendoring, built 2026-09-14 —",
+  "    reverses an earlier 'blocked' finding. RNR's own `init` really is",
+  "    still a blocked interactive wizard, but `add -a --styling-library",
+  "    nativewind` runs standalone once components.json exists (real schema,",
+  "    fetched from RNR's own template repo) and the git working tree is",
+  "    clean (a real `git add -A && git commit`, not a workaround) — both",
+  "    real, satisfiable preconditions, not keystroke-piping. Writes",
+  "    sdsgt-vendored-components.json (a hash per vendored file), same",
+  "    customization-guard treatment as shadcn/shadcn-vue. See",
+  "    scaffold/react-native.ts's runRnrAdd for the full verification detail.",
+  "",
+  '  node src/cli.ts scaffold --framework react-native --rn-paper --code-dir "<dir>" --out "<dir>"',
+  "    A separate path from NativeWind above — no Tailwind/NativeWind",
+  "    involved at all. Drives create-expo-app, installs react-native-paper",
+  "    for real, and wires this pipeline's generated MD3 theme into a real",
+  "    PaperProvider wrap. --code-dir must point at a `generate --rn-paper",
+  "    --framework react-native` run's --out directory. Icons need no extra",
+  "    install (Expo bundles vector icons already). See",
+  "    scaffold/react-native-paper.ts for the full reasoning.",
 ].join("\n");
 
 function runPromote(rest: string[]) {
@@ -224,8 +313,28 @@ async function runGenerate(rest: string[]) {
   // has to say so explicitly.
   const bootstrapFiles = args.bootstrap !== undefined ? generateBootstrapVariables(tokensDir, outDir).filesWritten : [];
   const md2Files = args.md2 !== undefined ? generateMd2(tokensDir, outDir).filesWritten : [];
+  // Kotlin/Jetpack Compose has no official non-interactive scaffolding CLI
+  // (verified 2026-09-14 — see generate/kotlin-scaffold-guide.ts's file
+  // header), so --md3 also writes a real, filled-in SCAFFOLD_GUIDE.md next
+  // to Color.kt instead of a separate `scaffold --framework kotlin` step
+  // that would have nothing to drive — same "Pattern A" treatment already
+  // used for Vuetify/RN Paper's own SETUP.md.
   const md3Files = args.md3 !== undefined ? generateMd3(tokensDir, outDir).filesWritten : [];
+  const kotlinGuideFiles =
+    args.md3 !== undefined
+      ? generateKotlinScaffoldGuide(outDir, readFileSync(join(outDir, "md3", "Color.kt"), "utf-8")).filesWritten
+      : [];
+  // SwiftUI/Xcode has no official non-interactive scaffolding CLI either
+  // (verified 2026-09-14, same conclusion as Kotlin — see
+  // generate/swiftui-scaffold-guide.ts's file header), so --swiftui also
+  // writes a real Theme.swift (dynamic light/dark wrapper, since
+  // DesignTokens.swift's own flat enums have no built-in switching
+  // mechanism) plus SCAFFOLD_GUIDE.md, same "Pattern A" treatment as Kotlin.
   const swiftuiFiles = args.swiftui !== undefined ? generateSwiftUI(tokensDir, outDir).filesWritten : [];
+  const swiftuiGuideFiles =
+    args.swiftui !== undefined
+      ? generateSwiftUIScaffoldGuide(outDir, readFileSync(join(outDir, "swiftui", "DesignTokens.swift"), "utf-8")).filesWritten
+      : [];
   const shadcnFiles = args.shadcn !== undefined ? generateShadcn(tokensDir, outDir).filesWritten : [];
   const rnrFiles = args.rnr !== undefined ? generateRnr(tokensDir, outDir).filesWritten : [];
   const rnPaperFiles = args["rn-paper"] !== undefined ? generateRnPaper(tokensDir, outDir).filesWritten : [];
@@ -257,10 +366,77 @@ async function runGenerate(rest: string[]) {
     hasVuetify: args.vuetify !== undefined,
   }).filesWritten;
 
-  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...swiftuiFiles, ...shadcnFiles, ...rnrFiles, ...rnPaperFiles, ...vuetifyFiles, ...demoFiles, ...docFiles];
+  const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...kotlinGuideFiles, ...swiftuiFiles, ...swiftuiGuideFiles, ...shadcnFiles, ...rnrFiles, ...rnPaperFiles, ...vuetifyFiles, ...demoFiles, ...docFiles];
   console.log(`Wrote ${allFiles.length} code-token file(s) to ${outDir}/:`);
   for (const f of allFiles) {
     console.log(`  - ${f}`);
+  }
+}
+
+function runScaffold(rest: string[]) {
+  const args = parseArgs(rest);
+  const framework = args.framework;
+  const codeDir = args["code-dir"];
+  const outDir = args.out;
+  const fontsDir = args["fonts-dir"];
+  const shadcn = args.shadcn !== undefined;
+  const vuetify = args.vuetify !== undefined;
+  const rnPaper = args["rn-paper"] !== undefined;
+  const rnr = args.rnr !== undefined;
+
+  if (!codeDir || !outDir) {
+    console.error(`scaffold needs both --code-dir and --out.\n\n${USAGE}`);
+    process.exit(1);
+  }
+  if (framework !== "nextjs" && framework !== "vuejs" && framework !== "react-native") {
+    console.error(
+      `--framework ${framework ?? "(none)"} isn't built yet — only "nextjs", "vuejs", and "react-native" are today. ` +
+        "See docs/layer2-layer3-plan.md, Subject 3, for what's still open.",
+    );
+    process.exit(1);
+  }
+
+  try {
+    if (framework === "nextjs") {
+      const { filesWritten, projectDir } = scaffoldNextjs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined });
+      console.log(`\nScaffolded a Next.js project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+    } else if (framework === "vuejs" && vuetify) {
+      const { filesWritten, projectDir } = scaffoldVuejsVuetify({ codeDir, outDir, fontsDir });
+      console.log(`\nScaffolded a Vue.js + Vuetify project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+    } else if (framework === "vuejs") {
+      const { filesWritten, projectDir } = scaffoldVuejs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined });
+      console.log(`\nScaffolded a Vue.js project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:5173");
+    } else if (rnPaper) {
+      const { filesWritten, projectDir } = scaffoldReactNativePaper({ codeDir, outDir });
+      console.log(`\nScaffolded an Expo + React Native Paper project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm start`, then press i/a/w or scan the QR code with Expo Go");
+    } else {
+      const { filesWritten, projectDir } = scaffoldReactNative({ codeDir, outDir, componentLibrary: rnr ? "rnr" : undefined });
+      console.log(`\nScaffolded an Expo + NativeWind project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm start`, then press i/a/w or scan the QR code with Expo Go");
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`scaffold failed: ${detail}`);
+    process.exit(1);
   }
 }
 
@@ -271,6 +447,8 @@ async function main() {
     runPromote(rest);
   } else if (command === "generate") {
     await runGenerate(rest);
+  } else if (command === "scaffold") {
+    runScaffold(rest);
   } else {
     console.error(`Unknown command: ${command ?? "(none)"}.\n\n${USAGE}`);
     process.exit(1);

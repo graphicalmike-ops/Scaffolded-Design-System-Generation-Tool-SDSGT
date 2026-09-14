@@ -98,6 +98,108 @@ function colorsLiteral(
   return lines.join("\n");
 }
 
+// Pattern A integration snippet (pipeline-plan.md / docs/layer2-layer3-plan.md,
+// Subject 2). React Native Paper has no scaffolding/init CLI at all — theming
+// is always a manual PaperProvider wrap (verified against Paper's own
+// "Getting started"/"Theming" guides, oss.callstack.com/react-native-paper,
+// 2026-09-11). No Layer 3 project exists yet for this pipeline to wire into,
+// so this writes instructions + a real, ready-to-copy code snippet next to
+// theme.ts, not something this pipeline runs itself. Deterministic — same
+// template every run, branched only on which of theme.ts's exports actually
+// exist (hasLight/hasDark), same conditional treatment as colorsLiteral()
+// above.
+function buildRnPaperSetup(hasLight: boolean, hasDark: boolean): string {
+  let providerSnippet: string;
+  if (hasLight && hasDark) {
+    providerSnippet = [
+      "```tsx",
+      "import * as React from 'react';",
+      "import { PaperProvider } from 'react-native-paper';",
+      "import { useColorScheme } from 'react-native';",
+      "import { LightTheme, DarkTheme } from './theme';",
+      "import App from './App';",
+      "",
+      "export default function Root() {",
+      "  const colorScheme = useColorScheme();",
+      "  const theme = colorScheme === 'dark' ? DarkTheme : LightTheme;",
+      "",
+      "  return (",
+      "    <PaperProvider theme={theme}>",
+      "      <App />",
+      "    </PaperProvider>",
+      "  );",
+      "}",
+      "```",
+    ].join("\n");
+  } else {
+    const themeName = hasDark ? "DarkTheme" : "LightTheme";
+    providerSnippet = [
+      "```tsx",
+      "import * as React from 'react';",
+      "import { PaperProvider } from 'react-native-paper';",
+      `import { ${themeName} } from './theme';`,
+      "import App from './App';",
+      "",
+      "export default function Root() {",
+      "  return (",
+      `    <PaperProvider theme={${themeName}}>`,
+      "      <App />",
+      "    </PaperProvider>",
+      "  );",
+      "}",
+      "```",
+    ].join("\n");
+  }
+
+  return [
+    "# React Native Paper — theme setup",
+    "",
+    "Generated alongside `theme.ts` — this is instructions, not itself part of",
+    "the app. React Native Paper has no scaffolding/init CLI (verified against",
+    "Paper's own \"Getting started\"/\"Theming\" guides, oss.callstack.com/",
+    "react-native-paper, 2026-09-11) — theming is always a manual `PaperProvider`",
+    "wrap, so follow these steps once in your real Expo/React Native project.",
+    "This is still theme-only — no components are vendored by this step.",
+    "",
+    "## 1. Install",
+    "",
+    "```",
+    "npx expo install react-native-paper react-native-safe-area-context",
+    "```",
+    "",
+    "Not using Expo? `npm install react-native-paper react-native-safe-area-context`",
+    "instead. Vector icons ship as part of the Expo package already — no extra",
+    "install needed there. Outside Expo, also install `react-native-vector-icons`",
+    "per Paper's own install guide.",
+    "",
+    "## 2. Babel (optional — production bundle-size optimization)",
+    "",
+    "Add to `babel.config.js`:",
+    "",
+    "```js",
+    "module.exports = function (api) {",
+    "  api.cache(true);",
+    "  return {",
+    "    presets: ['babel-preset-expo'],",
+    "    env: {",
+    "      production: {",
+    "        plugins: ['react-native-paper/babel'],",
+    "      },",
+    "    },",
+    "  };",
+    "};",
+    "```",
+    "",
+    "## 3. Wrap your app root in PaperProvider",
+    "",
+    "Copy `theme.ts` (generated next to this file) into your project, then wire",
+    "it into your root component:",
+    "",
+    providerSnippet,
+    "",
+  ].join("\n");
+}
+
 export function generateRnPaper(tokensDir: string, outDir: string): GenerateResult {
   const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
   const primitives = color.primitive;
@@ -159,6 +261,7 @@ export function generateRnPaper(tokensDir: string, outDir: string): GenerateResu
   const buildPath = join(outDir, "rn-paper");
   mkdirSync(buildPath, { recursive: true });
   writeFileSync(join(buildPath, "theme.ts"), content, "utf-8");
+  writeFileSync(join(buildPath, "SETUP.md"), buildRnPaperSetup(hasLight, hasDark), "utf-8");
 
-  return { filesWritten: ["rn-paper/theme.ts"] };
+  return { filesWritten: ["rn-paper/theme.ts", "rn-paper/SETUP.md"] };
 }
