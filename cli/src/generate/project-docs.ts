@@ -123,9 +123,21 @@ export interface AgentRulesOptions {
   // rule — see generate/vuetify.ts and contracts-and-seeds.md, "Vuetify
   // theming."
   hasVuetify: boolean;
+  // True only when --tailwind ran AND its resolved spacing preset turned
+  // out non-linear (see generate/tailwind.ts's computeLinearSpacingConstant
+  // — currently just the "bootstrap" spacing rhythm: 0/4/8/16/24/48px isn't
+  // a constant-per-step scale). Gates the disclosure that fractional/
+  // unlisted spacing utilities in real vendored shadcn/ui or shadcn-vue
+  // component source (px-2.5, gap-1.5, any un-named integer key) fall back
+  // to Tailwind's own raw 4px default instead of this project's chosen
+  // rhythm — a structural limit of Tailwind v4's single-multiplier
+  // architecture, not an unfinished fix. Linear presets don't need this
+  // rule: they get a real `--spacing` base-variable binding instead (see
+  // tailwind.ts), so there's nothing left to disclose.
+  hasUnboundTailwindSpacing: boolean;
 }
 
-function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify }: AgentRulesOptions): string {
+function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify, hasUnboundTailwindSpacing }: AgentRulesOptions): string {
   const rules: string[] = [
     "Never blindly re-run a vendored component's install/add command once it's been customized. There's no merge logic — it silently overwrites. Mark customized files clearly.",
   ];
@@ -141,6 +153,7 @@ function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPap
     rules.push(
       "RNR's CSS variables (`--primary`, `--card`, etc., in `rnr/global.css`) and `rnr/constants.ts`'s `NAV_THEME` must stay in sync — they're generated from the same tokens, but are two separate files. Edit the semantic tokens and re-run `generate`, don't hand-edit either file directly. *(This project targets React Native Reusables.)*",
       "Never blindly re-run RNR's own component-add command on a component that's already been customized — same reasoning as the general vendored-component rule above. *(This project targets React Native Reusables.)*",
+      "This project's `tailwind.config.js` only extends `colors` and `borderRadius` — it does not override `theme.spacing` at all. NativeWind here runs on Tailwind v3 (a hard peer-dependency requirement, not this project's choice), a fully-enumerated JS config, not v4's CSS-native `@theme` block — so every spacing utility class (`p-8`, `gap-4`, `px-2.5`, all of them, not just fractional ones) currently uses Tailwind v3's own stock default scale unconditionally, regardless of the spacing-rhythm preset chosen at seed input. Don't assume any spacing class here reflects this project's tokens — verify against `spacing.json` before trusting a class name. *(This project targets React Native Reusables.)*",
     );
   }
 
@@ -164,6 +177,11 @@ function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPap
   if (hasTailwind) {
     rules.push(
       "`tailwind-merge` doesn't reliably override classes across differently-shaped Tailwind groups (e.g. `px-4` vs. `pl-5`) — component variants need to account for this rather than assuming overrides always \"just work.\" *(This project targets Tailwind.)*",
+    );
+  }
+  if (hasUnboundTailwindSpacing) {
+    rules.push(
+      "This project's spacing-rhythm preset is not a constant-multiplier scale, so Tailwind v4's own `--spacing` base variable can't fully represent it — only this project's explicitly-named `--spacing-N` keys (see `tailwind/theme.css`) bind correctly. Any spacing utility outside that exact set — every fractional class (`px-2.5`, `gap-1.5`, ...) and any integer key `spacing.json` doesn't list — silently falls back to Tailwind's own raw default (4px per step), not this project's chosen rhythm. This shows up in real, unmodified vendored shadcn/ui (or shadcn-vue) component source, which uses exactly these classes. Prefer this project's own named spacing tokens over a bare fractional utility class where precision matters. *(This project targets Tailwind, with a non-linear spacing preset.)*",
     );
   }
 

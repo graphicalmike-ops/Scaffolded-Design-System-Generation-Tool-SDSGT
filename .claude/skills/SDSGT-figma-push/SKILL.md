@@ -1,17 +1,20 @@
 ---
 name: SDSGT-figma-push
-description: Push a project's generated token spec into a connected Figma file as variables/styles, using the figma-push-plan.json that `promote` writes. Triggers when the SDSGT-start flow reaches its Figma-push step (figmaManaged is true), or when the user explicitly asks to push/sync tokens into Figma for an already-promoted project.
+description: Push a project's generated token spec — and, once a component library has been vendored, its real components too — into a connected Figma file, using the figma-push-plan.json and figma-components-push-plan.json that `promote`/`scaffold` write. Triggers when the SDSGT-start flow reaches its Figma-push step (figmaManaged is true, right after `promote` for tokens and again right after `scaffold` for components), or when the user explicitly asks to push/sync tokens or components into Figma for an already-promoted/scaffolded project.
 ---
 
-# SDSGT-figma-push: replay a project's token spec into Figma
+# SDSGT-figma-push: replay a project's tokens and components into Figma
 
 This skill is the "push" half of the pipeline described in `pipeline-plan.md`
 ("Tool architecture") — the mechanical execution of a plan the CLI core
 already computed, over the `mcp__figma-southleft__*` tools. It does not
-decide *what* to create (that's `cli/src/promote/figma-plan.ts`, run
-automatically by every `promote`, written as `figma-push-plan.json`
-alongside `report.html`) — it only replays that plan against a live Figma
-connection, verifying what actually landed rather than assuming success.
+decide *what* to create (that's `cli/src/promote/figma-plan.ts` for tokens,
+run automatically by every `promote`, written as `figma-push-plan.json`
+alongside `report.html`; and `cli/src/scaffold/figma-components-plan.ts` for
+components, run automatically by `scaffold --shadcn`, written as
+`figma-components-push-plan.json` in the scaffolded project's root) — it
+only replays whichever plan(s) exist against a live Figma connection,
+verifying what actually landed rather than assuming success.
 
 **Why this has to be a skill, not CLI code:** Figma's variable-write
 surface is only reachable through an MCP tool running inside an agent
@@ -36,6 +39,15 @@ work — see `pipeline-plan.md`, "Token-sync staying live."
 
 - `tokensDir` — the folder `promote` wrote to (contains
   `figma-push-plan.json`, `color.primitive.json`, etc.).
+- `projectDir` — the scaffolded project's own root (`scaffold`'s `--out`
+  directory), if one exists. Only relevant for step 7 (components) — contains
+  `figma-components-push-plan.json`, written automatically whenever
+  `scaffold` ran with `--shadcn`. Not every project has this: `files-only`
+  mode, a non-vendoring component library (Vuetify/RN Paper/bootstrap-
+  vue-next/React-Bootstrap/MUI — installed-and-wired, no vendored source to
+  read), or a framework this plan generator doesn't cover yet (only Next.js
+  + shadcn/ui today — see step 7's own note) all mean step 7 has nothing to
+  do. That's expected, not an error.
 - `figmaFileUrl` — the seed's `figmaFileUrl` (e.g.
   `https://www.figma.com/design/<fileKey>/<name>`), collected during seed
   input when `figmaManaged` was chosen (see `SDSGT-start`'s question table,
@@ -298,3 +310,146 @@ perfectly clean when it wasn't. Remind the user this is a one-time push
 whole point), but re-running `promote`/`generate` doesn't pull those edits
 back, and re-running this skill against the same file creates duplicates
 rather than updating in place (see "This is a first push" above).
+
+If `projectDir` has no `figma-components-push-plan.json` (no `--shadcn`
+scaffold ran, or `files-only` mode), stop here — steps 1–6 above are the
+whole job for this project. Otherwise, continue to step 7 automatically in
+the same session, right after `scaffold` completes — this isn't a separate
+thing the user has to remember to ask for, same as steps 1–6 aren't.
+
+### 7. Push components (only when `figma-components-push-plan.json` exists)
+
+**Real ground truth, proven 2026-09-15 against a real test file, not
+assumed:** this plan's shape (see `cli/src/scaffold/figma-components-plan.ts`
+for the generator) currently covers exactly one component — shadcn/ui's
+`Button`, one size, rest states only (see that file's own header for the
+full scope decision). Extending this to more components is real, separate
+CLI work (a new plan-generator entry, not a change to this skill) — this
+step's job is only ever to replay whatever the plan actually contains,
+never to improvise a component the plan doesn't describe.
+
+**Read `<projectDir>/figma-components-push-plan.json`** (shape:
+`FigmaComponentsPushPlan` in `figma-components-plan.ts`) — `components`,
+`notes`. Say the `notes` array's contents to the user in plain language
+before pushing (e.g. "Button's padding is 2px off shadcn's own exact
+value — nearest real token, not a fabricated one").
+
+**Variables must already exist** — this step only ever binds to variable
+names the plan references; it never creates new ones. If step 1–6 didn't
+run in this same session (e.g. the user asks for a components-only push
+later), verify first via `figma_get_variables({ format: "summary",
+refreshCache: true })` that a real token push already exists in the target
+file. If it doesn't, stop and say so — there's nothing to bind to.
+
+For each item in `plan.components`, in order:
+
+1. **Say the skipped-variant reasons in plain language before building**
+   (e.g. "skipping the Secondary variant — this project's tokens don't
+   have a secondary brand color"). Don't build a fallback/approximation for
+   a skipped variant — the plan already decided it shouldn't exist.
+2. **Build each real variant as its own auto-layout frame**, via
+   `figma_execute` (no dedicated component-creation tool exists — same
+   "raw Plugin API through `figma_execute`" treatment as text/effect
+   styles in step 5). Real, verified pattern:
+   ```js
+   const allVars = await figma.variables.getLocalVariablesAsync();
+   const getVar = (name) => {
+     const v = allVars.find(v => v.name === name && v.variableCollectionId === TOKENS_COLLECTION_ID);
+     if (!v) throw new Error("Missing variable: " + name); // fail loudly — never silently skip a binding
+     return v;
+   };
+   function bindPaint(color, variable) {
+     return figma.variables.setBoundVariableForPaint({ type: "SOLID", color }, "color", variable);
+   }
+   const frame = figma.createFrame();
+   frame.layoutMode = "HORIZONTAL";
+   frame.primaryAxisSizingMode = "AUTO";   // hug contents
+   frame.counterAxisSizingMode = "AUTO";
+   frame.primaryAxisAlignItems = "CENTER";
+   frame.counterAxisAlignItems = "CENTER";
+   frame.setBoundVariable("paddingLeft", getVar(item.paddingHorizontalVariable));
+   frame.setBoundVariable("paddingRight", getVar(item.paddingHorizontalVariable));
+   frame.setBoundVariable("paddingTop", getVar(item.paddingVerticalVariable));
+   frame.setBoundVariable("paddingBottom", getVar(item.paddingVerticalVariable));
+   frame.setBoundVariable("topLeftRadius", getVar(item.radiusVariable));
+   frame.setBoundVariable("topRightRadius", getVar(item.radiusVariable));
+   frame.setBoundVariable("bottomLeftRadius", getVar(item.radiusVariable));
+   frame.setBoundVariable("bottomRightRadius", getVar(item.radiusVariable));
+   // fills/strokes bind on the PAINT, never via frame.setBoundVariable("fills", ...)
+   // directly — that call fails outright (confirmed live). Omit fills entirely
+   // for a transparent variant (Ghost/Link) rather than binding a fake one.
+   if (variant.fillVariable) frame.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.fillVariable))];
+   else frame.fills = [];
+   if (variant.strokeVariable) {
+     frame.strokes = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.strokeVariable))];
+     frame.strokeWeight = 1; // or bind to a real border-width/* variable if the plan names one
+   }
+   ```
+   Text child, same call:
+   ```js
+   await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
+   const text = figma.createText();
+   text.fontName = { family: fontFamilyValue, style: "Medium" };
+   text.characters = component.defaultLabel;
+   text.setBoundVariable("fontSize", getVar(component.fontSizeVariable));
+   text.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.textVariable))];
+   try { text.setBoundVariable("fontFamily", getVar(component.fontFamilyVariable)); } catch (e) {} // real Figma versions support this; wrap anyway
+   if (variant.underline) text.textDecoration = "UNDERLINE";
+   frame.appendChild(text);
+   ```
+3. **Convert each variant frame to a component, then `combineAsVariants`** —
+   name each component `"<variantPropertyName>=<variant.name>"` (e.g.
+   `"Variant=Destructive"`) before combining; Figma derives the variant
+   property and its options from that naming convention automatically, no
+   separate property-creation call needed for the variant axis itself.
+   ```js
+   const comp = figma.createComponentFromNode(frame);
+   comp.name = `${plan.variantPropertyName}=${variant.name}`;
+   // ...repeat per variant, then:
+   const componentSet = figma.combineAsVariants(components, section); // section = a real Section, never blank canvas — see figma_execute's own housekeeping rules
+   componentSet.name = component.name; // "Button"
+   componentSet.layoutMode = "HORIZONTAL"; // combineAsVariants stacks at (0,0) — always re-layout after
+   componentSet.itemSpacing = 24;
+   ```
+4. **Add the label as a real TEXT component property**, bound to every
+   variant's text node — not just set on one:
+   ```js
+   const propName = componentSet.addComponentProperty(component.labelPropertyName, "TEXT", component.defaultLabel);
+   for (const variant of componentSet.children) {
+     variant.findOne(n => n.type === "TEXT").componentPropertyReferences = { characters: propName };
+   }
+   ```
+5. **Validate before moving to the next component — never batch multiple
+   components in one unvalidated pass:**
+   - `figma_capture_screenshot` (plugin `exportAsync`, NOT
+     `figma_take_screenshot` — that one goes through the REST API and can
+     fail with a stale/expired token even when the live Desktop Bridge
+     connection itself is fine, confirmed live) on the component set.
+     Check every variant is visible and legible — a same-tone fill/text
+     pairing (real bug hit live: `status/error`-derived fill +
+     `status/error-text` text rendered invisible red-on-red, because that
+     token aliases to the exact same variable as `status/error` itself —
+     see `contracts-and-seeds.md`'s shadcn theming section for the same
+     trap already documented for code output) is a silent, screenshot-only
+     failure — nothing in the API call itself errors.
+   - Create one real instance, call `setProperties()` to swap both the
+     variant and the label, and screenshot that too — confirms the
+     component actually behaves like a component, not just that the base
+     shapes look right in isolation. Remove the validation instance
+     afterward (`instance.remove()`) — it's a check, not part of the
+     deliverable.
+6. **Report back**: which component(s) got built, how many real variants
+   each has (and which were skipped, with the plan's own stated reason),
+   and — if any binding needed a nearest-token approximation per the plan's
+   `notes` — say so plainly, the same "don't present an approximate result
+   as pixel-perfect" honesty step 6 already applies to tokens.
+
+**Not yet built, real and disclosed:** re-running this step against a file
+that already has a `Button` component set will create a second,
+differently-named one (same "first push, not sync" limitation as tokens,
+above) — no update-in-place logic exists yet. Also not yet built: any
+component beyond Button, any size beyond `default`, and any framework's
+component source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files and
+RNR's React Native source both need their own real verification before
+this same mechanism can be trusted against them — don't assume the parser
+generalizes without checking).

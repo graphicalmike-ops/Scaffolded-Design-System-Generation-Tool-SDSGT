@@ -50,6 +50,37 @@ import { basename, dirname, join } from "node:path";
 
 import { copyAgentDocs, parseFontFamiliesFromPlainCss, buildFontFaces } from "../shared/scaffold-common.ts";
 
+// Reads a single `--<name>: <N>px;` custom property out of the base
+// plain-CSS platform's own css/tokens.css — same reasoning as
+// scaffold/nextjs-mui.ts's own readCssVarPx. Real gap fix, 2026-09-15: this
+// pipeline's own corner-roundness preset never reached Vuetify's real
+// components before this, only color did.
+function readCssVarPx(tokensCss: string, name: string): number {
+  const match = tokensCss.match(new RegExp(`--${name}:\\s*([\\d.]+)px;`));
+  if (!match) throw new Error(`No --${name} custom property found in css/tokens.css — was it written by this pipeline's \`generate\`?`);
+  return parseFloat(match[1]);
+}
+
+// create-vuetify's own default template already writes this file (a
+// commented-out `@use 'vuetify/settings' with (...)` example) and already
+// wires `vite-plugin-vuetify`'s own `styles.configFile` option at it (see
+// writeViteConfig, below) — confirmed live: vite-plugin-vuetify transforms
+// the plain `import 'vuetify/styles'` already in the generated plugin file
+// to route through this Sass settings file automatically, no separate
+// import change needed. `$border-radius-root` is Vuetify's own real base
+// Sass variable (confirmed against its own real `$rounded` scale:
+// `sm: root/2, null: root, lg: root*2, xl: root*6`) — every one of
+// Vuetify's own `rounded-*` utility classes and every component's own
+// default radius derives from this single value. Bound to `radius.md`
+// (the same token this pipeline's Bootstrap generator already treats as
+// the "base" radius, not `lg`) — verified with a real build: the compiled
+// CSS's own `.v-btn` rule showed the exact real pixel value, not an
+// approximation.
+function writeSettingsScss(outDir: string, borderRadius: number): void {
+  const content = ["@forward 'vuetify/settings' with (", `  $border-radius-root: ${borderRadius}px`, ");", ""].join("\n");
+  writeFileSync(join(outDir, "src", "styles", "settings.scss"), content, "utf-8");
+}
+
 export interface ScaffoldVuejsVuetifyOptions {
   codeDir: string; // output of `generate --vuetify --framework vuejs`
   outDir: string; // where the new project gets created — must not already exist
@@ -351,13 +382,17 @@ export function scaffoldVuejsVuetify(opts: ScaffoldVuejsVuetifyOptions): Scaffol
   writeVuetifyPlugin(outDir, hasLight, hasDark);
   filesWritten.push("src/plugins/vuetify.ts");
 
-  const families = parseFontFamiliesFromPlainCss(readFileSync(tokensCssPath, "utf-8"));
+  const tokensCss = readFileSync(tokensCssPath, "utf-8");
+  const families = parseFontFamiliesFromPlainCss(tokensCss);
   const { css: fontFaceCss, filesWritten: fontFiles } = buildFontFaces(families, fontsDir, join(outDir, "public", "fonts"));
   filesWritten.push(...fontFiles);
   writeThemeCss(outDir, families, fontFaceCss);
   filesWritten.push("src/styles/theme.css");
   writeMainTs(outDir);
   filesWritten.push("src/main.ts");
+
+  writeSettingsScss(outDir, readCssVarPx(tokensCss, "radius-md"));
+  filesWritten.push("src/styles/settings.scss");
 
   rewriteAppVue(outDir, projectName);
   filesWritten.push("src/App.vue");

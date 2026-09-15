@@ -37,9 +37,27 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { hexFromArgb } from "@material/material-color-utilities";
 
 import type { GenerateResult } from "./index.ts";
-import { readJson, resolveAlias, type ColorPrimitivesFile } from "./read-tokens.ts";
+import { readJson, resolveAlias, type ColorPrimitivesFile, type RadiusFile } from "./read-tokens.ts";
 import { buildScheme, surfaceColorAtElevation } from "./md3.ts";
 import { LIGHT_FILE, DARK_FILE } from "./index.ts";
+
+// roundness wired 2026-09-15 — a real gap found while building the Figma
+// component push: this pipeline's own corner-roundness preset never
+// reached Paper's real components before this, only color did. Real,
+// verified structural constraint, not a workaround-able one: Paper's own
+// `roundness` is a SINGLE global multiplier every component multiplies by
+// its own different internal factor (confirmed against Paper's real
+// Button.tsx source: `borderRadius = (isV3 ? 5 : 1) * roundness`, i.e. 5x
+// for the MD3 theme this generator targets) — there is no per-component
+// override this generator can set instead. Calibrated so Button — the one
+// component this pipeline's own Figma component push also builds, for the
+// same shadcn/ui-equivalent reference point — matches `radius.md` exactly;
+// every OTHER Paper component (Card, Chip, TextInput, ...) derives its own
+// radius from this same roundness value using ITS OWN real multiplier, so
+// only Button is guaranteed to land on this pipeline's real token exactly.
+// Must be disclosed wherever this library gets selected — see
+// SDSGT-start's own "Suggestion logic" and step 8/10 disclosure text.
+const PAPER_MD3_BUTTON_RADIUS_MULTIPLIER = 5;
 
 // Paper's real MD3Theme.colors role set (verified against
 // oss.callstack.com/react-native-paper/docs/guides/theming and Paper's own
@@ -202,11 +220,16 @@ function buildRnPaperSetup(hasLight: boolean, hasDark: boolean): string {
 
 export function generateRnPaper(tokensDir: string, outDir: string): GenerateResult {
   const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
+  const { radius } = readJson<RadiusFile>(join(tokensDir, "radius.json"));
   const primitives = color.primitive;
   const primaryHex = primitives.brand["600"].$value;
   const secondaryHex = primitives["brand-secondary"]?.["600"].$value;
   const neutralHex = primitives.neutral["600"].$value;
   const errorHex = primitives.status["1"]["200"].$value;
+
+  // See PAPER_MD3_BUTTON_RADIUS_MULTIPLIER's own comment above for why
+  // this only guarantees Button, not every Paper component.
+  const roundness = parseFloat(radius.md.$value) / PAPER_MD3_BUTTON_RADIUS_MULTIPLIER;
 
   const hasLight = existsSync(join(tokensDir, LIGHT_FILE));
   const hasDark = existsSync(join(tokensDir, DARK_FILE));
@@ -220,6 +243,7 @@ export function generateRnPaper(tokensDir: string, outDir: string): GenerateResu
       [
         "export const LightTheme = {",
         "  ...DefaultLightTheme,",
+        `  roundness: ${roundness},`,
         "  colors: {",
         colorsLiteral(scheme, backdrop),
         "  },",
@@ -235,6 +259,7 @@ export function generateRnPaper(tokensDir: string, outDir: string): GenerateResu
       [
         "export const DarkTheme = {",
         "  ...DefaultDarkTheme,",
+        `  roundness: ${roundness},`,
         "  colors: {",
         colorsLiteral(scheme, backdrop),
         "  },",
@@ -250,7 +275,10 @@ export function generateRnPaper(tokensDir: string, outDir: string): GenerateResu
     "// contracts-and-seeds.md, \"React Native Paper theming,\" for the exact",
     "// derivation. Spreads Paper's own MD3LightTheme/MD3DarkTheme as the",
     "// base (per Paper's own documented customization pattern) and",
-    "// overrides only `colors` — fonts/roundness/etc. stay Paper's defaults.",
+    "// overrides `colors` plus `roundness` (radius.md / 5 — Paper's own real",
+    "// Button formula, see PAPER_MD3_BUTTON_RADIUS_MULTIPLIER's comment in",
+    "// this file — guarantees Button matches, not every Paper component).",
+    "// Fonts stay Paper's defaults — a separate, still-open gap.",
     "",
     "import { MD3LightTheme as DefaultLightTheme, MD3DarkTheme as DefaultDarkTheme } from 'react-native-paper';",
     "",

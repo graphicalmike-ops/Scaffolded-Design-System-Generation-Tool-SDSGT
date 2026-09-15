@@ -56,6 +56,7 @@ import {
   parseFontFamiliesFromTailwindCss,
   buildFontFaces,
 } from "../shared/scaffold-common.ts";
+import { buildFigmaComponentsPushPlan } from "./figma-components-plan.ts";
 
 export interface ScaffoldNextjsOptions {
   codeDir: string; // output of `generate --tailwind [--shadcn] --framework nextjs`
@@ -360,6 +361,15 @@ export function scaffoldNextjs(opts: ScaffoldNextjsOptions): ScaffoldResult {
     const manifestJson = buildVendoredManifest(outDir);
     writeFileSync(join(outDir, "sdsgt-vendored-components.json"), manifestJson, "utf-8");
     filesWritten.push("sdsgt-vendored-components.json");
+
+    // Written unconditionally once real components are vendored — same
+    // "harmless if unused" treatment as figma-push-plan.json (promote/
+    // figma-plan.ts): the actual Figma push only happens if figmaManaged
+    // is true and a live connection exists, but computing the plan costs
+    // nothing either way. See scaffold/figma-components-plan.ts.
+    const componentsPlan = buildFigmaComponentsPushPlan(codeDir, join(outDir, "src", "components", "ui"));
+    writeFileSync(join(outDir, "figma-components-push-plan.json"), `${JSON.stringify(componentsPlan, null, 2)}\n`, "utf-8");
+    filesWritten.push("figma-components-push-plan.json");
   } else {
     writeGlobalsCss(appDir, { hasDark, fontFaceCss });
     filesWritten.push("src/app/globals.css");

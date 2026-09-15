@@ -37,3 +37,6 @@ Thumbs.db
 .cache/
 .tmp/
 .temp/
+
+# Tool artifacts
+.playwright-mcp/

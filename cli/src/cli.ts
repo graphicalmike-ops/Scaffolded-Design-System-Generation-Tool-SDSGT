@@ -21,8 +21,11 @@ import type { SeedConfig, TargetFramework } from "./types/seed-config.ts";
 import type { FontFilesMap } from "./report/index.ts";
 import { slugFont, FONT_WEIGHTS } from "./shared/font-slug.ts";
 import { scaffoldNextjs } from "./scaffold/nextjs.ts";
+import { scaffoldNextjsBootstrap } from "./scaffold/nextjs-bootstrap.ts";
+import { scaffoldNextjsMui } from "./scaffold/nextjs-mui.ts";
 import { scaffoldVuejs } from "./scaffold/vuejs.ts";
 import { scaffoldVuejsVuetify } from "./scaffold/vuejs-vuetify.ts";
+import { scaffoldVuejsBootstrap } from "./scaffold/vuejs-bootstrap.ts";
 import { scaffoldReactNative } from "./scaffold/react-native.ts";
 import { scaffoldReactNativePaper } from "./scaffold/react-native-paper.ts";
 
@@ -179,6 +182,35 @@ const USAGE = [
   "    re-vendor can tell an untouched component from a customized one — see",
   "    contracts-and-seeds.md, \"Next.js scaffold,\" for the full merge",
   "    strategy and why it's a safe CSS-cascade append, not a parse/replace.",
+  "    Also writes figma-components-push-plan.json (Button only today) —",
+  "    consumed by SDSGT-figma-push's own step 7 to push real components",
+  "    into Figma, not just tokens. See scaffold/figma-components-plan.ts.",
+  "",
+  '  node src/cli.ts scaffold --framework nextjs --bootstrap --code-dir "<dir>" --out "<dir>" [--fonts-dir <dir>]',
+  "    A separate path — drives create-next-app with --no-tailwind, then",
+  "    wires in Sass + Bootstrap + React-Bootstrap + bootstrap-icons instead",
+  "    of Tailwind. --code-dir must point at a `generate --bootstrap",
+  "    --framework nextjs` run's --out directory. Installs a real `sass`",
+  "    devDependency and compiles this pipeline's generated _variables.scss",
+  "    into Bootstrap's own Sass before React-Bootstrap's components render —",
+  "    no vendored component files (react-bootstrap is a plain npm package,",
+  "    not a copy-paste library like shadcn). See scaffold/nextjs-bootstrap.ts",
+  "    for the full reasoning, including why every page rendering a",
+  "    react-bootstrap component needs its own \"use client\" directive.",
+  "",
+  '  node src/cli.ts scaffold --framework nextjs --md2 --code-dir "<dir>" --out "<dir>" [--fonts-dir <dir>]',
+  "    Another separate path — drives create-next-app with --no-tailwind,",
+  "    then wires in MUI (Material UI) instead: @mui/material-nextjs's",
+  "    AppRouterCacheProvider for Emotion SSR, a real createTheme() using",
+  "    this pipeline's generated mui/palette.ts, and @mui/icons-material for",
+  "    icons. --code-dir must point at a `generate --md2 --framework nextjs`",
+  "    run's --out directory — NOT --md3: MD3 generates Kotlin/Compose",
+  "    Color.kt, nothing web-consumable, so a Next.js Material Design seed",
+  "    (MD3 or MD2) should always generate with --md2 regardless of which",
+  "    one was picked (see the SDSGT-start skill's own step 8 fix, same",
+  "    session). No vendored component files — MUI is a plain npm package.",
+  "    See scaffold/nextjs-mui.ts for the full reasoning, including why MUI's",
+  "    own components already ship \"use client\" (unlike react-bootstrap).",
   "",
   '  node src/cli.ts scaffold --framework vuejs --code-dir "<dir>" --out "<dir>" [--shadcn] [--fonts-dir <dir>]',
   "    Drives the official create-vue CLI non-interactively, wires Tailwind",
@@ -201,6 +233,18 @@ const USAGE = [
   "    generated Vuetify theme. --code-dir must point at a `generate",
   "    --vuetify --framework vuejs` run's --out directory. See",
   "    scaffold/vuejs-vuetify.ts for the full reasoning.",
+  "",
+  '  node src/cli.ts scaffold --framework vuejs --bootstrap --code-dir "<dir>" --out "<dir>" [--fonts-dir <dir>]',
+  "    Another separate path — drives create-vue (same base CLI as the",
+  "    Tailwind path, since bootstrap-vue-next has no scaffolding CLI of its",
+  "    own) then wires in Sass + Bootstrap + bootstrap-vue-next instead of",
+  "    Tailwind. --code-dir must point at a `generate --bootstrap --framework",
+  "    vuejs` run's --out directory. Installs a real `sass` devDependency and",
+  "    compiles this pipeline's generated _variables.scss into Bootstrap's",
+  "    own Sass before bootstrap-vue-next's component CSS loads — no vendored",
+  "    component files (bootstrap-vue-next is a plain npm package, not a",
+  "    copy-paste library like shadcn). See scaffold/vuejs-bootstrap.ts for",
+  "    the full reasoning.",
   "",
   '  node src/cli.ts scaffold --framework react-native --code-dir "<dir>" --out "<dir>" [--rnr]',
   "    Drives create-expo-app non-interactively, then wires NativeWind v4 in",
@@ -306,7 +350,13 @@ async function runGenerate(rest: string[]) {
   // project. Generate doesn't know the original seed's targetFramework/
   // targetDesignLanguage (Promote's output carries no such metadata), so
   // the caller has to say so explicitly rather than Generate guessing.
-  const tailwindFiles = args.tailwind !== undefined ? (await generateTailwindTheme(tokensDir, outDir)).filesWritten : [];
+  const tailwindResult = args.tailwind !== undefined ? await generateTailwindTheme(tokensDir, outDir) : null;
+  const tailwindFiles = tailwindResult?.filesWritten ?? [];
+  // Only meaningful when --tailwind ran and its spacing preset turned out
+  // non-linear (currently just "bootstrap") — see tailwind.ts's own header
+  // and computeLinearSpacingConstant. Feeds AGENTS.md's disclosure so it
+  // never claims a binding that didn't actually happen.
+  const hasUnboundTailwindSpacing = tailwindResult !== null && !tailwindResult.spacingBaseVar.applied;
 
   // Same opt-in reasoning as --tailwind above — Generate can't tell what the
   // original seed's targetFramework/targetDesignLanguage was, so the caller
@@ -364,6 +414,7 @@ async function runGenerate(rest: string[]) {
     hasRnr: args.rnr !== undefined,
     hasRnPaper: args["rn-paper"] !== undefined,
     hasVuetify: args.vuetify !== undefined,
+    hasUnboundTailwindSpacing,
   }).filesWritten;
 
   const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...kotlinGuideFiles, ...swiftuiFiles, ...swiftuiGuideFiles, ...shadcnFiles, ...rnrFiles, ...rnPaperFiles, ...vuetifyFiles, ...demoFiles, ...docFiles];
@@ -381,6 +432,8 @@ function runScaffold(rest: string[]) {
   const fontsDir = args["fonts-dir"];
   const shadcn = args.shadcn !== undefined;
   const vuetify = args.vuetify !== undefined;
+  const bootstrap = args.bootstrap !== undefined;
+  const md2 = args.md2 !== undefined;
   const rnPaper = args["rn-paper"] !== undefined;
   const rnr = args.rnr !== undefined;
 
@@ -397,7 +450,21 @@ function runScaffold(rest: string[]) {
   }
 
   try {
-    if (framework === "nextjs") {
+    if (framework === "nextjs" && bootstrap) {
+      const { filesWritten, projectDir } = scaffoldNextjsBootstrap({ codeDir, outDir, fontsDir });
+      console.log(`\nScaffolded a Next.js + React-Bootstrap project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+    } else if (framework === "nextjs" && md2) {
+      const { filesWritten, projectDir } = scaffoldNextjsMui({ codeDir, outDir, fontsDir });
+      console.log(`\nScaffolded a Next.js + MUI project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+    } else if (framework === "nextjs") {
       const { filesWritten, projectDir } = scaffoldNextjs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined });
       console.log(`\nScaffolded a Next.js project at ${projectDir}/:`);
       for (const f of filesWritten) {
@@ -411,6 +478,13 @@ function runScaffold(rest: string[]) {
         console.log(`  - ${f}`);
       }
       console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+    } else if (framework === "vuejs" && bootstrap) {
+      const { filesWritten, projectDir } = scaffoldVuejsBootstrap({ codeDir, outDir, fontsDir });
+      console.log(`\nScaffolded a Vue.js + bootstrap-vue-next project at ${projectDir}/:`);
+      for (const f of filesWritten) {
+        console.log(`  - ${f}`);
+      }
+      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:5173");
     } else if (framework === "vuejs") {
       const { filesWritten, projectDir } = scaffoldVuejs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined });
       console.log(`\nScaffolded a Vue.js project at ${projectDir}/:`);

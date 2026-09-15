@@ -84,11 +84,11 @@ is that plan's implementation in the actual conversation.
 
 | # | Question to ask | Options / channel | Notes & disclosures | → `SeedConfig` field |
 |---|---|---|---|---|
-| 1 | Full new project, or just the design-system files? | Menu — `Scaffold` / `Design system files only` | Framework is still asked next either way — see row 2. `promote` never reads this either way. Real scaffolding exists for Next.js + Tailwind; for Vue.js (both its Tailwind path and its Material Design/Vuetify path); and for React Native/Expo (both its Tailwind/NativeWind path and its Material Design/React Native Paper path) — see step 10, "Running the flow," and "Known gaps." Kotlin and SwiftUI are both real exceptions, not "no effect" cases: neither has an official scaffolding CLI at all (Android/Compose and Xcode/SwiftUI, checked independently, same conclusion), so `generate` itself always writes a real setup guide (`md3/SCAFFOLD_GUIDE.md` or `swiftui/SCAFFOLD_GUIDE.md`) regardless of this answer — see step 9. Only Bootstrap-flavored combinations still record this answer with genuinely no effect. | `scaffoldMode` (`"scaffold"` \| `"files-only"`) |
+| 1 | Full new project, or just the design-system files? | Menu — `Scaffold` / `Design system files only` | Framework is still asked next either way — see row 2. `promote` never reads this either way. Real scaffolding exists for Next.js (its Tailwind path and its Bootstrap/React-Bootstrap path); for Vue.js (its Tailwind path, its Material Design/Vuetify path, and its Bootstrap/bootstrap-vue-next path); and for React Native/Expo (both its Tailwind/NativeWind path and its Material Design/React Native Paper path) — see step 10, "Running the flow," and "Known gaps." Kotlin and SwiftUI are both real exceptions, not "no effect" cases: neither has an official scaffolding CLI at all (Android/Compose and Xcode/SwiftUI, checked independently, same conclusion), so `generate` itself always writes a real setup guide (`md3/SCAFFOLD_GUIDE.md` or `swiftui/SCAFFOLD_GUIDE.md`) regardless of this answer — see step 9. Next.js with MD3/MD2 (MUI) still records this answer with genuinely no effect (React Native has no Bootstrap option at all — see "Suggestion logic"). | `scaffoldMode` (`"scaffold"` \| `"files-only"`) |
 | 2 | Which framework/platform? | Menu — `Next.js` (React, web) / `Vue.js` (web) / `React Native (Expo)` / `Kotlin` (Jetpack Compose, native Android) / `SwiftUI` (native iOS) | Fixed list. Selecting one marks a suggested Component library in row 4 (see "Suggestion logic," below). `promote` doesn't branch on this — every token preset it writes is platform-agnostic DTCG JSON. `generate` does read it, though, to pick between `--swiftui` and everything else, and to set `--framework` — see "Running the flow," step 8. | `targetFramework` |
 | 3 | Which design language? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Marks Type-scale (row 13), Spacing (row 14), Border-roundness (row 15), Shadows (row 18), and Component library (row 4) as "(Suggested)" further down — see "Suggestion logic." Not read by `promote` — each preset choice below is independent, this just seeds their defaults. `generate` does read it, to pick which platform flag to pass (`--tailwind`/`--bootstrap`/`--md2`/`--md3`) — see "Running the flow," step 8. | `targetDesignLanguage` |
-| 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and only for five combinations so far (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. MUI/React-Bootstrap never go past the theme file today, scaffolded or not. | `componentLibrary` |
-| 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. | `figmaManaged` (boolean) |
+| 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current geometry-fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries** — see "Known gaps," **"Geometry fidelity, by library"** for the exact, current per-library state (color/radius bound exactly for four of the five installed-and-wired libraries; React Native Paper's radius is real-but-structurally-approximate outside Button; button padding isn't bound for any of the five yet; shadcn/ui and shadcn-vue's spacing is now real-token-bound for every spacing preset except `bootstrap`'s non-linear scale; RNR's spacing isn't bound at all yet, a real, separate, not-yet-scoped gap). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma today — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
+| 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. **Disclose here, not just at row 4 or step 10, since this is the question a "will my components show up in Figma too?" assumption actually attaches to**: `Figma-managed` today only ever pushes real component structure for one combination — `nextjs` + `tailwind` + shadcn/ui — everything else (every other framework/library, `files-only` mode) still gets tokens-as-variables in Figma, nothing more, regardless of this answer. See "Known gaps," "Figma component push — scope, not just fidelity" for the exact current wording. | `figmaManaged` (boolean) |
 | 5a | *(only if row 5 = `Figma-managed`)* Paste the Figma file link to push tokens into | In chat — a Figma URL | Must actually look like a Figma URL (`figma.com/design/...` or `figma.com/file/...`) — if what's pasted doesn't parse as one, say so and ask again rather than guessing a file key out of it. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a, for when this actually gets used — pushing happens right after `promote`, using this link, not at seed-input time. | `figmaFileUrl` (string, optional — only set when row 5 is `Figma-managed`) |
 | 5b | *(only if row 5 = `Figma-managed`)* Which Figma MCP should the push use? | Menu — `Official Figma MCP` / `Southleft MCP` | A real choice, collected for real — but say plainly, right after they answer, that **during this internal-testing phase the push always runs through the Southleft MCP regardless of which one is picked.** Official Figma MCP is a real, confirmed integration (`mcp.figma.com`, OAuth-gated), it's just never been exercised from this project, so nothing runs against it yet — same "ask it anyway, disclose the gap" treatment as row 4's component library. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaMcp` (`"official"` \| `"southleft"`, optional — only set when row 5 is `Figma-managed`) |
 | 5c | *(only if row 5 = `Figma-managed`)* Is that Figma file on a free plan or a paid plan? | Menu — `Free plan` / `Paid plan` | Unlike row 5b, **this one actually changes what gets built**: on a free plan, Figma caps a variable collection at one mode with no error raised, so the push uses two separate collections (`Tokens - Light`/`Tokens - Dark`) instead of one collection with two real modes. Only matters if row 6 ends up being `Both Light and Dark mode` — say so if the user seems unsure why this is being asked before row 6. If they don't know which plan they're on, tell them to check figma.com/files → their workspace name → look for "Free"/"Professional"/"Organization"/"Enterprise" in the plan badge, rather than guessing for them. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaPlan` (`"free"` \| `"paid"`, optional — only set when row 5 is `Figma-managed`) |
@@ -149,11 +149,42 @@ override any of the four independently — they don't have to move together.
 
 ## Known gaps (say these to the user, don't paper over them)
 
-- **`scaffoldMode` now DOES have a real effect — for five combinations.**
+- **`scaffoldMode` now DOES have a real effect — for eight combinations.**
   Picking `Scaffold` triggers a real `scaffold` step (see step 10, below)
   when `targetFramework`/`targetDesignLanguage` is one of:
   - `nextjs` + `tailwind` — `cli/src/scaffold/nextjs.ts`, driving
     `create-next-app` non-interactively.
+  - `nextjs` + `bootstrap` — `cli/src/scaffold/nextjs-bootstrap.ts`, built
+    right after the Vue.js Bootstrap addition below closed the same gap
+    there. Same base CLI as the Tailwind path (`create-next-app`), driven
+    with `--no-tailwind` instead (confirmed current convention: Tailwind
+    now defaults ON, so this needs the real negation flag) plus the same
+    real Sass build pattern as Vue.js's own Bootstrap path (`generate
+    --bootstrap`'s `_variables.scss` compiled before Bootstrap's own Sass).
+    No component files get vendored — react-bootstrap is a plain npm
+    package, and it ships no `"use client"` directive of its own (confirmed:
+    open, unresolved upstream issue), so any file rendering one needs its
+    own directive — this scaffold's own proof-of-tokens page has one. See
+    `docs/layer2-layer3-plan.md`, Subject 3, for the full build detail.
+  - `nextjs` + `md3` or `md2` — `cli/src/scaffold/nextjs-mui.ts`, built right
+    after, closing the very last "not built" line in this pipeline's own
+    Layer 3 tracking. Same base CLI again (`create-next-app --no-tailwind`),
+    wires in `@mui/material-nextjs`'s `AppRouterCacheProvider` (a real,
+    Next.js-major-specific subpath — `v16-appRouter` for the Next.js 16.x
+    `create-next-app@latest` installs today, confirmed against the
+    package's own real `exports` map, not its docs page's still-`v15`
+    example) plus a real `createTheme()` using `generate --md2`'s own
+    `palette.ts`. **`md3` routes here too, not to `--md3`** — see step 8's
+    own real fix, same session: `generate --md3` is Kotlin/Compose-only,
+    nothing web-consumable, so a Next.js Material Design seed always
+    generates with `--md2` regardless of which of the two was picked, same
+    "either one means Material Design" routing Vue.js's own Vuetify path
+    already uses. One genuine, verified difference from react-bootstrap:
+    MUI's own components (`Button`, `ThemeProvider`, every icon) already
+    ship their own `"use client"` directive, so this scaffold's page needs
+    none of its own. See `docs/layer2-layer3-plan.md`, Subject 3, for the
+    full build detail, including a real font-family string-escaping bug
+    this work found and fixed.
   - `vuejs` + `tailwind` — `cli/src/scaffold/vuejs.ts`, driving `create-vue`
     non-interactively (Tailwind wired in by hand, since create-vue has no
     built-in `--tailwind` flag the way `create-next-app` does).
@@ -163,6 +194,18 @@ override any of the four independently — they don't have to move together.
     styling instead of Tailwind. (`md3`/`md2` are otherwise MUI/Compose
     territory elsewhere in this table — for Vue.js specifically, either one
     means "Material Design," which routes to Vuetify.)
+  - `vuejs` + `bootstrap` — `cli/src/scaffold/vuejs-bootstrap.ts`, built
+    2026-09-14. Closer to the `tailwind` path than to Vuetify's in one way
+    (same base CLI — `create-vue` — since bootstrap-vue-next has no
+    scaffolding CLI of its own, confirmed against its real npm/GitHub
+    source) but still a genuinely separate design language: wires in a real
+    `sass` devDependency and compiles this pipeline's generated
+    `_variables.scss` into Bootstrap's own Sass (the "Lean Sass Imports"
+    pattern Bootstrap's own docs prescribe) before bootstrap-vue-next's own
+    component CSS loads, instead of Tailwind. No component files get
+    vendored — bootstrap-vue-next is a plain npm package, not a copy-paste
+    library. See `docs/layer2-layer3-plan.md`, Subject 4, for the full
+    build detail.
   - `react-native` + `tailwind` — `cli/src/scaffold/react-native.ts`,
     driving `create-expo-app` non-interactively, then wiring NativeWind v4
     in by hand. **Real, load-bearing exception:** this does NOT use
@@ -179,11 +222,11 @@ override any of the four independently — they don't have to move together.
     handling above.
 
   See `docs/layer2-layer3-plan.md`, Subjects 3–5, for the full build detail
-  on each. Every other framework, and every other framework/design-language
-  combination (Next.js with Bootstrap/MD3/MD2, Vue.js with Bootstrap,
-  React Native with Bootstrap), still has nothing built — say plainly that
-  picking `Scaffold` for those combinations doesn't trigger any scaffolding
-  yet.
+  on each. **This is now every framework/design-language combination this
+  pipeline can actually reach** — React Native's only remaining gap
+  (Bootstrap) isn't a missing scaffold, it's that Bootstrap has no React
+  Native option at all (see "Suggestion logic"), so there's no seed that
+  could ever select it.
 
   **Two real exceptions worth knowing before step 10: `kotlin` and
   `swiftui` are not in the list above, but neither is a plain "nothing
@@ -204,7 +247,7 @@ override any of the four independently — they don't have to move together.
   theme object do on their own, so this fills that real gap with working
   code, not just prose describing the gap.
 - **`componentLibrary` now DOES have a real effect on `generate` — and, for
-  one combination, on `scaffold` too.** `shadcn/ui`/`shadcn-vue`, `RNR`,
+  three combinations, on `scaffold` too.** `shadcn/ui`/`shadcn-vue`, `RNR`,
   `React Native Paper`, and `Vuetify` each add an extra `generate` flag
   (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) that writes that library's
   theme file (CSS variables or a theme object) mapped from SDSGT's tokens —
@@ -213,15 +256,13 @@ override any of the four independently — they don't have to move together.
   gets its theming for free from the base platform flag alone (`--md2` for
   MUI, `--bootstrap` for React-Bootstrap/bootstrap-vue-next, `--md3` for
   Jetpack Compose Material3, `--swiftui` for SwiftUI native components) —
-  no extra flag exists or is needed for those. **For every library except
-  shadcn/ui, shadcn-vue, Vuetify, and React Native Paper, none of this
-  vendors real component source or runs a real install** — no
-  `npm install <library>`'s component-add equivalent, no component files
-  written anywhere in the user's project, just a theme file. Say this
-  plainly for MUI/React-Bootstrap: the pick shapes a theme file, not
-  actual installed/styled components.
+  no extra flag exists or is needed for those. **Only `Jetpack Compose
+  Material3` and `SwiftUI native components` still get purely a theme file
+  from `generate` itself** — every other option now also gets real
+  component behavior once the project is actually scaffolded (see the
+  eight exceptions below).
 
-  **Five exceptions, each only when the project also gets scaffolded
+  **Eight exceptions, each only when the project also gets scaffolded
   (step 10) with a matching framework/design-language combination:**
   - **shadcn/ui on Next.js + Tailwind (`--shadcn`, built 2026-09-12, Layer 2
     Pattern B)**, **shadcn-vue on Vue.js + Tailwind (`--shadcn`, built
@@ -244,21 +285,140 @@ override any of the four independently — they don't have to move together.
     this took an extra investigation step; don't overstate it as fragile —
     the mechanism itself (`add` with real flags) is exactly as solid as
     shadcn's own `add --all`.
-  - **Vuetify on Vue.js + Material Design (`--vuetify`, built 2026-09-14)**
-    and **React Native Paper on React Native + Material Design
-    (`--rn-paper`, built 2026-09-14)** — a different shape of "real," since
-    neither is a copy-paste library: `npm install vuetify`/
-    `react-native-paper` runs for real, and `createVuetify()`/
-    `PaperProvider` gets wired for real into the generated project, using
-    the real generated theme colors. No component source files get copied
-    anywhere — the whole point of a complete package like Vuetify or Paper
-    is that you import components from it directly, not vendor them. Don't
-    describe this the same way as the three vendoring cases above; say
-    plainly it's "installed and wired," not "vendored."
+  - **Vuetify on Vue.js + Material Design (`--vuetify`, built 2026-09-14)**,
+    **React Native Paper on React Native + Material Design (`--rn-paper`,
+    built 2026-09-14)**, **bootstrap-vue-next on Vue.js + Bootstrap (built
+    2026-09-14)**, **React-Bootstrap on Next.js + Bootstrap (built right
+    after)**, and **MUI on Next.js + Material Design (built right after
+    that, closing the last "not built" line in Layer 3)** — a different
+    shape of "real," since none of the five is a copy-paste library:
+    `npm install vuetify`/`react-native-paper`/`bootstrap-vue-next`/
+    `react-bootstrap`/`@mui/material` runs for real, and
+    `createVuetify()`/`PaperProvider`/`createBootstrap()`/a real `<Button>`
+    import get wired for real into the generated project, using the real
+    generated theme colors. No component source files get copied anywhere —
+    the whole point of a complete package like these five is that you
+    import components from it directly, not vendor them. Don't describe
+    this the same way as the three vendoring cases above; say plainly it's
+    "installed and wired," not "vendored." React-Bootstrap has one real
+    wrinkle MUI doesn't: it ships no `"use client"` directive of its own
+    (confirmed: open, unresolved upstream issue), so any file rendering one
+    needs its own directive — MUI's own components (verified: a real 2023
+    MUI blog post on exactly this) already ship the directive themselves,
+    so a Next.js + MUI page needs none of its own.
 
   A `files-only` run, or a `Scaffold` run for a framework/language
   combination step 10 doesn't support, still only gets that library's theme
-  file — same as every other library, for all five of these.
+  file — same as every other library, for all eight of these.
+- **Geometry fidelity, by library — real, current, verified 2026-09-15,
+  not assumed.** Color has always been bound exactly for every library that
+  gets real theming. Radius and spacing/padding are different — until
+  2026-09-15 only Bootstrap-family's radius was ever bound to this
+  pipeline's own tokens; everything else silently used the library's own
+  default geometry regardless of the corner-roundness/spacing-rhythm
+  presets picked at seed input. **Say the real current state below to the
+  user before they pick a library (row 4) AND again right before the step
+  that actually applies it (step 8/10)** — never let Figma or the real app
+  show a property that looks token-driven but isn't:
+  - **React-Bootstrap / bootstrap-vue-next — radius exact, padding now
+    exact too (fixed 2026-09-15).** `$border-radius-*` and `$btn-padding-y`/
+    `$btn-padding-x` are both real Bootstrap Sass variables this pipeline
+    now binds to the nearest real spacing/radius token (not always pixel-
+    identical to Bootstrap's own literal default, since a preset's own
+    scale doesn't always land exactly where Bootstrap's default does — see
+    `generate/bootstrap.ts`'s own `nearestSpacingPx`). **Still not bound:**
+    `$btn-font-size` — button text size is still Bootstrap's own default,
+    not this pipeline's type-scale token.
+  - **MUI — radius exact, for every component (fixed 2026-09-15).**
+    `theme.shape.borderRadius` is a single real value MUI's own components
+    (Button, Card, Paper, ...) all read directly — bound to `radius.md`.
+    **Still not bound:** Button's own padding (MUI doesn't derive it from
+    `theme.spacing` by default; needs a real `styleOverrides` addition, not
+    done), and the broader typography *size* scale (font-*family* is
+    bound; MUI's own h1–h6/body pixel sizes are still MUI's defaults, not
+    this pipeline's type-scale tokens) — found while writing this
+    disclosure, not yet fixed.
+  - **Vuetify — radius exact, for every component (fixed 2026-09-15, and
+    genuinely pixel-exact, not a nearest-preset approximation)** —
+    `$border-radius-root` is a real Sass variable every one of Vuetify's
+    own `rounded-*` classes and component defaults derive from
+    proportionally; `create-vuetify`'s own template already ships a real
+    `src/styles/settings.scss` + `sass-embedded` dependency this pipeline
+    now writes real content into, no new pipeline needed. **Still not
+    bound:** button padding, and the same typography-size-scale gap MUI
+    has (Vuetify's own generator has always been colors-only for
+    typography too).
+  - **React Native Paper — radius exact for Button ONLY; every other
+    component approximates, and this is a real structural ceiling, not an
+    unfinished fix.** Paper's own `roundness` is a single global multiplier
+    every component type multiplies by its OWN different internal factor
+    (confirmed against Paper's real `Button.tsx` source: `borderRadius =
+    5 * roundness` for the MD3 theme this pipeline targets) — there is no
+    per-component override this pipeline can set instead. Calibrated so
+    Button matches `radius.md` exactly (the same reference component this
+    pipeline's Figma component push also builds); Card/Chip/TextInput/etc.
+    each derive a DIFFERENT, non-matching radius from that same value,
+    using their own real multipliers. **Always say this one plainly and
+    specifically** — this is the one case in this whole list where "wait
+    for a future fix" isn't the honest framing; Paper's own architecture
+    doesn't allow a fuller fix without per-component style overrides this
+    pipeline doesn't build today. Padding is also not bound at all.
+  - **shadcn/ui, shadcn-vue — radius was always fine, spacing had a real,
+    silent bug, fixed 2026-09-15.** Unlike the five above, these vendor
+    real component *source files* directly — real, unmodified `button.tsx`/
+    `Button.vue` uses raw Tailwind spacing classes (`h-8`, `px-2.5`,
+    `gap-1.5`). Tailwind v4 resolves any of these that ISN'T an explicit
+    named override via its own base `--spacing` variable
+    (`calc(var(--spacing) * N)`) — this pipeline never wrote that variable
+    at all, so every project silently used Tailwind's raw 4px default
+    regardless of the spacing-rhythm preset actually chosen. Confirmed with
+    a real compiled build before fixing, and confirmed the fix with a real
+    browser's computed style on a real vendored `Button`, for both
+    frameworks. **Now real-token-bound for every spacing preset whose scale
+    is a constant multiplier** (`tailwind`/`md3`/`md2` — all 4px/step).
+    **Still not bound, and structurally can't be**: the `bootstrap` spacing
+    preset (0/4/8/16/24/48px — not a constant-multiplier scale), so its
+    fractional/unlisted spacing utilities still silently use Tailwind's raw
+    4px default. Radius was never affected — `--radius` was always a
+    single real value, not part of this bug. Button *padding* itself
+    (distinct from spacing tokens generally) is real-token-bound wherever
+    the component's own classes land on a bound key.
+  - **RNR — different mechanism, real gap, disclosed not fixed
+    2026-09-15.** NativeWind here is pinned to Tailwind v3 (a hard
+    peer-dependency requirement, not this pipeline's choice), a
+    fully-enumerated JS config object, not v4's CSS base-multiplier system
+    — so the shadcn bug above can't literally occur the same way. But this
+    pipeline's own generated `tailwind.config.js` for RNR has never
+    overridden `theme.spacing` at all — every RNR/NativeWind project uses
+    Tailwind v3's own stock default spacing scale unconditionally, for
+    every spacing class (not just fractional ones), regardless of the
+    chosen preset. A real fix is possible in principle but is separate,
+    larger, not-yet-scoped work — say this plainly if `componentLibrary` is
+    `rnr`, don't imply spacing is token-driven there.
+  - **Kotlin (Jetpack Compose) / SwiftUI — a different category, not on
+    this list's own scale.** There is no automated component library or
+    application step for either — `generate --md3`/`--swiftui` produce
+    correct token files and a real `SCAFFOLD_GUIDE.md`, but every component
+    gets built by a human (or an AI coding agent) following that guide by
+    hand. Whether tokens end up "completely applied" depends entirely on
+    how carefully that happens, every single time — it's not a fixed,
+    disclosable gap the way the others above are, it's fully manual by
+    design. Say this plainly if `targetFramework` is `kotlin` or `swiftui`:
+    fidelity here is a property of how the guide gets followed, not
+    something this pipeline can bind or fail to bind.
+- **Figma component push — scope, not just fidelity.** Everything above is
+  about whether an already-*applied* component's geometry matches its real
+  tokens. This is a separate question: which libraries get a component
+  *pushed to Figma* at all. Today, only one does — `nextjs` + `tailwind` +
+  shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s own real
+  scope: Button only, one size). Every other combination — the other seven
+  "real theming" combinations from row 4, `files-only` mode, Kotlin/SwiftUI
+  — gets tokens pushed to Figma as variables when `figmaManaged` is true
+  (see below), but no component ever shows up there, illustrative or
+  otherwise. **Say this plainly wherever it's relevant**: at row 4 (so the
+  pick is informed) and at row 5 (so a `Figma-managed` choice doesn't carry
+  an assumption it doesn't earn) — don't let a user discover this by
+  noticing Figma stayed empty after a scaffold finished.
 - **`figmaManaged` now DOES have a real effect** — unlike the two fields
   above, this is no longer a stored-for-later field. When it's
   `Figma-managed`, row 5a's Figma link gets used right after `promote`
@@ -424,6 +584,19 @@ override any of the four independently — they don't have to move together.
      `scaffold --framework react-native` needs on their own. Passing
      `--tailwind`/`--md2`/`--md3` here too wouldn't break anything, it would
      just generate an extra file nothing reads — skip it.
+   - **`targetFramework` is `nextjs` AND `targetDesignLanguage` is `md3` OR
+     `md2` → always `--md2`, never `--md3`.** A real, load-bearing exception
+     found and fixed 2026-09-14, alongside the Next.js + MUI scaffold this
+     pairs with (`scaffold --framework nextjs --md2`): `--md3` generates
+     Kotlin/Jetpack Compose `Color.kt` (confirmed by reading
+     `generate/md3.ts`'s own header — real HCT tonal palettes for
+     `androidx.compose.material3`, nothing web-consumable at all), so
+     passing it for a Next.js project would wire Kotlin files into a React
+     app. For Next.js specifically, either Material Design pick means
+     "MUI," same as Vue.js's own MD3/MD2 → Vuetify routing above (see
+     `ComponentLibrary`'s own `"mui"` comment in `seed-config.ts`: `// Next.js
+     + MD3/MD2`) — this was always the intent, just never wired into this
+     flag-picking step until now.
    - Otherwise, whichever flag matches `targetDesignLanguage`: `tailwind` →
      `--tailwind`, `bootstrap` → `--bootstrap`, `md2` → `--md2`, `md3` →
      `--md3`.
@@ -445,6 +618,33 @@ override any of the four independently — they don't have to move together.
    specimens in the system-font fallback, even if step 5 fetched real font
    files for `promote`'s `report.html` — a known inconsistency between the
    two reports, not something to try to work around here.
+
+   **Right before running this command, restate the real geometry-fidelity
+   gap from row 4's own disclosure for whichever `componentLibrary` was
+   picked — five "installed and wired" libraries (`mui`, `vuetify`,
+   `rn-paper`, `react-bootstrap`, `bootstrap-vue-next`) plus `shadcn`/RNR
+   now too — don't assume the earlier mention at seed input was enough.**
+   This is the actual moment the design system gets applied to real
+   components; say plainly, in the moment, exactly what will and won't be
+   token-driven (e.g. for React Native Paper: "Button's corners will match
+   your real radius token exactly; every other Paper component — Card,
+   Chip, TextInput — will use a different, approximated radius derived
+   from the same value, and that's a real limit of Paper's own theming
+   API, not something this run will fix"; for shadcn/shadcn-vue with a
+   `bootstrap` spacing preset: "spacing tokens you've named explicitly are
+   bound, but any spacing utility class outside that set — fractional
+   ones especially — will fall back to Tailwind's own default, not your
+   chosen rhythm"; for RNR: "spacing isn't token-driven at all here yet —
+   this project will use NativeWind's own default spacing regardless of
+   your spacing-rhythm choice"). See "Known gaps," "Geometry fidelity, by
+   library," for the exact current wording per library — don't paraphrase
+   it into something vaguer.
+
+   **If `figmaManaged` is true, also restate the Figma-push-scope note here
+   (not just geometry fidelity)** — unless this run is `nextjs` + `tailwind`
+   + `--shadcn`, no component will be pushed to Figma regardless of how
+   this step goes; only tokens will. See "Known gaps," "Figma component
+   push — scope, not just fidelity."
    ```
    node src/cli.ts generate --tokens-dir "out/DTCG Token spec (non-consumables)/<short-project-slug>" --out "out/Code tokens (consumables)/<short-project-slug>" --<platform-flag> [--<component-library-flag>] --framework <targetFramework>
    ```
@@ -506,11 +706,16 @@ override any of the four independently — they don't have to move together.
      token names already wired in, not a generic pattern the user has to
      adapt themselves. Same unconditional-regardless-of-`scaffoldMode`
      treatment as Kotlin's guide.
-10. *(Only if row 1 = `Scaffold`)* Real scaffolding exists for five
-    `targetFramework`/`targetDesignLanguage` combinations so far:
+10. *(Only if row 1 = `Scaffold`)* Real scaffolding exists for eight
+    `targetFramework`/`targetDesignLanguage` combinations — every
+    combination this pipeline's seed input can actually produce:
     - `nextjs` + `tailwind`
+    - `nextjs` + `bootstrap` (React-Bootstrap)
+    - `nextjs` + `md3` or `md2` (MUI — see step 8's own `md3`→`--md2`
+      routing fix, same session)
     - `vuejs` + `tailwind`
     - `vuejs` + `md3` or `md2` (Vue.js's "Material Design" path — Vuetify)
+    - `vuejs` + `bootstrap` (bootstrap-vue-next)
     - `react-native` + `tailwind` (NativeWind)
     - `react-native` + `md3` or `md2` (React Native's "Material Design" path
       — React Native Paper)
@@ -524,13 +729,11 @@ override any of the four independently — they don't have to move together.
     `swiftui/Theme.swift` (SwiftUI): neither framework has an automatable
     scaffold step by design (no official non-interactive CLI exists to
     drive, for either — see step 9's own notes), and that guide is each
-    one's real, filled-in answer already sent, not a placeholder. For every
-    other unmatched combination (Next.js/Vue.js/React Native with
-    Bootstrap, etc.), say plainly that scaffolding isn't built for that
-    combination yet (`docs/layer2-layer3-plan.md`, Subjects 3–7, has the
-    status) — the design-system files from step 9 are still fully usable on
-    their own, they just won't get dropped into a running project
-    automatically.
+    one's real, filled-in answer already sent, not a placeholder. **There is
+    no other unmatched combination left** — React Native's only remaining
+    gap (Bootstrap) isn't reachable from seed input at all (see "Suggestion
+    logic"), so every real seed either matches one of the eight above or is
+    Kotlin/SwiftUI.
 
     Otherwise, ask the user, with `AskUserQuestion`, whether to continue on
     to `scaffold` now — e.g. "Ready to scaffold a real
@@ -557,6 +760,27 @@ override any of the four independently — they don't have to move together.
     work (it will have, since row 4's flag mapping already adds it
     alongside `--tailwind` — see "Suggestion logic," above).
 
+    **`nextjs` + `bootstrap` (React-Bootstrap):**
+    ```
+    node src/cli.ts scaffold --framework nextjs --bootstrap --code-dir "out/Code tokens (consumables)/<short-project-slug>" --out "<user-provided path>" [--fonts-dir seeds/<short-project-slug>-fonts]
+    ```
+    No vendored-vs-not branch here — react-bootstrap's own full component
+    set is always installed. The step 8 `generate` run must have had
+    `--bootstrap` passed (it will have — `targetDesignLanguage` `"bootstrap"`
+    already maps to it regardless of framework, see step 8 above).
+
+    **`nextjs` + `md3` or `md2` (MUI):**
+    ```
+    node src/cli.ts scaffold --framework nextjs --md2 --code-dir "out/Code tokens (consumables)/<short-project-slug>" --out "<user-provided path>" [--fonts-dir seeds/<short-project-slug>-fonts]
+    ```
+    Always `--md2` on the scaffold command too, regardless of whether the
+    seed's `targetDesignLanguage` was `md3` or `md2` — the step 8
+    `generate` run must have had `--md2` passed for the same reason (see
+    step 8's own fix, above: `--md3` is Kotlin-only, not something this
+    scaffold can consume). No vendored-vs-not branch — MUI's own full
+    component set is always installed, same as Vuetify/bootstrap-vue-next/
+    react-bootstrap above.
+
     **`vuejs` + `tailwind`:**
     ```
     node src/cli.ts scaffold --framework vuejs --code-dir "out/Code tokens (consumables)/<short-project-slug>" --out "<user-provided path>" [--shadcn] [--fonts-dir seeds/<short-project-slug>-fonts]
@@ -573,6 +797,16 @@ override any of the four independently — they don't have to move together.
     branch the way the two Tailwind paths have. The step 8 `generate` run
     must have had `--vuetify` passed (it will have, since `componentLibrary`
     `"vuetify"` maps to it — see "Suggestion logic," above).
+
+    **`vuejs` + `bootstrap` (bootstrap-vue-next):**
+    ```
+    node src/cli.ts scaffold --framework vuejs --bootstrap --code-dir "out/Code tokens (consumables)/<short-project-slug>" --out "<user-provided path>" [--fonts-dir seeds/<short-project-slug>-fonts]
+    ```
+    No vendored-vs-not branch here either — same reason as Vuetify above,
+    bootstrap-vue-next's own full component set is always installed. The
+    step 8 `generate` run must have had `--bootstrap` passed (it will have —
+    `targetDesignLanguage` `"bootstrap"` already maps to it regardless of
+    framework, see step 8 above).
 
     **`react-native` + `tailwind` (NativeWind):**
     ```
@@ -646,13 +880,42 @@ override any of the four independently — they don't have to move together.
       and mention `sdsgt-vendored-components.json` at the project root —
       the mechanism that stops a future re-vendor from silently
       overwriting a component the user has since customized (see
-      `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson").
+      `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson"). Say
+      plainly: spacing is now real-token-bound (fixed 2026-09-15, a real
+      `--spacing` binding) for every spacing preset except `bootstrap`'s —
+      that one's own scale isn't a constant multiplier, so only its
+      explicitly-named keys bind; every fractional spacing class still
+      falls back to Tailwind's own default — see "Known gaps," "Geometry
+      fidelity, by library."
+    - **`nextjs` + `bootstrap` (React-Bootstrap):** say bootstrap's own full
+      component library is already installed as a real dependency and
+      already wired to your brand colors and real radius/spacing tokens
+      (`src/app/_variables.scss`, `src/app/globals.scss`) — nothing to
+      vendor separately, ships as one complete package. Say plainly: button
+      padding is now real-token-bound (fixed 2026-09-15, nearest real
+      spacing token, not always pixel-identical to Bootstrap's own literal
+      default), but button *text size* (`$btn-font-size`) still isn't —
+      see "Known gaps," "Geometry fidelity, by library."
+    - **`nextjs` + `md3`/`md2` (MUI):** say MUI's own full Material Design
+      component library is already installed as a real dependency and
+      already wired to your brand colors (`src/app/theme.ts`,
+      `createTheme()`) — nothing to vendor separately. Say plainly: corner-
+      roundness is now real-token-bound for every MUI component (fixed
+      2026-09-15, `theme.shape.borderRadius`), but button padding and the
+      broader typography *size* scale (h1–h6/body pixel sizes — font
+      *family* is bound, size isn't) still aren't — see "Known gaps,"
+      "Geometry fidelity, by library."
     - **`vuejs` + `md3`/`md2` (Vuetify):** say Vuetify's own full Material
       Design component library is already installed as a real dependency
       and already wired to your brand colors (`src/plugins/vuetify.ts`,
       `src/plugins/theme.ts`) — nothing to vendor separately, since Vuetify
       (unlike shadcn) ships as one complete package you import components
-      from directly, not individual files copied into the project.
+      from directly, not individual files copied into the project. Say
+      plainly: corner-roundness is now real, pixel-exact token-bound for
+      every Vuetify component (fixed 2026-09-15, `$border-radius-root` via
+      the real settings.scss Sass pipeline create-vuetify already ships) —
+      but button padding and the typography size scale still aren't — see
+      "Known gaps," "Geometry fidelity, by library."
     - **`react-native` + `tailwind` (NativeWind), `--rnr` not passed:** say
       plainly this is a themed, *empty* project — colors are wired in via
       Tailwind classes (`bg-primary`, `text-foreground`, etc.), but no
@@ -663,13 +926,45 @@ override any of the four independently — they don't have to move together.
       already styled with the real brand colors, and mention
       `sdsgt-vendored-components.json` at the project root — same
       customization-guard mechanism as shadcn/shadcn-vue (see
-      `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson").
+      `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson"). **Say
+      this one plainly, not just in passing:** spacing isn't token-driven
+      here at all yet — NativeWind runs on Tailwind v3 here (a hard
+      peer-dependency requirement), and this pipeline's own
+      `tailwind.config.js` for RNR has never overridden `theme.spacing`,
+      so every spacing utility class uses NativeWind's own stock default
+      regardless of your spacing-rhythm choice. A real, separate,
+      not-yet-scoped gap, not something this run will fix — see "Known
+      gaps," "Geometry fidelity, by library."
     - **`react-native` + `md3`/`md2` (React Native Paper):** say React
       Native Paper's own full Material Design component library is already
       installed as a real dependency and already wired to your brand colors
       (`theme.ts`, wrapped in `PaperProvider` in `App.tsx`) — same
       "installed and wired, not vendored" framing as Vuetify above, since
-      Paper also ships as one complete package.
+      Paper also ships as one complete package. **Say this one plainly and
+      specifically, not just in passing:** Button's corners now match your
+      real radius token exactly (fixed 2026-09-15, `roundness` calibrated
+      to Paper's own real `5 × roundness` Button formula) — but every OTHER
+      Paper component (Card, Chip, TextInput, ...) will show a *different*,
+      non-matching radius, because Paper's own theming API only exposes one
+      global multiplier and each component type applies its own separate
+      real factor to it. This is a genuine limit of Paper's own theme
+      system, not an unfinished fix this pipeline will close later — see
+      "Known gaps," "Geometry fidelity, by library," for the exact wording.
+
+    **If `figmaManaged` is true AND the scaffold just run wrote a real
+    `figma-components-push-plan.json`** (today, only `nextjs` + `tailwind`
+    + `--shadcn` does — see `cli/src/scaffold/figma-components-plan.ts`'s
+    own scope), continue automatically into `SDSGT-figma-push`'s step 7
+    right after reporting the above, in this same session — this isn't a
+    separate thing to ask the user about first, same as the token push
+    after `promote` isn't. Requires the same live Desktop Bridge connection
+    as the token push (see that skill's own step 1) — if the connection
+    isn't live, say so plainly and offer to run it once the user has Figma
+    Desktop open with the bridge running, same as the token-push path
+    already does. **Every other combination writes no components plan at
+    all** (files-only mode, a non-vendoring library, or a framework this
+    plan generator doesn't cover yet) — there's nothing to continue into,
+    don't invent a component push for those.
 
 ## Fetching fonts
 

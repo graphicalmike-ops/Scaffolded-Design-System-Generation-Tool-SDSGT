@@ -24,6 +24,25 @@
 // generator here keeps `[data-theme="dark"]`; this is the one documented
 // exception, scoped to this one file. See contracts-and-seeds.md, "shadcn/ui
 // theming."
+//
+// `--spacing` (added 2026-09-15, alongside the fix in generate/tailwind.ts —
+// see that file's header for the full bug writeup): this file's `:root`
+// block is the ACTUAL CSS that reaches a real shadcn/ui or shadcn-vue
+// scaffold — scaffold/nextjs.ts and scaffold/vuejs.ts append this file's
+// content on top of shadcn's own generated globals.css/main.css, and
+// neither ever imports generate/tailwind.ts's own theme.css at all in the
+// --shadcn path (confirmed by reading both scaffold files — `writeGlobalsCss`/
+// its Vue equivalent, the only place that `@import`s that file, only runs in
+// the NON-shadcn branch). So the base `--spacing` override has to live HERE
+// to actually take effect for real vendored shadcn/ui or shadcn-vue
+// component source. Verified empirically that this works even though this
+// block is plain, unlayered `:root { }` CSS rather than an `@theme` block:
+// Tailwind v4 always wraps its OWN theme defaults in `@layer theme`, and per
+// the CSS Cascade Layers spec, ANY unlayered declaration beats ANY layered
+// one regardless of source order — confirmed with a real compiled build
+// PLUS a real browser's computed style (`getComputedStyle`), not just
+// reading the generated CSS text, since two competing `--spacing`
+// declarations in the same file can't be disambiguated by text alone.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,6 +59,7 @@ import {
   type SemanticToken,
 } from "./read-tokens.ts";
 import { contrastText } from "./mui-color.ts";
+import { computeLinearSpacingConstant } from "./tailwind.ts";
 
 type Primitives = ColorPrimitivesFile["color"]["primitive"];
 
@@ -182,6 +202,16 @@ export function generateShadcn(tokensDir: string, outDir: string): GenerateResul
     rootVars.push(...resolveShadcnVars(semanticRoot.semantic, primitives).map(({ cssVar, hex }) => `  ${cssVar}: ${hex};`));
   }
   rootVars.push(`  --radius: ${radius.md.$value};`);
+  // Only emitted when the resolved spacing preset is genuinely linear — see
+  // computeLinearSpacingConstant in tailwind.ts and this file's own header.
+  // A non-linear preset (currently just "bootstrap") is disclosed in
+  // AGENTS.md and the SDSGT-start skill instead — injecting a single
+  // constant here would only ever be right for the keys it happens to
+  // share with Tailwind's own multiplier, silently wrong for the rest.
+  const spacingConstant = computeLinearSpacingConstant(tokensDir);
+  if (spacingConstant !== null) {
+    rootVars.push(`  --spacing: ${spacingConstant}px;`);
+  }
   blocks.push([":root {", ...rootVars, "}"].join("\n"));
 
   if (hasDark) {
