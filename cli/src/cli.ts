@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { promote } from "./promote/index.ts";
 import { buildFigmaPushPlan } from "./promote/figma-plan.ts";
+import { computeFigmaPull, writeInitialSnapshot, SNAPSHOT_FILE, type FigmaPullInput } from "./promote/figma-pull.ts";
 import { generateCodeTokens } from "./generate/index.ts";
 import { generateTailwindTheme } from "./generate/tailwind.ts";
 import { generateBootstrapVariables } from "./generate/bootstrap.ts";
@@ -275,7 +276,116 @@ const USAGE = [
   "    --framework react-native` run's --out directory. Icons need no extra",
   "    install (Expo bundles vector icons already). See",
   "    scaffold/react-native-paper.ts for the full reasoning.",
+  "",
+  '  node src/cli.ts scaffold --framework <fw> [--shadcn|--bootstrap|--md2|',
+  '    --vuetify|--rn-paper|--rnr] --code-dir "<dir>" --out "<dir>" --update',
+  "    [--force]",
+  "    Refreshes an ALREADY-scaffolded project's token-derived theme files in",
+  "    place, instead of creating a new project — built 2026-09-17 to close a",
+  "    real, previously-impossible gap: every scaffold builder's own written",
+  "    file comments always claimed 're-run generate then scaffold to",
+  "    update', but every scaffold entry point unconditionally refused to run",
+  "    against a path that already existed, so that workflow never actually",
+  "    worked before this flag existed. Same --framework/library flags as a",
+  "    normal scaffold call (they decide which theme files this run touches),",
+  "    but --out must point at an EXISTING SDSGT-scaffolded project instead of",
+  "    a path that doesn't exist yet, and --code-dir should point at a FRESH",
+  "    `generate` run (same flags as the project's original one) reflecting",
+  "    your latest token edits. Reuses each platform's own normal write",
+  "    logic — same theme.ts/theme.css/_variables.scss/globals.css writers a",
+  "    fresh scaffold call already uses — rather than a separate code path;",
+  "    only skips the official-CLI project-creation step, dependency",
+  "    installs, and one-time boilerplate (App.tsx/page.tsx/layout.tsx/",
+  "    README.md, vendored-component installation) a fresh scaffold call",
+  "    also does. Vendored component SOURCE (shadcn's/RNR's .tsx files) is",
+  "    deliberately left alone — they already reference the theme/CSS-",
+  "    variable files this refreshes, so re-vendoring isn't needed for a",
+  "    token change to reach them.",
+  "    Every touched file is hash-guarded via a new sdsgt-theme-manifest.json",
+  "    (sibling to sdsgt-vendored-components.json, same discipline, different",
+  "    file class) — if a file was hand-edited since SDSGT last wrote it (the",
+  "    hash on disk no longer matches what the manifest recorded), this",
+  "    warns plainly and leaves it untouched rather than silently clobbering",
+  "    the edit. --force overwrites it anyway with the freshly generated",
+  "    version. shadcn/ui's and shadcn-vue's globals.css/main.css overrides",
+  "    are now also idempotent (a real bug fixed the same day — see",
+  "    docs/layer2-layer3-plan.md): the SDSGT-owned block is found by its own",
+  "    start/end markers and REPLACED in place on a second or later --update",
+  "    run, not appended again as a growing duplicate.",
+  "",
+  '  node src/cli.ts figma-pull --tokens-dir "<dir>" --live-data "<path>"',
+  "    The pull half of Figma <-> code token sync (pipeline-plan.md, \"Token",
+  "    sync staying live\") — the SDSGT-figma-push skill's job to invoke, not",
+  "    typically run by hand. --tokens-dir is the same `promote` output",
+  "    directory the push skill used (must already have a",
+  "    figma-sync-snapshot.json, written by that skill right after a real",
+  "    push — this command has no baseline to diff against otherwise).",
+  "    --live-data points at a JSON file the skill writes from its own live",
+  "    reads: { variables: [{figmaName,mode,value}], textStyles:",
+  "    [{figmaName,fontFamily,fontWeight,fontSize,lineHeight}], effectStyles:",
+  "    [{figmaName,layers:[{offsetX,offsetY,blur,spread,color}]}] }. Diffs",
+  "    every live value against the snapshot, writes ONLY the token files",
+  "    that actually changed since last sync, refreshes the snapshot, and",
+  "    prints what changed. Covers VARIABLES (color/spacing/radius/opacity/",
+  "    border-width/breakpoint/typography primitives, MD3/MD2 elevation",
+  "    floats) and STYLES (text styles, box-shadow effect styles) — both",
+  "    follow aliases rather than breaking them (a semantic color token or a",
+  "    text style's own field only converts to a literal if it was",
+  "    overridden independently of the primitive it points to). See",
+  "    promote/figma-pull.ts.",
+  "    --init: writes the FIRST snapshot instead of diffing against one —",
+  "    no existing figma-sync-snapshot.json required. Run once, right after",
+  "    a real push completes, using the live resolved values read back from",
+  "    Figma post-push (not the push plan's own placeholder literals for",
+  "    alias/alpha entries). Every subsequent figma-pull call (without",
+  "    --init) diffs against whatever this wrote.",
 ].join("\n");
+
+function runFigmaPull(rest: string[]) {
+  const args = parseArgs(rest);
+  const tokensDir = args["tokens-dir"] ?? DEFAULT_TOKENS_DIR;
+  const liveDataPath = args["live-data"];
+
+  if (!liveDataPath) {
+    console.error(`figma-pull needs --live-data <path>.\n\n${USAGE}`);
+    process.exit(1);
+  }
+
+  try {
+    const input = JSON.parse(readFileSync(liveDataPath, "utf-8")) as FigmaPullInput;
+
+    if (args.init === "true") {
+      const snapshot = writeInitialSnapshot(tokensDir, input);
+      const total = Object.keys(snapshot.variables).length + Object.keys(snapshot.textStyles).length + Object.keys(snapshot.effectStyles).length;
+      console.log(`Wrote initial ${SNAPSHOT_FILE} with ${total} variable(s)/style(s) to ${tokensDir}/ — future figma-pull runs will diff against this baseline.`);
+      return;
+    }
+
+    const { changes, unmapped } = computeFigmaPull(tokensDir, input);
+
+    if (changes.length === 0) {
+      console.log("No Figma-side token edits found since the last push/pull.");
+    } else {
+      console.log(`${changes.length} token(s) changed in Figma since the last sync:`);
+      for (const c of changes) {
+        const noteSuffix = c.note ? ` (${c.note})` : "";
+        console.log(`  - ${c.path}: ${JSON.stringify(c.oldValue)} -> ${JSON.stringify(c.newValue)}${noteSuffix}`);
+      }
+      console.log("\nRe-run `generate` (with the same flags this project originally used) to refresh the code tokens from these new values.");
+    }
+
+    if (unmapped.length > 0) {
+      console.log(`\n${unmapped.length} live Figma variable(s) didn't match any known token — not touched:`);
+      for (const name of unmapped) {
+        console.log(`  - ${name}`);
+      }
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`figma-pull failed: ${detail}`);
+    process.exit(1);
+  }
+}
 
 function runPromote(rest: string[]) {
   const args = parseArgs(rest);
@@ -436,6 +546,8 @@ function runScaffold(rest: string[]) {
   const md2 = args.md2 !== undefined;
   const rnPaper = args["rn-paper"] !== undefined;
   const rnr = args.rnr !== undefined;
+  const update = args.update !== undefined;
+  const force = args.force !== undefined;
 
   if (!codeDir || !outDir) {
     console.error(`scaffold needs both --code-dir and --out.\n\n${USAGE}`);
@@ -449,63 +561,47 @@ function runScaffold(rest: string[]) {
     process.exit(1);
   }
 
+  function report(verb: string, projectDir: string, filesWritten: string[], warnings: string[], runItLine: string) {
+    console.log(`\n${verb} at ${projectDir}/:`);
+    for (const f of filesWritten) {
+      console.log(`  - ${f}`);
+    }
+    if (warnings.length > 0) {
+      console.warn(`\n${warnings.length} file(s) NOT overwritten — hand-edited since SDSGT last wrote them:`);
+      for (const w of warnings) {
+        console.warn(`  - ${w}`);
+      }
+    }
+    if (!update) {
+      console.log(`\nRun it: ${runItLine}`);
+    }
+  }
+
   try {
     if (framework === "nextjs" && bootstrap) {
-      const { filesWritten, projectDir } = scaffoldNextjsBootstrap({ codeDir, outDir, fontsDir });
-      console.log(`\nScaffolded a Next.js + React-Bootstrap project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+      const { filesWritten, projectDir, warnings } = scaffoldNextjsBootstrap({ codeDir, outDir, fontsDir, update, force });
+      report(update ? "Updated the Next.js + React-Bootstrap project's theme files" : "Scaffolded a Next.js + React-Bootstrap project", projectDir, filesWritten, warnings, "cd into the project, then `npm run dev`, then open http://localhost:3000");
     } else if (framework === "nextjs" && md2) {
-      const { filesWritten, projectDir } = scaffoldNextjsMui({ codeDir, outDir, fontsDir });
-      console.log(`\nScaffolded a Next.js + MUI project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+      const { filesWritten, projectDir, warnings } = scaffoldNextjsMui({ codeDir, outDir, fontsDir, update, force });
+      report(update ? "Updated the Next.js + MUI project's theme files" : "Scaffolded a Next.js + MUI project", projectDir, filesWritten, warnings, "cd into the project, then `npm run dev`, then open http://localhost:3000");
     } else if (framework === "nextjs") {
-      const { filesWritten, projectDir } = scaffoldNextjs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined });
-      console.log(`\nScaffolded a Next.js project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+      const { filesWritten, projectDir, warnings } = scaffoldNextjs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined, update, force });
+      report(update ? "Updated the Next.js project's theme files" : "Scaffolded a Next.js project", projectDir, filesWritten, warnings, "cd into the project, then `npm run dev`, then open http://localhost:3000");
     } else if (framework === "vuejs" && vuetify) {
-      const { filesWritten, projectDir } = scaffoldVuejsVuetify({ codeDir, outDir, fontsDir });
-      console.log(`\nScaffolded a Vue.js + Vuetify project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:3000");
+      const { filesWritten, projectDir, warnings } = scaffoldVuejsVuetify({ codeDir, outDir, fontsDir, update, force });
+      report(update ? "Updated the Vue.js + Vuetify project's theme files" : "Scaffolded a Vue.js + Vuetify project", projectDir, filesWritten, warnings, "cd into the project, then `npm run dev`, then open http://localhost:3000");
     } else if (framework === "vuejs" && bootstrap) {
-      const { filesWritten, projectDir } = scaffoldVuejsBootstrap({ codeDir, outDir, fontsDir });
-      console.log(`\nScaffolded a Vue.js + bootstrap-vue-next project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:5173");
+      const { filesWritten, projectDir, warnings } = scaffoldVuejsBootstrap({ codeDir, outDir, fontsDir, update, force });
+      report(update ? "Updated the Vue.js + bootstrap-vue-next project's theme files" : "Scaffolded a Vue.js + bootstrap-vue-next project", projectDir, filesWritten, warnings, "cd into the project, then `npm run dev`, then open http://localhost:5173");
     } else if (framework === "vuejs") {
-      const { filesWritten, projectDir } = scaffoldVuejs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined });
-      console.log(`\nScaffolded a Vue.js project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm run dev`, then open http://localhost:5173");
+      const { filesWritten, projectDir, warnings } = scaffoldVuejs({ codeDir, outDir, fontsDir, componentLibrary: shadcn ? "shadcn" : undefined, update, force });
+      report(update ? "Updated the Vue.js project's theme files" : "Scaffolded a Vue.js project", projectDir, filesWritten, warnings, "cd into the project, then `npm run dev`, then open http://localhost:5173");
     } else if (rnPaper) {
-      const { filesWritten, projectDir } = scaffoldReactNativePaper({ codeDir, outDir });
-      console.log(`\nScaffolded an Expo + React Native Paper project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm start`, then press i/a/w or scan the QR code with Expo Go");
+      const { filesWritten, projectDir, warnings } = scaffoldReactNativePaper({ codeDir, outDir, update, force });
+      report(update ? "Updated the Expo + React Native Paper project's theme files" : "Scaffolded an Expo + React Native Paper project", projectDir, filesWritten, warnings, "cd into the project, then `npm start`, then press i/a/w or scan the QR code with Expo Go");
     } else {
-      const { filesWritten, projectDir } = scaffoldReactNative({ codeDir, outDir, componentLibrary: rnr ? "rnr" : undefined });
-      console.log(`\nScaffolded an Expo + NativeWind project at ${projectDir}/:`);
-      for (const f of filesWritten) {
-        console.log(`  - ${f}`);
-      }
-      console.log("\nRun it: cd into the project, then `npm start`, then press i/a/w or scan the QR code with Expo Go");
+      const { filesWritten, projectDir, warnings } = scaffoldReactNative({ codeDir, outDir, componentLibrary: rnr ? "rnr" : undefined, update, force });
+      report(update ? "Updated the Expo + NativeWind project's theme files" : "Scaffolded an Expo + NativeWind project", projectDir, filesWritten, warnings, "cd into the project, then `npm start`, then press i/a/w or scan the QR code with Expo Go");
     }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -523,6 +619,8 @@ async function main() {
     await runGenerate(rest);
   } else if (command === "scaffold") {
     runScaffold(rest);
+  } else if (command === "figma-pull") {
+    runFigmaPull(rest);
   } else {
     console.error(`Unknown command: ${command ?? "(none)"}.\n\n${USAGE}`);
     process.exit(1);

@@ -62,20 +62,26 @@
 // just unconditional here instead of conditional.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname, join, relative } from "node:path";
 
-import { copyAgentDocs, hashFile, collectFilesRecursive } from "../shared/scaffold-common.ts";
+import { copyAgentDocs, hashFile, collectFilesRecursive, readCssScale, nearestScalePx, readThemeManifest, writeThemeManifest, guardedWriteFile } from "../shared/scaffold-common.ts";
 
 export interface ScaffoldReactNativeOptions {
   codeDir: string; // output of `generate --rnr --framework react-native`
-  outDir: string; // where the new project gets created — must not already exist
+  outDir: string; // where a new project gets created (update: false/omitted)
+  // or an already-scaffolded one gets refreshed (update: true)
   componentLibrary?: "rnr"; // real vendoring, built 2026-09-14 — see runRnrAdd's own header
+  update?: boolean; // refresh an EXISTING project's theme files in place —
+  // see docs/layer2-layer3-plan.md's 2026-09-17 entry / cli.ts's
+  // `scaffold --update`.
+  force?: boolean; // overwrite a hand-edited theme file anyway
 }
 
 export interface ScaffoldResult {
   filesWritten: string[];
   projectDir: string;
+  warnings: string[];
 }
 
 function run(cmd: string, args: string[], cwd: string, label: string): void {
@@ -169,10 +175,89 @@ function writeNativewindEnvDts(outDir: string): void {
 // --secondary?) rather than passed in separately, so this file only ever
 // maps variables that actually exist — same "don't map what isn't there"
 // discipline RNR's own generator already follows.
-function writeTailwindConfig(outDir: string, hasSecondary: boolean): void {
+//
+// theme.extend.spacing wired 2026-09-16 — closes the real gap flagged in
+// this file's own README text ("Known gap" section) since 2026-09-14: this
+// pipeline's own spacing preset never reached Tailwind's real `theme.
+// spacing` scale before this. A real, non-obvious finding while fixing it,
+// checked rather than assumed to need the same fix as the earlier shadcn
+// v4 bug: three of this pipeline's four spacing presets (`tailwind`/`md3`/
+// `md2`) are, BY THIS PIPELINE'S OWN DESIGN (contracts-and-seeds.md, row
+// "Spacing" — MD3/MD2 have no spacing scale of their own, so they use
+// Tailwind's under the hood), already numerically IDENTICAL to Tailwind
+// v3's own real default scale (key N = N * 4px, confirmed against every
+// entry in `spacing.tailwind.json`/`spacing.md3.json`/`spacing.md2.json`)
+// — so for those three, Tailwind's un-overridden default was never
+// actually wrong, just not EXPLICITLY sourced from this pipeline's own
+// tokens. Only the fourth, `bootstrap` (a genuinely non-linear 4/8/16/24/
+// 48px-per-step scale, keys 0-5 only), was ever really mismatched. Rather
+// than detect which preset was used (extra plumbing this scaffold doesn't
+// otherwise need), this just extends `theme.spacing` with whatever real
+// keys/values this run's own `spacing.json` actually defines, read
+// straight from the already-available `css/tokens.css` — correct either
+// way: a no-op-in-effect restatement of Tailwind's own default for the
+// three linear presets, a real partial fix for `bootstrap` (its own real
+// vendored-component classes in the 0-5 key range, e.g. `px-3`/`py-2`, now
+// bind to the chosen preset's real value instead of Tailwind's mismatched
+// default). Uses `extend`, not a full replacement, on purpose — a full
+// replacement would blank out every OTHER real Tailwind key (6, 7, 9,
+// half-steps, ...) this pipeline's own curated preset files don't list,
+// breaking real vendored component classes outside that list. **Disclosed,
+// not fixed**: `bootstrap`'s own keys beyond 5 still fall back to
+// Tailwind's real default, since `spacing.bootstrap.json` itself was never
+// scoped past key 5 — the same structural ceiling as the Tailwind v4
+// shadcn/shadcn-vue case, just reached by a different (object-merge vs.
+// single-CSS-variable) mechanism.
+// Real Tailwind v3 default `theme.fontSize` targets — confirmed against
+// the real npm-published `tailwindcss@^3` package's own
+// `stubs/config.full.js`. Unlike `theme.spacing` (which has many more real
+// keys than this pipeline's own curated spacing presets list, so `extend`
+// was required to avoid breaking classes outside that list), Tailwind's
+// real fontSize scale has EXACTLY these 13 named keys and no others (no
+// fractional/in-between fontSize classes exist the way `px-2.5` does for
+// spacing) — so binding all 13 via `extend` is a complete fix, not a
+// partial one; nothing is left for an unbound class to fall through to.
+const RN_FONT_SIZE_TARGETS: Record<string, number> = {
+  xs: 12,
+  sm: 14,
+  base: 16,
+  lg: 18,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 30,
+  "4xl": 36,
+  "5xl": 48,
+  "6xl": 60,
+  "7xl": 72,
+  "8xl": 96,
+  "9xl": 128,
+};
+
+function buildTailwindConfig(hasSecondary: boolean, spacingScale: Record<string, number>, fontSizeScale: Record<string, number>): string {
   const secondaryBlock = hasSecondary
     ? ["        secondary: {", "          DEFAULT: 'hsl(var(--secondary))',", "          foreground: 'hsl(var(--secondary-foreground))',", "        },"].join("\n")
     : "";
+  const spacingEntries = Object.entries(spacingScale)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([key, px]) => `        '${key}': '${px}px',`)
+    .join("\n");
+  // theme.extend.fontSize wired 2026-09-16 — closes the real gap this
+  // pipeline's own type-scale preset never reached for RNR: this run's
+  // vendored `components/ui/` already uses real `text-sm`/`text-lg`/
+  // `text-2xl`/etc. classes (confirmed by grepping a real vendored
+  // project), which previously always used Tailwind's raw default size
+  // regardless of the chosen type-scale preset. Each of Tailwind's 13 real
+  // named keys is bound to the nearest real type-scale token for THAT
+  // key's own real default px target (same "nearest real value" discipline
+  // as the spacing fix above) — for the `tailwind` type-scale preset this
+  // is a correct no-op (that preset was deliberately built to match
+  // Tailwind's own real scale at every key it defines), a real fix for
+  // `bootstrap`/`md3`/`md2`. No fallback gap here the way `bootstrap`
+  // spacing has beyond key 5 — Tailwind's fontSize scale has no keys
+  // outside these 13 to fall through to.
+  const fontSizeEntries = Object.entries(RN_FONT_SIZE_TARGETS)
+    .map(([key, targetPx]) => `        '${key}': '${nearestScalePx(targetPx, fontSizeScale)}px',`)
+    .join("\n");
   const content = [
     "/** @type {import('tailwindcss').Config} */",
     "module.exports = {",
@@ -234,13 +319,25 @@ function writeTailwindConfig(outDir: string, hasSecondary: boolean): void {
     "        md: 'calc(var(--radius) - 2px)',",
     "        sm: 'calc(var(--radius) - 4px)',",
     "      },",
+    "      // Real spacing.json keys/values for this run — see this file's",
+    "      // own header for why `extend` (not a full replacement) and why",
+    "      // this matters for real for the `bootstrap` preset specifically.",
+    "      spacing: {",
+    spacingEntries,
+    "      },",
+    "      // Real type-scale fontSize primitives, bound to Tailwind's own",
+    "      // 13 real named keys — see this file's own header for why this",
+    "      // one is a complete fix, not a partial one like spacing.",
+    "      fontSize: {",
+    fontSizeEntries,
+    "      },",
     "    },",
     "  },",
     "  plugins: [],",
     "};",
     "",
   ].join("\n");
-  writeFileSync(join(outDir, "tailwind.config.js"), content, "utf-8");
+  return content;
 }
 
 function mergeWebBundlerIntoAppJson(outDir: string): void {
@@ -442,8 +539,14 @@ function writeReadme(outDir: string, projectName: string, hasRnr: boolean): void
     "## What's in here",
     "",
     "- `global.css` — your generated design tokens as NativeWind/Tailwind CSS",
-    "  variables. Re-run SDSGT's `generate` step to update these; don't",
-    "  hand-edit them directly, since the next scaffold run overwrites them.",
+    "  variables. After editing tokens, run `generate` then `scaffold",
+    "  --update` (same flags, --out pointing back at this project) to refresh",
+    "  these in place; don't hand-edit them directly — an update run warns",
+    "  instead of silently overwriting a hand-edited file.",
+    "- `constants.ts` — a `NAV_THEME` object matching React Navigation's own",
+    "  `Theme.colors` shape, generated from the exact same tokens as",
+    "  `global.css`. Keep the two in sync via `scaffold --update`, not by",
+    "  hand-editing either file.",
     "- `tailwind.config.js` — maps those variables onto Tailwind color names",
     "  (`bg-primary`, `text-foreground`, etc.) usable in any component's",
     "  `className`.",
@@ -473,59 +576,102 @@ function writeReadme(outDir: string, projectName: string, hasRnr: boolean): void
 }
 
 export function scaffoldReactNative(opts: ScaffoldReactNativeOptions): ScaffoldResult {
-  const { codeDir, outDir, componentLibrary } = opts;
+  const { codeDir, outDir, componentLibrary, update = false, force = false } = opts;
 
   const globalCssPath = join(codeDir, "rnr", "global.css");
   if (!existsSync(globalCssPath)) {
     throw new Error(`No RNR theme found in ${codeDir} — run \`generate --rnr --framework react-native\` first (NOT --tailwind — see this file's header for why NativeWind needs RNR's output specifically).`);
   }
-  if (existsSync(outDir)) {
-    throw new Error(`${outDir} already exists — scaffold needs a path that doesn't exist yet, so create-expo-app can create it fresh.`);
+  // Real bug found and fixed 2026-09-17: `generate --rnr` always writes a
+  // SECOND file, rnr/constants.ts (NAV_THEME — see generate/rnr.ts's own
+  // header), but this scaffold only ever copied global.css into the
+  // project — constants.ts was silently never delivered at all, on any
+  // scaffold run before this one, not just on `update`. Fixed below by
+  // copying it too (when it exists — a project generated with an older
+  // `generate` build before this file existed won't have one, and that's
+  // not fatal).
+  const constantsTsPath = join(codeDir, "rnr", "constants.ts");
+  const tokensCssPath = join(codeDir, "css", "tokens.css");
+  if (!existsSync(tokensCssPath)) {
+    throw new Error(`No ${tokensCssPath} found — was ${codeDir} really written by this pipeline's \`generate\`? Spacing values come from there.`);
+  }
+  if (update) {
+    if (!existsSync(outDir)) {
+      throw new Error(`--update was passed but ${outDir} doesn't exist — nothing to update. Run \`scaffold\` without --update first to create it.`);
+    }
+  } else if (existsSync(outDir)) {
+    throw new Error(`${outDir} already exists — scaffold needs a path that doesn't exist yet, so create-expo-app can create it fresh. Pass --update to refresh an existing project instead.`);
   }
 
   const projectName = basename(outDir);
   const filesWritten: string[] = [];
+  const warnings: string[] = [];
+  const manifest = readThemeManifest(outDir);
+  const nextManifest: Record<string, string> = { ...manifest };
 
-  runCreateExpoApp(outDir);
-  installDeps(outDir);
+  function guarded(relPath: string, content: string | Buffer, label?: string): void {
+    const result = guardedWriteFile(outDir, relPath, content, manifest, { force });
+    nextManifest[relPath] = result.hash;
+    if (result.written) {
+      filesWritten.push(label ?? relPath);
+    } else if (result.warning) {
+      warnings.push(result.warning);
+    }
+  }
+
+  if (!update) {
+    runCreateExpoApp(outDir);
+    installDeps(outDir);
+  }
 
   const globalCss = readFileSync(globalCssPath, "utf-8");
-  copyFileSync(globalCssPath, join(outDir, "global.css"));
-  filesWritten.push("global.css");
+  guarded("global.css", globalCss);
+  if (existsSync(constantsTsPath)) {
+    guarded("constants.ts", readFileSync(constantsTsPath));
+  }
 
   const hasSecondary = /--secondary:/.test(globalCss);
-  writeTailwindConfig(outDir, hasSecondary);
-  filesWritten.push("tailwind.config.js");
-  writeMetroConfig(outDir);
-  filesWritten.push("metro.config.js");
-  writeBabelConfig(outDir);
-  filesWritten.push("babel.config.js");
-  writeNativewindEnvDts(outDir);
-  filesWritten.push("nativewind-env.d.ts");
-  mergeWebBundlerIntoAppJson(outDir);
-  filesWritten.push("app.json (merged web.bundler)");
+  const tokensCssContent = readFileSync(tokensCssPath, "utf-8");
+  const spacingScale = readCssScale(tokensCssContent, "spacing");
+  const fontSizeScale = readCssScale(tokensCssContent, "typography-primitive-font-size");
+  guarded("tailwind.config.js", buildTailwindConfig(hasSecondary, spacingScale, fontSizeScale));
 
-  rewriteAppTsx(outDir, projectName);
-  filesWritten.push("App.tsx");
+  if (!update) {
+    writeMetroConfig(outDir);
+    filesWritten.push("metro.config.js");
+    writeBabelConfig(outDir);
+    filesWritten.push("babel.config.js");
+    writeNativewindEnvDts(outDir);
+    filesWritten.push("nativewind-env.d.ts");
+    mergeWebBundlerIntoAppJson(outDir);
+    filesWritten.push("app.json (merged web.bundler)");
 
-  if (componentLibrary === "rnr") {
-    writeComponentsJson(outDir);
-    filesWritten.push("components.json");
-    addTsconfigPathAlias(outDir);
-    filesWritten.push("tsconfig.json (added @/* path alias)");
-    ensureGitCommitted(outDir);
-    runRnrAdd(outDir);
-    finishRnrSetup(outDir);
-    filesWritten.push("components/ui/ (RNR components, vendored)", "lib/utils.ts");
+    rewriteAppTsx(outDir, projectName);
+    filesWritten.push("App.tsx");
 
-    writeFileSync(join(outDir, "sdsgt-vendored-components.json"), buildRnrVendoredManifest(outDir), "utf-8");
-    filesWritten.push("sdsgt-vendored-components.json");
+    if (componentLibrary === "rnr") {
+      writeComponentsJson(outDir);
+      filesWritten.push("components.json");
+      addTsconfigPathAlias(outDir);
+      filesWritten.push("tsconfig.json (added @/* path alias)");
+      ensureGitCommitted(outDir);
+      runRnrAdd(outDir);
+      finishRnrSetup(outDir);
+      filesWritten.push("components/ui/ (RNR components, vendored)", "lib/utils.ts");
+
+      writeFileSync(join(outDir, "sdsgt-vendored-components.json"), buildRnrVendoredManifest(outDir), "utf-8");
+      filesWritten.push("sdsgt-vendored-components.json");
+    }
   }
 
   filesWritten.push(...copyAgentDocs(codeDir, outDir));
 
-  writeReadme(outDir, projectName, componentLibrary === "rnr");
-  filesWritten.push("README.md");
+  if (!update) {
+    writeReadme(outDir, projectName, componentLibrary === "rnr");
+    filesWritten.push("README.md");
+  }
 
-  return { filesWritten, projectDir: outDir };
+  writeThemeManifest(outDir, nextManifest);
+
+  return { filesWritten, projectDir: outDir, warnings };
 }

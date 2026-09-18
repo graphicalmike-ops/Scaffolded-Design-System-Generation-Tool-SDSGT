@@ -23,13 +23,64 @@
 // status.* maps onto Vuetify's native error/warning/info/success color
 // keys (role 5, "promo," skipped — same precedent as Bootstrap/MUI's own
 // promo-skip, Vuetify has no 5th status slot either).
+//
+// `variables` (real opacity/emphasis constants) added 2026-09-16 — see
+// VUETIFY_OPACITY_DEFAULTS_LIGHT/DARK's own comment for the real source
+// and why light/dark get genuinely different values, not just this
+// pipeline's own color split.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { GenerateResult } from "./index.ts";
-import { readJson, resolveAlias, type ColorPrimitivesFile, type SemanticFile } from "./read-tokens.ts";
+import { readJson, resolveAlias, nearestOpacity, type ColorPrimitivesFile, type SemanticFile, type OpacityFile } from "./read-tokens.ts";
 import { LIGHT_FILE, DARK_FILE } from "./index.ts";
+
+// Real Vuetify 4 `theme.variables` opacity/emphasis defaults — confirmed
+// against the real npm-published `vuetify@4.2.1` tarball's own
+// `composables/theme.js` (`genDefaults()`'s real `light`/`dark` blocks).
+// Added 2026-09-16 while auditing Layer 2 for gaps beyond radius/spacing/
+// typography specifically — these were never bound to this pipeline's own
+// opacity tokens before, only colors were. Real, genuine light/dark
+// differences (not just a coincidence of this pipeline's own light/dark
+// color split) — e.g. dark mode's real `disabled-opacity` is 0.50, not
+// light's 0.38, and `high-emphasis-opacity` is a full 1 in dark vs. 0.87 in
+// light. `border-color`/`shadow-color`/the `theme-*` string variables are
+// left at Vuetify's own real defaults — this pipeline has no equivalent
+// token for those.
+const VUETIFY_OPACITY_DEFAULTS_LIGHT: Record<string, number> = {
+  "border-opacity": 0.12,
+  "high-emphasis-opacity": 0.87,
+  "medium-emphasis-opacity": 0.6,
+  "disabled-opacity": 0.38,
+  "idle-opacity": 0.04,
+  "hover-opacity": 0.04,
+  "focus-opacity": 0.12,
+  "selected-opacity": 0.08,
+  "activated-opacity": 0.12,
+  "pressed-opacity": 0.12,
+  "dragged-opacity": 0.08,
+};
+
+const VUETIFY_OPACITY_DEFAULTS_DARK: Record<string, number> = {
+  "border-opacity": 0.12,
+  "high-emphasis-opacity": 1,
+  "medium-emphasis-opacity": 0.7,
+  "disabled-opacity": 0.5,
+  "idle-opacity": 0.1,
+  "hover-opacity": 0.04,
+  "focus-opacity": 0.12,
+  "selected-opacity": 0.08,
+  "activated-opacity": 0.12,
+  "pressed-opacity": 0.16,
+  "dragged-opacity": 0.08,
+};
+
+function themeVariablesBlock(defaults: Record<string, number>, opacity: Record<string, { $type: "number"; $value: number }>): string {
+  return Object.entries(defaults)
+    .map(([key, target]) => `      '${key}': ${nearestOpacity(target, opacity)},`)
+    .join("\n");
+}
 
 // Per "Boilerplate status-color formula": role 1=error, 2=success,
 // 3=warning, 4=info, 5=promo. Promo has no Vuetify color slot and is
@@ -144,6 +195,7 @@ function buildVuetifySetup(hasLight: boolean, hasDark: boolean): string {
 export function generateVuetify(tokensDir: string, outDir: string): GenerateResult {
   const { color } = readJson<ColorPrimitivesFile>(join(tokensDir, "color.primitive.json"));
   const primitives = color.primitive;
+  const { opacity } = readJson<OpacityFile>(join(tokensDir, "opacity.json"));
 
   const hasLight = existsSync(join(tokensDir, LIGHT_FILE));
   const hasDark = existsSync(join(tokensDir, DARK_FILE));
@@ -151,12 +203,32 @@ export function generateVuetify(tokensDir: string, outDir: string): GenerateResu
   const themes: string[] = [];
   if (hasLight) {
     themes.push(
-      ["export const lightTheme = {", "  dark: false,", "  colors: {", themeColorsBlock(join(tokensDir, LIGHT_FILE), primitives), "  },", "};"].join("\n"),
+      [
+        "export const lightTheme = {",
+        "  dark: false,",
+        "  colors: {",
+        themeColorsBlock(join(tokensDir, LIGHT_FILE), primitives),
+        "  },",
+        "  variables: {",
+        themeVariablesBlock(VUETIFY_OPACITY_DEFAULTS_LIGHT, opacity),
+        "  },",
+        "};",
+      ].join("\n"),
     );
   }
   if (hasDark) {
     themes.push(
-      ["export const darkTheme = {", "  dark: true,", "  colors: {", themeColorsBlock(join(tokensDir, DARK_FILE), primitives), "  },", "};"].join("\n"),
+      [
+        "export const darkTheme = {",
+        "  dark: true,",
+        "  colors: {",
+        themeColorsBlock(join(tokensDir, DARK_FILE), primitives),
+        "  },",
+        "  variables: {",
+        themeVariablesBlock(VUETIFY_OPACITY_DEFAULTS_DARK, opacity),
+        "  },",
+        "};",
+      ].join("\n"),
     );
   }
 

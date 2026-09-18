@@ -138,6 +138,21 @@ function parsePx(value: string): number {
   return Number(match[1]);
 }
 
+// Every resolved spacing.json entry as [key, px] pairs, sorted by key. Shared
+// by computeLinearSpacingConstant below and, for the non-linear case it
+// can't handle, generate/shadcn.ts's own named-per-key override (see that
+// file's header for why a non-linear preset needs a different mechanism
+// than the single --spacing constant). Returns null only when spacing.json
+// itself doesn't exist for this project.
+export function readSpacingEntries(tokensDir: string): ReadonlyArray<readonly [number, number]> | null {
+  const path = join(tokensDir, "spacing.json");
+  if (!existsSync(path)) return null;
+  const { spacing } = readJson<SpacingFile>(path);
+  return Object.entries(spacing)
+    .map(([key, token]) => [Number(key), parsePx(token.$value)] as const)
+    .sort(([a], [b]) => a - b);
+}
+
 // Tailwind v4's own base --spacing variable (see this file's header) is a
 // SINGLE multiplier: every utility without an explicit named override
 // resolves to calc(var(--spacing) * N). That can only ever correctly stand
@@ -148,12 +163,9 @@ function parsePx(value: string): number {
 // table ever changes, or a project's tokens get hand-edited afterward.
 // Returns null when the scale isn't linear (nothing to safely inject).
 export function computeLinearSpacingConstant(tokensDir: string): number | null {
-  const path = join(tokensDir, "spacing.json");
-  if (!existsSync(path)) return null;
-  const { spacing } = readJson<SpacingFile>(path);
-  const entries = Object.entries(spacing)
-    .map(([key, token]) => [Number(key), parsePx(token.$value)] as const)
-    .filter(([key]) => key !== 0); // 0 -> 0px is consistent with any constant — not a useful data point
+  const all = readSpacingEntries(tokensDir);
+  if (all === null) return null;
+  const entries = all.filter(([key]) => key !== 0); // 0 -> 0px is consistent with any constant — not a useful data point
   if (entries.length === 0) return null;
   const constant = entries[0][1] / entries[0][0];
   const isLinear = entries.every(([key, px]) => Math.abs(px - key * constant) < 0.01);

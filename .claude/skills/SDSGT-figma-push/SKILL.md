@@ -1,6 +1,6 @@
 ---
 name: SDSGT-figma-push
-description: Push a project's generated token spec — and, once a component library has been vendored, its real components too — into a connected Figma file, using the figma-push-plan.json and figma-components-push-plan.json that `promote`/`scaffold` write. Triggers when the SDSGT-start flow reaches its Figma-push step (figmaManaged is true, right after `promote` for tokens and again right after `scaffold` for components), or when the user explicitly asks to push/sync tokens or components into Figma for an already-promoted/scaffolded project.
+description: Push a project's generated token spec — and, once a component library has been vendored, its real components too — into a connected Figma file, using the figma-push-plan.json and figma-components-push-plan.json that `promote`/`scaffold` write. Also handles the reverse direction — pulling token EDITS made in Figma back into the project's code tokens (see step 8). Triggers when the SDSGT-start flow reaches its Figma-push step (figmaManaged is true, right after `promote` for tokens and again right after `scaffold` for components), or when the user explicitly asks to push/pull/sync tokens or components between Figma and an already-promoted/scaffolded project.
 ---
 
 # SDSGT-figma-push: replay a project's tokens and components into Figma
@@ -25,15 +25,27 @@ There is no way for a plain Node process to do this without a live agent
 session and a human who has that file open. See contracts-and-seeds.md,
 "Figma push," for the full contract this skill implements.
 
-**This is a first push, not the ongoing sync engine.** Re-running this
-skill against a file that already has a previous push's variables will
-create a second, differently-suffixed set rather than update the first —
-Figma variable names aren't globally unique the way file paths are. If the
-user is re-pushing to the same file, tell them plainly and suggest deleting
-the old `Tokens`/`Tokens - Light`/`Tokens - Dark` collections first (via
-`figma_delete_variable_collection`) rather than silently doubling up. The
-real token-sync engine (bidirectional, incremental) is separate, future
-work — see `pipeline-plan.md`, "Token-sync staying live."
+**Pushing (steps 1-7) is still a first push, not a re-sync.** Re-running
+those steps against a file that already has a previous push's variables
+will create a second, differently-suffixed set rather than update the
+first — Figma variable names aren't globally unique the way file paths
+are. If the user is re-pushing to the same file, tell them plainly and
+suggest deleting the old `Tokens`/`Tokens - Light`/`Tokens - Dark`
+collections first (via `figma_delete_variable_collection`) rather than
+silently doubling up.
+
+**Pulling (step 8, added 2026-09-17) is the real, ongoing sync-back half
+`pipeline-plan.md`'s "Token-sync staying live" describes** — ask if the
+user wants to check for Figma-side edits and pull them into code, any time
+after an initial push has happened. Covers every VARIABLE (color/spacing/
+radius/opacity/border-width/breakpoint/typography primitives, MD3/MD2
+elevation floats) and every STYLE (text styles, shadow effect styles) this
+pipeline pushes — nothing pushed is un-pullable. Only the values change; a
+token's own STRUCTURE (new tokens, renamed groups, restructured files) is
+never inferred from a pull — that stays a `promote`-time decision. By
+design, this never detects or reconciles code-side drift — it only ever
+asks what changed on Figma's side, since the expectation is that everyday
+token editing happens in Figma.
 
 ## Inputs
 
@@ -297,6 +309,59 @@ style.effects = item.layers.map(l => ({
 No font loading here, so no timeout/duplicate risk — effect styles create
 in one pass, no sub-batching or duplicate check needed.
 
+**Once variables, text styles, and effect styles have all landed, write
+the pull baseline** — needed for step 8 to ever work, so don't skip it.
+Read every real value back from Figma itself (not the plan's own
+placeholder literals for alias/alpha entries, and not the plan's own
+computed text-style/shadow values either — the point is to snapshot
+what's ACTUALLY in Figma right now):
+
+```js
+// Variables — same call used to resolve alias target IDs above.
+const vars = await figma.variables.getLocalVariablesAsync();
+// Reshape into { figmaName, mode, value }[] — "value" for a variable with
+// one shared value across every mode in its collection, else the real
+// mode name ("light"/"dark") per entry in variable.valuesByMode.
+
+// Text styles.
+const textStyles = (await figma.getLocalTextStylesAsync())
+  .filter(s => s.name.startsWith("typography/semantic/"))
+  .map(s => ({
+    figmaName: s.name,
+    fontFamily: s.fontName.family,
+    fontWeight: ({ Regular: 400, Medium: 600, Bold: 700 })[s.fontName.style] ?? 400, // reverse of step 2's own weight->style map; unrecognized style names fall back to 400 rather than crash
+    fontSize: s.fontSize,
+    lineHeight: s.lineHeight.unit === "PIXELS" ? s.lineHeight.value : s.fontSize * 1.2, // styles are always created with PIXELS (step 5 above) — the fallback is defensive, not expected to fire
+  }));
+
+// Effect styles.
+const effectStyles = (await figma.getLocalEffectStylesAsync())
+  .filter(s => s.name.startsWith("shadow/"))
+  .map(s => ({
+    figmaName: s.name,
+    layers: s.effects.filter(e => e.type === "DROP_SHADOW").map(e => ({
+      offsetX: e.offset.x,
+      offsetY: e.offset.y,
+      blur: e.radius,
+      spread: e.spread,
+      color: `rgba(${Math.round(e.color.r * 255)},${Math.round(e.color.g * 255)},${Math.round(e.color.b * 255)},${e.color.a})`, // must match shadow.json's own "rgba(r,g,b,a)" format exactly, no spaces — figma-pull.ts tolerates minor float noise in the alpha channel, but not a different string shape
+    })),
+  }));
+```
+
+Assemble `{ variables, textStyles, effectStyles }`, write it to a temp JSON
+file, then run:
+
+```
+node src/cli.ts figma-pull --tokens-dir "<tokensDir>" --live-data "<path>" --init
+```
+
+This writes `<tokensDir>/figma-sync-snapshot.json` — the baseline every
+future step-8 pull diffs against. Do this every time steps 1-5 run for a
+given file (including a re-push to a fresh file after deleting old
+collections) — an initial push with no snapshot means step 8 has nothing
+to compare against later and will refuse to run.
+
 ### 6. Report back
 
 Summarize in plain language: how many variables/text styles/effect styles
@@ -319,14 +384,37 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
-**Real ground truth, proven 2026-09-15 against a real test file, not
-assumed:** this plan's shape (see `cli/src/scaffold/figma-components-plan.ts`
-for the generator) currently covers exactly one component — shadcn/ui's
-`Button`, one size, rest states only (see that file's own header for the
-full scope decision). Extending this to more components is real, separate
-CLI work (a new plan-generator entry, not a change to this skill) — this
-step's job is only ever to replay whatever the plan actually contains,
-never to improvise a component the plan doesn't describe.
+**Real ground truth, proven live against a real test file for all seven
+components this plan covers today:** Button (2026-09-15), Badge
+(2026-09-16), Toggle, Alert, Input, Textarea, and Card (all 2026-09-17).
+shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`, `Input`, `Textarea`,
+`Card` — one size each, rest states only (see `cli/src/scaffold/
+figma-components-plan.ts`'s own header for the full scope decision,
+including the three real component shapes this plan handles —
+multi-variant `cva()` components via `buildVariantsFromCva`, single-state
+no-`cva()` components via `scanClassesForColors`, and Card's own real
+compound-component support via `sections` — and why most other real
+components don't fit any of these yet). This step's own mechanism (`for
+each item in plan.components`, no component-specific branching) is
+confirmed to genuinely generalize across seven structurally different
+components, covering all three shapes — real bugs were caught doing this,
+not just claimed to have been avoided: the same-tone-trap fix (below)
+used to fire for ANY variant named "destructive" regardless of its fill,
+which was correct for Button/Badge but would have produced invisible
+white-on-light-card text for Alert's real neutral-background destructive
+variant; and every `rounded-lg`-using component's radius was bound to the
+wrong real value for two full sessions (a real 2px mismatch, confirmed
+live via `getComputedStyle` — see `exactRadiusMd`'s own comment) before
+being caught while scoping Card's own different radius formula. Both
+caught by checking real generated output/real rendered pages, not
+assuming the existing mechanism was safe. Extending this plan to more
+components is real, separate CLI work (a new plan-generator entry, not a
+change to this skill) — this step's job is only ever to replay whatever
+the plan actually contains, never to improvise a component the plan
+doesn't describe. Any component added to the plan should still get the
+SAME full screenshot-validate treatment the first time it's pushed live —
+passing plan computation alone isn't sufficient proof, as this section
+used to (incorrectly) imply was close enough for Badge.
 
 **Read `<projectDir>/figma-components-push-plan.json`** (shape:
 `FigmaComponentsPushPlan` in `figma-components-plan.ts`) — `components`,
@@ -389,6 +477,7 @@ For each item in `plan.components`, in order:
    ```js
    await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
    const text = figma.createText();
+   text.name = "PrimaryText"; // lets step 4 find this specific node once a variant can have two
    text.fontName = { family: fontFamilyValue, style: "Medium" };
    text.characters = component.defaultLabel;
    text.setBoundVariable("fontSize", getVar(component.fontSizeVariable));
@@ -397,6 +486,70 @@ For each item in `plan.components`, in order:
    if (variant.underline) text.textDecoration = "UNDERLINE";
    frame.appendChild(text);
    ```
+   **If `component.secondaryTextVariable` is present** (Alert's own real
+   `AlertDescription` — added 2026-09-17), the frame gets a VERTICAL inner
+   stack instead of the single text node going straight in, so the two
+   lines lay out top-to-bottom regardless of the outer frame's own
+   horizontal auto-layout:
+   ```js
+   const stack = figma.createFrame();
+   stack.layoutMode = "VERTICAL";
+   stack.primaryAxisSizingMode = "AUTO";
+   stack.counterAxisSizingMode = "AUTO";
+   stack.fills = []; // purely a layout container, no visible fill of its own
+   stack.appendChild(text); // the primary label text node from above
+   const secondaryText = figma.createText();
+   secondaryText.name = "SecondaryText";
+   secondaryText.fontName = { family: fontFamilyValue, style: "Regular" }; // body text, not the label's own weight
+   secondaryText.characters = component.defaultSecondaryLabel;
+   secondaryText.setBoundVariable("fontSize", getVar(component.secondaryFontSizeVariable));
+   secondaryText.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(component.secondaryTextVariable))];
+   stack.appendChild(secondaryText);
+   frame.appendChild(stack); // instead of frame.appendChild(text) directly
+   ```
+   Note `component.secondaryTextVariable` is the SAME value for every
+   variant (not per-variant like `variant.textVariable`) — bind it once,
+   not per-variant.
+
+   **If `component.sections` is present** (Card — added 2026-09-17, real
+   compound-component support, one level beyond the secondary-text-line
+   case above), it REPLACES the text-child step entirely — don't also do
+   the single/double text-line steps above for this component. The outer
+   frame becomes a VERTICAL stack of sections instead of one horizontal
+   frame around a text node:
+   ```js
+   frame.layoutMode = "VERTICAL"; // overrides the HORIZONTAL default from step 1
+   frame.paddingLeft = 0;
+   frame.paddingRight = 0; // Card's real root has no horizontal padding of its own — each section supplies its own
+   frame.setBoundVariable("paddingTop", getVar(component.sectionGapVariable));
+   frame.setBoundVariable("paddingBottom", getVar(component.sectionGapVariable));
+   frame.itemSpacing = 0;
+   frame.setBoundVariable("itemSpacing", getVar(component.sectionGapVariable)); // real Plugin API: bind itemSpacing the same way as padding
+
+   for (const section of component.sections) {
+     const sectionFrame = figma.createFrame();
+     sectionFrame.layoutMode = "VERTICAL";
+     sectionFrame.primaryAxisSizingMode = "AUTO";
+     sectionFrame.counterAxisSizingMode = "AUTO";
+     sectionFrame.fills = []; // sections have no fill/stroke of their own in this pass (Card's real Footer would need one — not modeled, see buildCardPlan's own comment)
+     sectionFrame.setBoundVariable("paddingLeft", getVar(section.paddingHorizontalVariable));
+     sectionFrame.setBoundVariable("paddingRight", getVar(section.paddingHorizontalVariable));
+     for (const line of section.textLines) {
+       const lineText = figma.createText();
+       lineText.name = line.labelPropertyName; // e.g. "Title", "Description", "Content" — distinct per line, for step 4's property binding
+       lineText.fontName = { family: fontFamilyValue, style: line.weight }; // "Medium" or "Regular", per the plan
+       lineText.characters = line.defaultLabel;
+       lineText.setBoundVariable("fontSize", getVar(line.fontSizeVariable));
+       lineText.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(line.textVariable))];
+       sectionFrame.appendChild(lineText);
+     }
+     frame.appendChild(sectionFrame);
+   }
+   ```
+   Every text line across every section still needs a real component
+   property in step 4, same as any other label — just more of them, named
+   per `line.labelPropertyName` instead of the fixed `Label`/`Description`
+   pair.
 3. **Convert each variant frame to a component, then `combineAsVariants`** —
    name each component `"<variantPropertyName>=<variant.name>"` (e.g.
    `"Variant=Destructive"`) before combining; Figma derives the variant
@@ -412,11 +565,36 @@ For each item in `plan.components`, in order:
    componentSet.itemSpacing = 24;
    ```
 4. **Add the label as a real TEXT component property**, bound to every
-   variant's text node — not just set on one:
+   variant's text node — not just set on one. Name each text node when
+   creating it (`text.name = "PrimaryText"`, and if present,
+   `secondaryText.name = "SecondaryText"` — see step 2 above) so this step
+   can find the right one by name instead of `findOne(n => n.type ===
+   "TEXT")`, which becomes ambiguous the moment a variant has TWO text
+   nodes (Alert's own secondary line):
    ```js
    const propName = componentSet.addComponentProperty(component.labelPropertyName, "TEXT", component.defaultLabel);
    for (const variant of componentSet.children) {
-     variant.findOne(n => n.type === "TEXT").componentPropertyReferences = { characters: propName };
+     variant.findOne(n => n.type === "TEXT" && n.name === "PrimaryText").componentPropertyReferences = { characters: propName };
+   }
+   if (component.secondaryLabelPropertyName) {
+     const secondaryPropName = componentSet.addComponentProperty(component.secondaryLabelPropertyName, "TEXT", component.defaultSecondaryLabel);
+     for (const variant of componentSet.children) {
+       variant.findOne(n => n.type === "TEXT" && n.name === "SecondaryText").componentPropertyReferences = { characters: secondaryPropName };
+     }
+   }
+   ```
+   **For a `sections`-based component** (Card), skip the two blocks above
+   entirely and instead loop every section's every text line — there's no
+   fixed `Label`/`Description` pair, just however many real lines the
+   plan actually has:
+   ```js
+   for (const section of component.sections) {
+     for (const line of section.textLines) {
+       const linePropName = componentSet.addComponentProperty(line.labelPropertyName, "TEXT", line.defaultLabel);
+       for (const variant of componentSet.children) {
+         variant.findOne(n => n.type === "TEXT" && n.name === line.labelPropertyName).componentPropertyReferences = { characters: linePropName };
+       }
+     }
    }
    ```
 5. **Validate before moving to the next component — never batch multiple
@@ -438,6 +616,24 @@ For each item in `plan.components`, in order:
      shapes look right in isolation. Remove the validation instance
      afterward (`instance.remove()`) — it's a check, not part of the
      deliverable.
+   - **`setProperties()` keys aren't always the plain property name** —
+     confirmed live on Badge: the variant axis (derived from the
+     `Name=Value` naming convention in step 3) keeps its plain name
+     (`"Variant"`), but an explicitly-added TEXT property (step 4, e.g.
+     `labelPropertyName`) comes back from Figma with an
+     auto-appended `#<nodeId>` suffix (e.g. `"Label#15:0"`). Calling
+     `setProperties({ Label: ... })` fails outright
+     (`Could not find a component property with name: 'Label'`). Always
+     read `Object.keys(instance.componentProperties)` first and match by
+     prefix (`propKeys.find(k => k.startsWith(labelPropertyName))`) rather
+     than assuming the plan's plain name works as the live key. **And
+     because the instance is created before this lookup, a failed
+     `setProperties()` call here leaves an orphaned instance on the
+     canvas** — wrap the swap-and-screenshot block so a thrown error still
+     reaches `instance.remove()`, or explicitly check for and clean up a
+     leftover validation instance in the final full-page screenshot before
+     reporting done (a real orphan of exactly this kind was caught and
+     removed during Badge's own live validation).
 6. **Report back**: which component(s) got built, how many real variants
    each has (and which were skipped, with the plan's own stated reason),
    and — if any binding needed a nearest-token approximation per the plan's
@@ -445,11 +641,137 @@ For each item in `plan.components`, in order:
    as pixel-perfect" honesty step 6 already applies to tokens.
 
 **Not yet built, real and disclosed:** re-running this step against a file
-that already has a `Button` component set will create a second,
+that already has one of these component sets will create a second,
 differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
-component beyond Button, any size beyond `default`, and any framework's
-component source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files and
-RNR's React Native source both need their own real verification before
-this same mechanism can be trusted against them — don't assume the parser
-generalizes without checking).
+component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card, any size
+beyond `default`, Alert's real destructive-tinted `AlertDescription` color
+(its description is modeled, but always in `text.secondary` — the real
+translucent-red tint on the destructive variant isn't bound, see
+`buildAlertPlan`'s own comment), Input/Textarea's real typed-text state
+(they show their PLACEHOLDER text, not typed content — see
+`buildInputPlan`'s own comment), Card's real `CardFooter` (a separate
+background/border treatment, not modeled — see `buildCardPlan`'s own
+comment) and its real `ring-1` border (approximated as `border.subtle`,
+not a true partially-transparent ring), and any framework's component
+source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files and RNR's
+React Native source both need their own real verification before this
+same mechanism can be trusted against them — don't assume the parser
+generalizes without checking). Most of shadcn/ui's own remaining real
+components either have no size-independent color "variant" axis at all
+(Checkbox, Switch, Label, Separator, ...) or are compound/multi-part
+components needing MORE than Card's own two-section, text-only structure
+(Dialog, Sheet, Table, Sidebar — nested interactive sub-components, not
+just more text lines) — real, larger, separate work, checked and
+deliberately not attempted yet, not an oversight.
+
+**State after this round (2026-09-17):** all seven components — Button,
+Badge, Toggle, Alert, Input, Textarea, Card — are now proven live, not
+just plan-computed. Every one went through the full build → screenshot →
+instance-swap → screenshot cycle, same bar throughout — including
+confirming live that Alert's same-tone-trap fix actually renders readable
+red text on both variants, that the radius bug fix's `radius/md` binding
+renders at the same real pixel value a live browser check showed, and
+that Card's own three independent text properties (`Title`/`Description`/
+`Content`) all bind and swap correctly on a real instance.
+
+### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
+
+Run this whenever the user asks to check for or pull Figma-side token
+edits into code — not automatically as part of every push, and not
+something to do proactively without being asked. Requires step 5's own
+`--init` snapshot to already exist for this `tokensDir` — if it doesn't
+(a project pushed before this step existed, or the snapshot file was
+deleted), say so plainly and stop; there's no baseline to diff against,
+and guessing one would risk reporting fake "changes" for every token.
+
+**Read every current variable AND style's live value** — the exact same
+three reads step 5's own snapshot-write uses (variables via
+`figma.variables.getLocalVariablesAsync()`, text styles via
+`getLocalTextStylesAsync()`, effect styles via `getLocalEffectStylesAsync()`
+— see that step for the full reshape code, including the weight-name
+reverse-mapping and the `rgba(r,g,b,a)` color formatting, both of which
+matter for correct diffing). Assemble the same
+`{ variables, textStyles, effectStyles }` shape, write to a temp JSON
+file, then run:
+
+```
+node src/cli.ts figma-pull --tokens-dir "<tokensDir>" --live-data "<path>"
+```
+
+This is the whole mechanism — the CLI does the actual diffing and file
+writing (`promote/figma-pull.ts`), not this skill. It:
+
+- Compares every live value (variables, text style fields, effect style
+  layers) against the snapshot from the last push/pull.
+- Writes ONLY the tokens/fields that genuinely changed since then straight
+  into the DTCG spec (`<tokensDir>/*.json`) — not a copy, the real files
+  `generate` reads from.
+- **Follows aliases, doesn't break them for no reason — applies to BOTH
+  semantic colors AND, per-field, text styles.** If a semantic color token
+  (e.g. `action.primary`) only changed because the PRIMITIVE it points to
+  changed in Figma, that's reported once, under the primitive's own name —
+  the semantic token's alias is left intact. The exact same logic applies
+  to each of a text style's four fields (`fontFamily`/`fontWeight`/
+  `fontSize`/`lineHeight`) — each is its own alias into a typography
+  primitive, so a style's `fontSize` that changed only because
+  `typography/primitive/fontSize/16` changed is left alone; only a field
+  overridden INDEPENDENTLY of its primitive (its own live value no longer
+  matches the primitive's) gets converted to a literal — and the printed
+  output says so plainly when that happens, don't let it pass as an
+  unremarkable value change. Shadow effect styles have no alias concept
+  (shadow.json's layer values were never aliases to a primitive scale to
+  begin with) — a changed layer value always gets written directly, no
+  alias-following logic applies there.
+- Refreshes the snapshot to the new live state either way, so the next
+  pull's baseline is current.
+- Prints any live Figma variable/style name it doesn't recognize
+  (something added by hand outside this pipeline's own naming convention)
+  — never guessed at or written anywhere, just disclosed.
+
+**Relay the CLI's own output to the user in plain language** — which
+tokens/styles changed (old value → new value), which ones got converted
+from an alias to a literal and why, and anything unmapped. Then say
+plainly: this only updated the token SPEC — the actual code
+(`theme.css`/`theme.ts`/component files) won't reflect these values until
+`generate` is re-run with the project's original flags, and that's a
+separate, explicit step, not something this command chains into
+automatically (same promote-then-generate confirmation gate the rest of
+this pipeline already uses — don't silently regenerate on the user's
+behalf).
+
+**If the project has already been scaffolded (not files-only), there is a
+third, equally explicit step after that**: `generate`'s own output only
+lives in the code-tokens directory, not inside the real scaffolded
+project, until `scaffold --update` (built 2026-09-17 — see
+`docs/layer2-layer3-plan.md`'s dated entry) copies it in. Ask whether the
+user wants to run it, name the exact command (same `--framework`/library
+flags the project's original scaffold used, `--code-dir` pointing at the
+just-refreshed `generate` output, `--out` pointing at the existing
+project, plus `--update`), and run it only on confirmation — same
+"explicit, confirmed, no auto-chaining" discipline as the `generate` step
+before it, not a third link automatically bolted onto the first two. If a
+theme file was hand-edited since SDSGT last wrote it, `--update` will warn
+and leave that one file alone rather than overwriting it — relay that
+warning verbatim rather than silently retrying with `--force` on the
+user's behalf.
+
+**Real, disclosed scope — don't overstate what this does:**
+
+- Covers every variable AND style category this pipeline pushes today
+  (color/spacing/radius/opacity/border-width/breakpoint/typography
+  primitives, MD3/MD2 elevation floats, text styles, box-shadow effect
+  styles) — nothing pushed is left un-pullable as of 2026-09-17.
+- Never infers structural changes — a new variable/style added in Figma
+  outside this pipeline's own naming convention doesn't create a new
+  token; it's reported as unmapped, nothing more. Renaming or
+  restructuring tokens is a `promote`-time decision, not something a pull
+  should improvise.
+- One-directional per run, by design, and this is intentional, not a gap
+  to close later — this never also re-pushes anything back to Figma, and
+  never detects or reconciles code-side drift (hand-edited tokens, or a
+  fresh `promote`/`generate` since the last sync). It only ever asks "what
+  changed on Figma's side," using Figma's own last-known state as the sole
+  point of comparison — the expectation is that day-to-day token editing
+  happens in Figma, and this is how that flows into code, not the other
+  way around.

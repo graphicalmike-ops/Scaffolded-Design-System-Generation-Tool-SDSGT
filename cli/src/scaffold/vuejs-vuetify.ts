@@ -45,10 +45,10 @@
 // as suppressing them, just one step later.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import { copyAgentDocs, parseFontFamiliesFromPlainCss, buildFontFaces } from "../shared/scaffold-common.ts";
+import { copyAgentDocs, parseFontFamiliesFromPlainCss, buildFontFaces, readCssScale, nearestScalePx, readThemeManifest, writeThemeManifest, guardedWriteFile } from "../shared/scaffold-common.ts";
 
 // Reads a single `--<name>: <N>px;` custom property out of the base
 // plain-CSS platform's own css/tokens.css — same reasoning as
@@ -76,20 +76,97 @@ function readCssVarPx(tokensCss: string, name: string): number {
 // the "base" radius, not `lg`) — verified with a real build: the compiled
 // CSS's own `.v-btn` rule showed the exact real pixel value, not an
 // approximation.
-function writeSettingsScss(outDir: string, borderRadius: number): void {
-  const content = ["@forward 'vuetify/settings' with (", `  $border-radius-root: ${borderRadius}px`, ");", ""].join("\n");
-  writeFileSync(join(outDir, "src", "styles", "settings.scss"), content, "utf-8");
+// $button-padding-ratio added 2026-09-16 — closes the real, disclosed
+// "button padding" gap left open by the 2026-09-15 radius pass. Verified
+// against the real npm-published vuetify@4.2.1 tarball's own
+// `VBtn/_variables.scss` + `VBtn/_mixins.scss`: Vuetify's real default
+// button has NO vertical padding of its own at all (`padding: 0
+// roundEven($height / $padding-ratio);` — vertical sizing comes entirely
+// from `$button-height`, 36px by default, not padding) — a genuine
+// difference from Bootstrap/MUI's own padding-y+padding-x shape, not an
+// oversight here. Only the horizontal component is real "padding." Rather
+// than also overriding `$button-height` (which would resize the whole
+// button, a bigger visual change than a padding fix should make), this
+// solves for `$button-padding-ratio` itself, holding Vuetify's own real
+// default height (36px) fixed — `ratio = height / targetPaddingPx` — so
+// the compiled `roundEven(height / ratio)` lands exactly on the nearest
+// real spacing token (confirmed exact, not approximate: `roundEven` is
+// `2 * round(val * 0.5)`, and this pipeline's own spacing presets only
+// ever use multiples of 4px, which `roundEven` always returns unchanged).
+// Verified live with a real `vite build` against a synthetic 18px target
+// (every real spacing preset happens to already include an exact 16px
+// step, which would have made the override indistinguishable from
+// Vuetify's own coincidental default — same class of "only looks
+// token-driven" risk the shadcn v4 spacing bug had): the compiled
+// `.v-btn--size-default` rule showed the exact `padding:0 18px`.
+// **Disclosed, not covered**: the stacked-button variant
+// (`$button-stacked-padding-ratio`) is a real, separate Sass variable this
+// override does not touch — confirmed live, `.v-btn--stacked` still
+// compiled its own unrelated default padding — same "one reference variant
+// only" scope as this pipeline's own MUI button-padding fix.
+// Real Vuetify 4 MD3 type-scale role names + their own real default px
+// sizes (converted from the real npm-published vuetify@4.2.1 tarball's own
+// `styles/settings/_variables.scss` — rem values × 16px root). Added
+// 2026-09-16, closing the "typography size scale" gap disclosed alongside
+// the 2026-09-15 radius fix — font FAMILY was always bound via `--v-font-*`
+// (see file header); pixel SIZE never was.
+const VUETIFY_TYPE_SCALE_DEFAULT_PX: Record<string, number> = {
+  "display-large": 57,
+  "display-medium": 45,
+  "display-small": 36,
+  "headline-large": 32,
+  "headline-medium": 28,
+  "headline-small": 24,
+  "title-large": 22,
+  "title-medium": 16,
+  "title-small": 14,
+  "body-large": 16,
+  "body-medium": 14,
+  "body-small": 12,
+  "label-large": 14,
+  "label-medium": 12,
+  "label-small": 11,
+};
+
+function buildSettingsScss(borderRadius: number, buttonPaddingRatio: number, fontSizeScale: Record<string, number>): string {
+  // Vuetify's own real `$typography` map is built via a true recursive
+  // `map-deep-merge` (confirmed by reading the real npm-published source,
+  // `styles/tools/_functions.sass`) — forwarding just a `'size'` sub-key
+  // per role leaves that role's own real weight/line-height/letter-spacing/
+  // font-family untouched, no need to re-specify them. Each role's real
+  // default size bound to the nearest real type-scale token, same
+  // discipline as this pipeline's own MUI typography-size fix.
+  const typographyLines = Object.entries(VUETIFY_TYPE_SCALE_DEFAULT_PX)
+    .map(([role, defaultPx]) => `    '${role}': ('size': ${nearestScalePx(defaultPx, fontSizeScale)}px),`)
+    .join("\n");
+  const content = [
+    "@forward 'vuetify/settings' with (",
+    `  $border-radius-root: ${borderRadius}px,`,
+    `  $button-padding-ratio: ${buttonPaddingRatio},`,
+    "  $typography: (",
+    typographyLines,
+    "  )",
+    ");",
+    "",
+  ].join("\n");
+  return content;
 }
 
 export interface ScaffoldVuejsVuetifyOptions {
   codeDir: string; // output of `generate --vuetify --framework vuejs`
-  outDir: string; // where the new project gets created — must not already exist
+  outDir: string; // where a new project gets created (update: false/omitted)
+  // or an already-scaffolded one gets refreshed (update: true)
   fontsDir?: string; // same convention/files as promote's --fonts-dir
+  update?: boolean; // refresh an EXISTING project's theme files in place —
+  // see docs/layer2-layer3-plan.md's 2026-09-17 entry / cli.ts's
+  // `scaffold --update`.
+  force?: boolean; // overwrite a hand-edited theme file anyway
 }
 
 export interface ScaffoldResult {
   filesWritten: string[];
   projectDir: string;
+  warnings: string[];
 }
 
 function run(cmd: string, args: string[], cwd: string, label: string): void {
@@ -173,9 +250,10 @@ function writeVuetifyPlugin(outDir: string, hasLight: boolean, hasDark: boolean)
 
   const content = [
     "/**",
-    " * plugins/vuetify.ts — theme wired in by SDSGT. Re-run `generate` then",
-    " * `scaffold` to update; don't hand-edit theme.ts directly, since the next",
-    " * scaffold run overwrites it.",
+    " * plugins/vuetify.ts — theme wired in by SDSGT. After editing tokens, run",
+    " * `generate` then `scaffold --update` (same flags, --out pointing back at",
+    " * this project); don't hand-edit theme.ts directly — an update run warns",
+    " * instead of silently overwriting a hand-edited file.",
     " */",
     "import { createVuetify } from 'vuetify'",
     "import '@mdi/font/css/materialdesignicons.css'",
@@ -267,11 +345,11 @@ function writeMainTs(outDir: string): void {
 // Vuetify's own SCSS already reads --v-font-body/--v-font-heading with a
 // Roboto fallback (see file header) — setting them here is enough, no Sass
 // override needed.
-function writeThemeCss(outDir: string, families: { primary: string; secondary?: string }, fontFaceCss: string): void {
+function buildThemeCss(families: { primary: string; secondary?: string }, fontFaceCss: string): string {
   const parts = [fontFaceCss, [":root {", `  --v-font-body: ${families.secondary ?? families.primary}, sans-serif;`, `  --v-font-heading: ${families.primary}, sans-serif;`, "}"].join("\n")].filter(
     Boolean,
   );
-  writeFileSync(join(outDir, "src", "styles", "theme.css"), `${parts.join("\n\n")}\n`, "utf-8");
+  return `${parts.join("\n\n")}\n`;
 }
 
 // Deliberately light-touch, same restraint as every other scaffold's own
@@ -333,8 +411,10 @@ function writeReadme(outDir: string, projectName: string): void {
     "## What's in here",
     "",
     "- `src/plugins/theme.ts` — your generated Vuetify theme (light/dark color",
-    "  definitions). Re-run SDSGT's `generate` step to update these; don't",
-    "  hand-edit them directly, since the next scaffold run overwrites them.",
+    "  definitions). After editing tokens, run `generate` then `scaffold",
+    "  --update` (same flags, --out pointing back at this project) to refresh",
+    "  these in place; don't hand-edit them directly — an update run warns",
+    "  instead of silently overwriting a hand-edited file.",
     "- `src/plugins/vuetify.ts` — wires `theme.ts` into Vuetify's own",
     "  `createVuetify()` setup.",
     "- `src/styles/theme.css` — your real brand fonts, plus the",
@@ -349,7 +429,7 @@ function writeReadme(outDir: string, projectName: string): void {
 }
 
 export function scaffoldVuejsVuetify(opts: ScaffoldVuejsVuetifyOptions): ScaffoldResult {
-  const { codeDir, outDir, fontsDir } = opts;
+  const { codeDir, outDir, fontsDir, update = false, force = false } = opts;
 
   const vuetifyThemeTsPath = join(codeDir, "vuetify", "theme.ts");
   const tokensCssPath = join(codeDir, "css", "tokens.css");
@@ -359,8 +439,12 @@ export function scaffoldVuejsVuetify(opts: ScaffoldVuejsVuetifyOptions): Scaffol
   if (!existsSync(tokensCssPath)) {
     throw new Error(`No ${tokensCssPath} found — was ${codeDir} really written by this pipeline's \`generate\`? Font family names come from there.`);
   }
-  if (existsSync(outDir)) {
-    throw new Error(`${outDir} already exists — scaffold needs a path that doesn't exist yet, so create-vuetify can create it fresh.`);
+  if (update) {
+    if (!existsSync(outDir)) {
+      throw new Error(`--update was passed but ${outDir} doesn't exist — nothing to update. Run \`scaffold\` without --update first to create it.`);
+    }
+  } else if (existsSync(outDir)) {
+    throw new Error(`${outDir} already exists — scaffold needs a path that doesn't exist yet, so create-vuetify can create it fresh. Pass --update to refresh an existing project instead.`);
   }
 
   const themeTsContent = readFileSync(vuetifyThemeTsPath, "utf-8");
@@ -369,38 +453,68 @@ export function scaffoldVuejsVuetify(opts: ScaffoldVuejsVuetifyOptions): Scaffol
 
   const projectName = basename(outDir);
   const filesWritten: string[] = [];
+  const warnings: string[] = [];
+  const manifest = readThemeManifest(outDir);
+  const nextManifest: Record<string, string> = { ...manifest };
 
-  runCreateVuetify(outDir, projectName);
+  function guarded(relPath: string, content: string | Buffer, label?: string): void {
+    const result = guardedWriteFile(outDir, relPath, content, manifest, { force });
+    nextManifest[relPath] = result.hash;
+    if (result.written) {
+      filesWritten.push(label ?? relPath);
+    } else if (result.warning) {
+      warnings.push(result.warning);
+    }
+  }
 
-  removeBoilerplate(outDir);
+  if (!update) {
+    runCreateVuetify(outDir, projectName);
 
-  writeViteConfig(outDir);
-  filesWritten.push("vite.config.mts");
+    removeBoilerplate(outDir);
 
-  copyFileSync(vuetifyThemeTsPath, join(outDir, "src", "plugins", "theme.ts"));
-  filesWritten.push("src/plugins/theme.ts");
-  writeVuetifyPlugin(outDir, hasLight, hasDark);
-  filesWritten.push("src/plugins/vuetify.ts");
+    writeViteConfig(outDir);
+    filesWritten.push("vite.config.mts");
+  }
+
+  guarded(join("src", "plugins", "theme.ts"), readFileSync(vuetifyThemeTsPath));
+
+  if (!update) {
+    writeVuetifyPlugin(outDir, hasLight, hasDark);
+    filesWritten.push("src/plugins/vuetify.ts");
+  }
 
   const tokensCss = readFileSync(tokensCssPath, "utf-8");
   const families = parseFontFamiliesFromPlainCss(tokensCss);
   const { css: fontFaceCss, filesWritten: fontFiles } = buildFontFaces(families, fontsDir, join(outDir, "public", "fonts"));
   filesWritten.push(...fontFiles);
-  writeThemeCss(outDir, families, fontFaceCss);
-  filesWritten.push("src/styles/theme.css");
-  writeMainTs(outDir);
-  filesWritten.push("src/main.ts");
+  guarded(join("src", "styles", "theme.css"), buildThemeCss(families, fontFaceCss));
 
-  writeSettingsScss(outDir, readCssVarPx(tokensCss, "radius-md"));
-  filesWritten.push("src/styles/settings.scss");
+  if (!update) {
+    writeMainTs(outDir);
+    filesWritten.push("src/main.ts");
+  }
 
-  rewriteAppVue(outDir, projectName);
-  filesWritten.push("src/App.vue");
+  // Vuetify's own real default button height (36px) — see buildSettingsScss's
+  // own header for why this is held fixed rather than also overridden.
+  const VUETIFY_DEFAULT_BUTTON_HEIGHT = 36;
+  const spacingScale = readCssScale(tokensCss, "spacing");
+  const buttonPaddingRatio = VUETIFY_DEFAULT_BUTTON_HEIGHT / nearestScalePx(16, spacingScale);
+  const fontSizeScale = readCssScale(tokensCss, "typography-primitive-font-size");
+  guarded(join("src", "styles", "settings.scss"), buildSettingsScss(readCssVarPx(tokensCss, "radius-md"), buttonPaddingRatio, fontSizeScale));
+
+  if (!update) {
+    rewriteAppVue(outDir, projectName);
+    filesWritten.push("src/App.vue");
+  }
 
   filesWritten.push(...copyAgentDocs(codeDir, outDir));
 
-  writeReadme(outDir, projectName);
-  filesWritten.push("README.md");
+  if (!update) {
+    writeReadme(outDir, projectName);
+    filesWritten.push("README.md");
+  }
 
-  return { filesWritten, projectDir: outDir };
+  writeThemeManifest(outDir, nextManifest);
+
+  return { filesWritten, projectDir: outDir, warnings };
 }

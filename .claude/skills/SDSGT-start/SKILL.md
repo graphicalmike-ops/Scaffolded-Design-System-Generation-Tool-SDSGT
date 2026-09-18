@@ -87,7 +87,7 @@ is that plan's implementation in the actual conversation.
 | 1 | Full new project, or just the design-system files? | Menu — `Scaffold` / `Design system files only` | Framework is still asked next either way — see row 2. `promote` never reads this either way. Real scaffolding exists for Next.js (its Tailwind path and its Bootstrap/React-Bootstrap path); for Vue.js (its Tailwind path, its Material Design/Vuetify path, and its Bootstrap/bootstrap-vue-next path); and for React Native/Expo (both its Tailwind/NativeWind path and its Material Design/React Native Paper path) — see step 10, "Running the flow," and "Known gaps." Kotlin and SwiftUI are both real exceptions, not "no effect" cases: neither has an official scaffolding CLI at all (Android/Compose and Xcode/SwiftUI, checked independently, same conclusion), so `generate` itself always writes a real setup guide (`md3/SCAFFOLD_GUIDE.md` or `swiftui/SCAFFOLD_GUIDE.md`) regardless of this answer — see step 9. Next.js with MD3/MD2 (MUI) still records this answer with genuinely no effect (React Native has no Bootstrap option at all — see "Suggestion logic"). | `scaffoldMode` (`"scaffold"` \| `"files-only"`) |
 | 2 | Which framework/platform? | Menu — `Next.js` (React, web) / `Vue.js` (web) / `React Native (Expo)` / `Kotlin` (Jetpack Compose, native Android) / `SwiftUI` (native iOS) | Fixed list. Selecting one marks a suggested Component library in row 4 (see "Suggestion logic," below). `promote` doesn't branch on this — every token preset it writes is platform-agnostic DTCG JSON. `generate` does read it, though, to pick between `--swiftui` and everything else, and to set `--framework` — see "Running the flow," step 8. | `targetFramework` |
 | 3 | Which design language? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Marks Type-scale (row 13), Spacing (row 14), Border-roundness (row 15), Shadows (row 18), and Component library (row 4) as "(Suggested)" further down — see "Suggestion logic." Not read by `promote` — each preset choice below is independent, this just seeds their defaults. `generate` does read it, to pick which platform flag to pass (`--tailwind`/`--bootstrap`/`--md2`/`--md3`) — see "Running the flow," step 8. | `targetDesignLanguage` |
-| 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current geometry-fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries** — see "Known gaps," **"Geometry fidelity, by library"** for the exact, current per-library state (color/radius bound exactly for four of the five installed-and-wired libraries; React Native Paper's radius is real-but-structurally-approximate outside Button; button padding isn't bound for any of the five yet; shadcn/ui and shadcn-vue's spacing is now real-token-bound for every spacing preset except `bootstrap`'s non-linear scale; RNR's spacing isn't bound at all yet, a real, separate, not-yet-scoped gap). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma today — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
+| 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries, and spans radius/padding/typography-size/shadow/opacity, not just geometry** — see "Known gaps," **"Geometry, shadow, and opacity fidelity, by library"** for the full exact per-library detail. The short version: React-Bootstrap/bootstrap-vue-next, MUI, Vuetify, and React Native Paper all have color/radius/padding/typography-size/opacity fully real-token-bound (as of 2026-09-16) — nothing left open on those five dimensions for any of those four. shadcn/ui and shadcn-vue have shadow bound for every preset, and spacing bound for every preset including `bootstrap` now (2026-09-16) — though `bootstrap`'s own fix only covers the exact keys it defines (0-5); any fractional class or key beyond 5 still falls back to Tailwind's raw default, disclosed same as RNR's own spacing gap. RNR has spacing (partial) and typography size (complete) bound, but its shadow classes are structurally unfixable — the underlying native CSS-to-RN translation library drops multi-layer shadows outright, independent of any token binding. MUI's and Vuetify's own SHADOW/elevation systems are a genuinely different, physically-modeled numeric depth scale (not a named size scale) with no real, non-arbitrary mapping from this pipeline's own 5-tier scale — disclosed, not fabricated. RN Paper's own elevation is already correct via a different, real MD3-appropriate mechanism (surface tinting, not box-shadow). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma today — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
 | 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. **Disclose here, not just at row 4 or step 10, since this is the question a "will my components show up in Figma too?" assumption actually attaches to**: `Figma-managed` today only ever pushes real component structure for one combination — `nextjs` + `tailwind` + shadcn/ui — everything else (every other framework/library, `files-only` mode) still gets tokens-as-variables in Figma, nothing more, regardless of this answer. See "Known gaps," "Figma component push — scope, not just fidelity" for the exact current wording. | `figmaManaged` (boolean) |
 | 5a | *(only if row 5 = `Figma-managed`)* Paste the Figma file link to push tokens into | In chat — a Figma URL | Must actually look like a Figma URL (`figma.com/design/...` or `figma.com/file/...`) — if what's pasted doesn't parse as one, say so and ask again rather than guessing a file key out of it. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a, for when this actually gets used — pushing happens right after `promote`, using this link, not at seed-input time. | `figmaFileUrl` (string, optional — only set when row 5 is `Figma-managed`) |
 | 5b | *(only if row 5 = `Figma-managed`)* Which Figma MCP should the push use? | Menu — `Official Figma MCP` / `Southleft MCP` | A real choice, collected for real — but say plainly, right after they answer, that **during this internal-testing phase the push always runs through the Southleft MCP regardless of which one is picked.** Official Figma MCP is a real, confirmed integration (`mcp.figma.com`, OAuth-gated), it's just never been exercised from this project, so nothing runs against it yet — same "ask it anyway, disclose the gap" treatment as row 4's component library. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaMcp` (`"official"` \| `"southleft"`, optional — only set when row 5 is `Figma-managed`) |
@@ -103,8 +103,8 @@ is that plan's implementation in the actual conversation.
 | 14 | Spacing preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend the row-3 match. **If MD3 or MD2 is picked, say plainly that spacing runs on Tailwind's scale under the hood** — neither MD3 nor MD2 has its own named spacing scale. Show the key→px table (`contracts-and-seeds.md`, "Spacing") so the index-vs-pixel distinction (`spacing.4` = 16px, not 4px) isn't a surprise later. | `spacingPreset` |
 | 15 | Corner-roundness preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend the row-3 match. Show the px scale (`contracts-and-seeds.md`, "Radius"). | `radiusPreset` |
 | 16 | Disclosure: border width is fixed | Two options — `Continue` / `Why isn't this a choice?` | No real choice — always the Tailwind scale (0/1/2/4/8px). Shown as its own step (not folded into the final summary) so the user actually reads it before moving on, rather than it passing by silently. | *(not in `SeedConfig` — hardcoded default in `cli/src/defaults/`)* |
-| 17 | Opacity preset? | Menu — `Tailwind` / `Bootstrap` only | Neither Material Design variant has a preset opacity scale — say so if the user picked MD3/MD2 in row 3, since there's no "(Suggested)" match here. | `opacityPreset` (`"tailwind"` \| `"bootstrap"`) |
-| 18 | Shadow preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend the row-3 match. Show the scale (`contracts-and-seeds.md`, "Shadow"). | `shadowPreset` |
+| 17 | Opacity preset? | Menu — `Tailwind` / `Bootstrap` only | Neither Material Design variant has a preset opacity scale — say so if the user picked MD3/MD2 in row 3, since there's no "(Suggested)" match here. **Real-token-bound everywhere it can actually apply** (verified 2026-09-16): Bootstrap-family's `$btn-disabled-opacity`, MUI's `theme.palette.action.*Opacity`, and Vuetify's `theme.variables` opacity constants are all bound to the nearest real token; RNR/shadcn's own Tailwind opacity classes need no binding at all — Tailwind's real default scale already exactly matches both this pipeline's own presets at every key either defines, confirmed by checking, not assumed. Nothing left open here. | `opacityPreset` (`"tailwind"` \| `"bootstrap"`) |
+| 18 | Shadow preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend the row-3 match. Show the scale (`contracts-and-seeds.md`, "Shadow"). **Disclose here, not just at library pick (row 4)**: real-token-bound for Bootstrap-family (`$box-shadow-*`, 3 of this scale's 5 tiers — Bootstrap has no 4th/5th) and for shadcn/ui + shadcn-vue on the web (Tailwind v4 `@theme` block, real per-preset values). **Two real, permanent exceptions, not oversights**: MUI's and Vuetify's own shadow/elevation systems are a physically-modeled numeric depth scale (25 levels for MUI, a two-layer MD3 depth model for Vuetify), not a named 5-tier scale like this one — no real, non-arbitrary mapping exists, so neither is bound. RNR (React Native) can't render this scale's `md`/`lg`/`xl`/`2xl` tiers on native AT ALL regardless of binding — the underlying `react-native-css-interop` library drops any multi-layer shadow outright (confirmed against its own real source), a structural limitation of the native CSS-to-shadow translation itself, not something this pipeline's tokens can fix. React Native Paper needs no shadow token at all — MD3's own real elevation model uses surface-color tinting instead of box-shadow, already correctly implemented. | `shadowPreset` |
 | 19 | Disclosure: breakpoints are fixed | Two options — `Continue` / `Why isn't this a choice?` | No real choice — always Tailwind's breakpoints. Shown as its own step for the same reason as row 16. | *(not in `SeedConfig` — hardcoded default)* |
 | 20 | Disclosure: column/grid system is fixed | Two options — `Continue` / `Why isn't this a choice?` | No real choice — always Material Design 3's grid recipe, regardless of design language; tiers switch at Tailwind's breakpoints, not MD3's native dp thresholds. Shown as its own step for the same reason as row 16. | *(not in `SeedConfig` — hardcoded default)* |
 
@@ -310,91 +310,359 @@ override any of the four independently — they don't have to move together.
   A `files-only` run, or a `Scaffold` run for a framework/language
   combination step 10 doesn't support, still only gets that library's theme
   file — same as every other library, for all eight of these.
-- **Geometry fidelity, by library — real, current, verified 2026-09-15,
-  not assumed.** Color has always been bound exactly for every library that
-  gets real theming. Radius and spacing/padding are different — until
-  2026-09-15 only Bootstrap-family's radius was ever bound to this
-  pipeline's own tokens; everything else silently used the library's own
-  default geometry regardless of the corner-roundness/spacing-rhythm
-  presets picked at seed input. **Say the real current state below to the
-  user before they pick a library (row 4) AND again right before the step
-  that actually applies it (step 8/10)** — never let Figma or the real app
-  show a property that looks token-driven but isn't:
-  - **React-Bootstrap / bootstrap-vue-next — radius exact, padding now
-    exact too (fixed 2026-09-15).** `$border-radius-*` and `$btn-padding-y`/
-    `$btn-padding-x` are both real Bootstrap Sass variables this pipeline
-    now binds to the nearest real spacing/radius token (not always pixel-
-    identical to Bootstrap's own literal default, since a preset's own
-    scale doesn't always land exactly where Bootstrap's default does — see
-    `generate/bootstrap.ts`'s own `nearestSpacingPx`). **Still not bound:**
-    `$btn-font-size` — button text size is still Bootstrap's own default,
-    not this pipeline's type-scale token.
-  - **MUI — radius exact, for every component (fixed 2026-09-15).**
-    `theme.shape.borderRadius` is a single real value MUI's own components
-    (Button, Card, Paper, ...) all read directly — bound to `radius.md`.
-    **Still not bound:** Button's own padding (MUI doesn't derive it from
-    `theme.spacing` by default; needs a real `styleOverrides` addition, not
-    done), and the broader typography *size* scale (font-*family* is
-    bound; MUI's own h1–h6/body pixel sizes are still MUI's defaults, not
-    this pipeline's type-scale tokens) — found while writing this
-    disclosure, not yet fixed.
-  - **Vuetify — radius exact, for every component (fixed 2026-09-15, and
-    genuinely pixel-exact, not a nearest-preset approximation)** —
-    `$border-radius-root` is a real Sass variable every one of Vuetify's
-    own `rounded-*` classes and component defaults derive from
-    proportionally; `create-vuetify`'s own template already ships a real
-    `src/styles/settings.scss` + `sass-embedded` dependency this pipeline
-    now writes real content into, no new pipeline needed. **Still not
-    bound:** button padding, and the same typography-size-scale gap MUI
-    has (Vuetify's own generator has always been colors-only for
-    typography too).
-  - **React Native Paper — radius exact for Button ONLY; every other
-    component approximates, and this is a real structural ceiling, not an
-    unfinished fix.** Paper's own `roundness` is a single global multiplier
-    every component type multiplies by its OWN different internal factor
-    (confirmed against Paper's real `Button.tsx` source: `borderRadius =
-    5 * roundness` for the MD3 theme this pipeline targets) — there is no
-    per-component override this pipeline can set instead. Calibrated so
-    Button matches `radius.md` exactly (the same reference component this
-    pipeline's Figma component push also builds); Card/Chip/TextInput/etc.
-    each derive a DIFFERENT, non-matching radius from that same value,
-    using their own real multipliers. **Always say this one plainly and
-    specifically** — this is the one case in this whole list where "wait
-    for a future fix" isn't the honest framing; Paper's own architecture
-    doesn't allow a fuller fix without per-component style overrides this
-    pipeline doesn't build today. Padding is also not bound at all.
+- **Geometry, shadow, and opacity fidelity, by library — real, current,
+  verified 2026-09-16, not assumed.** Color has always been bound exactly
+  for every library that gets real theming. Radius, padding, typography
+  size, shadow, and opacity are different — until 2026-09-15 only
+  Bootstrap-family's radius was ever bound to this pipeline's own tokens;
+  everything else silently used the library's own default regardless of
+  the corner-roundness/spacing-rhythm/type-scale/shadow/opacity presets
+  picked at seed input. Three real audit passes (2026-09-15 radius/
+  spacing, 2026-09-16 button padding/typography size, then a full,
+  explicit "check everything in Layer 2" pass the same day covering shadow
+  and opacity specifically) have closed every gap that was structurally
+  closeable — **the "installed and wired" libraries (React-Bootstrap/
+  bootstrap-vue-next, MUI, Vuetify) now have every one of color/radius/
+  padding/typography-size/opacity real-token-bound, and shadow bound
+  everywhere a real, non-arbitrary mapping exists (Bootstrap-family's own
+  3-tier `$box-shadow-*`; MUI's and Vuetify's own elevation SYSTEMS are a
+  genuinely different, physically-modeled kind of scale — see their own
+  bullets below for why those specifically are disclosed, not bound).**
+  What's left is either a genuine structural ceiling (RN Paper's remaining
+  components; MUI/Vuetify's own elevation arrays; RNR's native shadow
+  rendering) or a scope this pipeline's own presets were never designed to
+  reach fully (RNR/shadcn's `bootstrap` spacing preset, non-linear by
+  design). **Say the real current state below to the user before they pick
+  a library (row 4) AND again right before the step that actually applies
+  it (step 8/10)** — never let Figma or the real app show a property that
+  looks token-driven but isn't:
+  - **React-Bootstrap / bootstrap-vue-next — color/radius/padding/button
+    text size/shadow/disabled-opacity ALL exact (fixed 2026-09-15, then
+    2026-09-16 in two rounds).** `$border-radius-*`, `$btn-padding-y`/
+    `$btn-padding-x`, and `$btn-font-size` are all real Bootstrap Sass
+    variables this pipeline binds to the nearest real spacing/radius/
+    type-scale token (not always pixel-identical to Bootstrap's own
+    literal default, since a preset's own scale doesn't always land
+    exactly where Bootstrap's default does — see `generate/bootstrap.ts`'s
+    own `nearestDimensionPx`). `$box-shadow-sm`/`$box-shadow`/
+    `$box-shadow-lg` (Bootstrap's own real 3-tier shadow scale — no 4th/5th
+    tier exists, so this pipeline's own `xl`/`2xl` shadow tokens have
+    nothing to bind to, same "framework has fewer tiers" shape as the
+    type-scale table) and `$btn-disabled-opacity` (real default `.65`) are
+    also now bound, verified with a real compiled build. **Nothing left
+    open for this library.**
+  - **MUI — color/radius/button padding/typography size/action opacity
+    all bound (radius 2026-09-15; padding and typography size 2026-09-16;
+    action opacity 2026-09-16, same day).**
+    `theme.shape.borderRadius` is bound to `radius.md`.
+    `components.MuiButton.styleOverrides.root` is bound to the nearest
+    real spacing tokens for MUI's own real medium/contained default
+    (6px/16px) — verified live with a real Chrome computed-style check,
+    not just a successful build. `theme.typography`'s `h1`–`h6`/
+    `subtitle1`/`subtitle2`/`body1`/`body2`/`button`/`caption`/`overline`
+    each bind to the nearest real type-scale token for MUI's own real
+    per-variant default size (`generate`d from `createTypography.js`'s own
+    real defaults) — also verified live. `theme.palette.action.
+    {hoverOpacity,selectedOpacity,disabledOpacity,focusOpacity,
+    activatedOpacity}` are bound to the nearest real opacity tokens, using
+    MUI's own real LIGHT-mode defaults specifically (`createPalette.js`'s
+    own `getLight()` — MUI's own dark-mode set is genuinely different, but
+    `generate/md2.ts`'s own `palette.ts` never sets `mode` at all, so MUI's
+    real default `mode: 'light'` silently applies regardless of the
+    light/dark seed choice — a separate, already-disclosed MD2 generator
+    limitation, not something this fix changes). Verified live: hovering a
+    real `text`-variant Button in a real browser showed the exact bound
+    alpha channel in its computed `background-color`. **Disclosed,
+    narrower scope, not a bug:** the padding override only reaches the
+    medium/contained case — every other variant/size combination
+    (`outlined`, `text`, `small`, `large`) keeps MUI's own separate literal
+    padding, since MUI defines each of those with its own separate style
+    entry this pipeline doesn't also override. Typography sizing for
+    `h1`/`h3` lands on the same `display` token (this pipeline's own
+    type-scale tops out below both of MUI's real 96px/48px defaults) — an
+    honest nearest-match outcome. **A real, structural gap, not fixed and
+    not fixable the same way**: MUI's own `theme.shadows` is a fixed,
+    physically-modeled 25-level elevation array (0–24, Material Design's
+    real depth model), not a named 5-tier scale — different REAL
+    components use different, specific elevation INDICES for structural
+    reasons (Card=1, AppBar=4, Dialog=24, ...), not a "pick your shadow
+    size" choice the way `sm`/`md`/`lg` are. Mapping this pipeline's own
+    5-tier `shadow.json` onto 25 numeric levels would mean inventing a
+    correspondence with no real source — checked, not attempted, disclosed
+    instead of fabricated.
+  - **Vuetify — color/radius/button padding/typography size/opacity all
+    bound (radius 2026-09-15, genuinely pixel-exact; padding, typography
+    size, and opacity 2026-09-16).** `$border-radius-root` is a real Sass
+    variable every `rounded-*` class and component default derives from
+    proportionally. Button padding is a different shape than
+    Bootstrap/MUI's — Vuetify has no vertical button padding of its own at
+    all (real default `padding: 0 roundEven($button-height /
+    $button-padding-ratio)`, vertical sizing comes entirely from
+    `$button-height`) — rather than also resizing the button, this
+    pipeline solves for `$button-padding-ratio` alone, holding Vuetify's
+    own real 36px default height fixed, landing exactly (not
+    approximately) on the nearest real spacing token. `$typography`'s own
+    15 real MD3 role names (`display-large` … `label-small`) each get
+    their own `'size'` sub-key bound to the nearest real type-scale token
+    via a real Sass `map-deep-merge`, leaving weight/line-height/
+    letter-spacing/font-family untouched. `theme.variables`'s own 11 real
+    opacity/emphasis constants (`hover-opacity`, `disabled-opacity`,
+    `high-emphasis-opacity`, and more) are bound to the nearest real
+    opacity tokens, using Vuetify's own real, genuinely DIFFERENT light vs.
+    dark defaults (e.g. real `disabled-opacity` is 0.38 light / 0.50
+    dark) — verified live: `getComputedStyle(document.documentElement).
+    getPropertyValue('--v-hover-opacity')` in a real running app showed
+    the exact bound value, confirming these are injected at RUNTIME by
+    Vuetify's own JS (not visible in any static compiled CSS bundle — a
+    real, load-bearing difference from radius/padding/typography, which
+    verifying by only reading a compiled CSS file would have missed).
+    Radius/padding/typography all verified with a real `vite build`'s
+    compiled CSS. **Disclosed, narrower scope, not a bug:** the
+    stacked-button variant (`$button-stacked-padding-ratio`) is untouched
+    — its own separate real Sass variable, same "one reference variant"
+    restraint as MUI's own padding fix. **A real, structural gap, same
+    shape as MUI's own**: Vuetify's own elevation system (`$shadow-key`/
+    `$shadow-ambient` Sass maps, a real two-layer physically-modeled depth
+    scale matching MD3's own elevation spec) is not bound — same
+    "physically-modeled numeric depth, not a named size scale" reasoning
+    as MUI's `theme.shadows`, no real non-arbitrary mapping exists from
+    this pipeline's own 5-tier `shadow.json`.
+  - **React Native Paper — radius now exact for ten components via
+    generated wrapper components, button padding and the full typography
+    size scale ALSO now bound (all 2026-09-16, across three rounds); every
+    OTHER component's radius still only approximates via `roundness`
+    alone.** Paper's own
+    `roundness` theme value is a single global multiplier every component
+    type multiplies by its OWN different internal factor (confirmed against
+    Paper's real source: Button `5×`, Card `3×`, Chip `2×`, TextInput `1×`,
+    Snackbar/Menu/ToggleButton `1×`, DrawerItem/Dialog `7×`, FAB `3×/4×/7×`
+    by size, Searchbar `7×`/`0×` by mode, ...) — calibrating `roundness`
+    alone (still done, for Button) can only ever match ONE of these at a
+    time. **The real unlock, found by checking rather than assuming it was
+    a dead end**: Button, Card, Chip, TextInput, Snackbar, Menu,
+    ToggleButton, DrawerItem, FAB, Searchbar, and Dialog each already
+    expose a real, PUBLIC, documented per-instance override — a `style`
+    prop (several: the library's own source extracts `border*Radius` keys
+    or appends `style` last in its own internal array, either way the
+    caller wins), a dedicated `contentStyle` prop (Menu), or a dedicated
+    `outlineStyle` prop (TextInput outlined mode, Paper's own JSDoc:
+    "override the default style of outlined wrapper"). This is Paper's own
+    intended customization mechanism, not an unsupported hack.
+    `generate --rn-paper` now writes ten files under
+    `rn-paper/components/` — thin wrappers that bake `radius.md` in via
+    these real props, still overridable further by the caller — and
+    `scaffold --rn-paper` copies them into the real project's own
+    `components/`. **Real, disclosed narrower scopes, not silently smoothed
+    over**:
+    - Card's own wrapper needs a well-commented `as any` at one spread —
+      confirmed with a real `tsc` run that this is a structural limitation
+      of Paper's OWN exported `CardProps` type (a discriminated union keyed
+      on `mode`) that breaks even an unmodified passthrough wrapper, not
+      anything about this pipeline's code; every other wrapper's types
+      don't have this problem and needed no cast.
+    - FAB and Searchbar have MODE/SIZE-dependent real defaults (FAB: small/
+      medium/large use different multipliers; Searchbar: `"bar"` mode is
+      `7×`, `"view"` mode is a deliberately square `0`) — rather than
+      inventing a scaling formula this pipeline has no real source for,
+      only each one's real DEFAULT case (`size="medium"`, `mode="bar"`) is
+      bound; other sizes/modes keep Paper's own real, unmodified defaults.
+    - A real, functional bug caught and fixed before shipping, not just a
+      style nit: Card, Menu, ToggleButton, FAB, and Dialog all have real
+      compound sub-components (`Card.Content`, `Menu.Item`,
+      `ToggleButton.Group`/`.Row`, `FAB.Group`, `Dialog.Actions`/etc.) —
+      an early cut of the Menu/ToggleButton/FAB wrappers omitted these
+      entirely, which would have silently broken `<Menu.Item>` and similar
+      for anyone using those wrappers. Found by systematically checking
+      every wrapped component's own real barrel/index file for
+      `Object.assign`-style compound exports, not assumed absent. Every
+      compound piece is now re-exported as-is on each wrapper.
+    - The wrappers don't forward a `ref`, unlike Paper's own `Card`/
+      `TextInput` (both internally `forwardRef`) — a real, narrower scope
+      than Paper's own API, not an oversight.
+    - `ToggleButton.Row`'s own real per-position corner-squaring (rounding
+      only the outer corners of a horizontal group) was checked for a
+      conflict with this wrapper's own uniform default — none: React
+      Native keeps the shorthand `borderRadius` and the Row's own longhand
+      corner overrides as separate style keys, so the Row's positional
+      logic still applies correctly on top.
+    AGENTS.md now tells an AI coding agent to import all ten from
+    `./components/`, not directly from `react-native-paper`. **Confirmed
+    exhaustively (2026-09-16, not just assumed from the ones already
+    wrapped): grepped Paper's ENTIRE real component source tree for every
+    file that references `roundness` at all** — exactly 13 real components
+    do, and this list (plus Button) covers all 11 of them. Every other real
+    Paper component (Avatar, Badge, IconButton, and more) either has no
+    radius concept at all or uses a deliberately fixed circular shape
+    (`size / 2`, independent of any roundness preset — confirmed for
+    Avatar/Badge/IconButton specifically) — correct Material Design
+    behavior, not a gap. **Two real, confirmed exceptions, not just
+    unchecked**: Tooltip exposes no style-customization prop of any kind
+    for its own bubble, and SegmentedButtons computes each segment's
+    radius specially (rounded ends, square middle) with no visible
+    override path in its own source —
+    don't assume the pattern generalizes to those two without rechecking.
+    **Button padding and the full typography size scale ALSO now closed
+    (2026-09-16, same day as the radius work).** Button has no literal
+    `padding` at all — its real visual spacing is `marginVertical`/
+    `marginHorizontal` on its LABEL TEXT (confirmed against Paper's real
+    source), overridable via a real public `labelStyle` prop (appended
+    last, same "caller wins" pattern as the ten radius wrappers). A new
+    eleventh wrapper, `components/Button.tsx`, binds this to the nearest
+    real spacing tokens — but ONLY for modes other than `"text"` (Button's
+    own actual default when `mode` is omitted), since Paper's own
+    text-mode margin is genuinely smaller by design, not a value to
+    flatten into the same spacing as contained/outlined/elevated. Separately,
+    `theme.fonts` — a real, plain, spreadable theme key, confirmed against
+    Paper's own `MD3LightTheme`/`MD3DarkTheme` source, no wrapper needed for
+    this one — now overrides every real MD3 typescale role's `fontSize`
+    (`displayLarge` through `bodySmall`, 15 roles) with the nearest real
+    type-scale token, same "size only, leave family/weight/lineHeight/
+    letterSpacing at the library's real default" restraint as this
+    pipeline's own MUI/Vuetify typography-size fixes. Font FAMILY stays
+    unbound — a separate, unrelated, still-real gap (React Native needs
+    actual .ttf/.otf files via `expo-font`, which this pipeline doesn't
+    fetch for any RN scaffold). **With this, RN Paper is no longer behind
+    MUI/Vuetify** — every gap those two had (padding, typography size) now
+    has an equivalent fix here too, just via a different real mechanism
+    (wrapper component for padding, theme key for typography, vs. their own
+    `styleOverrides`/Sass-map approach). **Shadow and opacity checked
+    2026-09-16, both genuinely non-issues, not overlooked**: Paper's own
+    MD3 elevation is ALREADY correctly handled — real HCT-computed surface
+    tinting at fixed dp levels (`generate/rn-paper.ts`'s own
+    `surfaceColorAtElevation`, built earlier), the actually-correct MD3
+    mobile approach (no `box-shadow` concept exists in MD3 or React
+    Native), not something this pipeline's own `shadow.json` should
+    override. Opacity has nothing real to bind either — MD3 design
+    languages never offer an opacity PRESET choice at seed input in the
+    first place (Tailwind/Bootstrap only), so there's no user-facing
+    opacity decision this pipeline is silently ignoring for Paper.
   - **shadcn/ui, shadcn-vue — radius was always fine, spacing had a real,
-    silent bug, fixed 2026-09-15.** Unlike the five above, these vendor
-    real component *source files* directly — real, unmodified `button.tsx`/
-    `Button.vue` uses raw Tailwind spacing classes (`h-8`, `px-2.5`,
-    `gap-1.5`). Tailwind v4 resolves any of these that ISN'T an explicit
-    named override via its own base `--spacing` variable
-    (`calc(var(--spacing) * N)`) — this pipeline never wrote that variable
-    at all, so every project silently used Tailwind's raw 4px default
-    regardless of the spacing-rhythm preset actually chosen. Confirmed with
-    a real compiled build before fixing, and confirmed the fix with a real
-    browser's computed style on a real vendored `Button`, for both
-    frameworks. **Now real-token-bound for every spacing preset whose scale
-    is a constant multiplier** (`tailwind`/`md3`/`md2` — all 4px/step).
-    **Still not bound, and structurally can't be**: the `bootstrap` spacing
-    preset (0/4/8/16/24/48px — not a constant-multiplier scale), so its
-    fractional/unlisted spacing utilities still silently use Tailwind's raw
-    4px default. Radius was never affected — `--radius` was always a
-    single real value, not part of this bug. Button *padding* itself
-    (distinct from spacing tokens generally) is real-token-bound wherever
-    the component's own classes land on a bound key.
-  - **RNR — different mechanism, real gap, disclosed not fixed
-    2026-09-15.** NativeWind here is pinned to Tailwind v3 (a hard
-    peer-dependency requirement, not this pipeline's choice), a
-    fully-enumerated JS config object, not v4's CSS base-multiplier system
-    — so the shadcn bug above can't literally occur the same way. But this
-    pipeline's own generated `tailwind.config.js` for RNR has never
-    overridden `theme.spacing` at all — every RNR/NativeWind project uses
-    Tailwind v3's own stock default spacing scale unconditionally, for
-    every spacing class (not just fractional ones), regardless of the
-    chosen preset. A real fix is possible in principle but is separate,
-    larger, not-yet-scoped work — say this plainly if `componentLibrary` is
-    `rnr`, don't imply spacing is token-driven there.
+    silent bug, fixed 2026-09-15, then extended 2026-09-16 for the
+    `bootstrap` preset.** Unlike the three above, these vendor real
+    component *source files* directly — real, unmodified `button.tsx`/
+    `Button.vue` uses raw Tailwind spacing classes. Tailwind v4 resolves any
+    of these that ISN'T an explicit named override via its own base
+    `--spacing` variable (`calc(var(--spacing) * N)`) — this pipeline never
+    wrote that variable at all, so every project silently used Tailwind's
+    raw 4px default regardless of the spacing-rhythm preset actually
+    chosen. Confirmed with a real compiled build before fixing, and
+    confirmed the fix with a real browser's computed style on a real
+    vendored `Button`, for both frameworks. **Real-token-bound for every
+    spacing preset whose scale is a constant multiplier** (`tailwind`/
+    `md3`/`md2` — all 4px/step), via that single `--spacing` variable.
+    **The `bootstrap` preset (0/4/8/16/24/48px — not a constant-multiplier
+    scale) got a DIFFERENT, second mechanism (2026-09-16)**, since no
+    single constant can stand in for a non-linear scale: a NAMED
+    `--spacing-<N>` override for each exact key `spacing.json` itself
+    defines (0-5), written into a real `@theme { }` block (a per-key
+    named override, unlike the base constant, only takes effect there —
+    Tailwind only recognizes it as a utility-generating key when it's
+    inside a real `@theme` block its own build step scans; a plain `:root`
+    declaration is inert for this specific mechanism, confirmed live).
+    Verified with a real compiled build showing `.px-4{padding-inline:
+    var(--spacing-4)}` resolving to the bootstrap preset's real 24px value
+    (genuinely different from Tailwind's own 16px default, not a
+    coincidental match), for whichever real vendored component happens to
+    use that exact key. **Still disclosed, not fixed**: any class using a
+    key beyond what the preset defines (e.g. `h-8`, `gap-6`+), and any
+    FRACTIONAL class (`px-2.5`, `gap-1.5`) — both still fall back to
+    Tailwind's raw default; same partial-but-honest shape as RNR's own fix
+    below. Confirmed against a fresh `shadcn add`, real Button's default
+    size is `h-8 gap-1.5 px-2.5` (fractional, outside this fix's scope) and
+    Badge's real `px-2` is exactly the shape this fix now covers — both
+    match what this project's own Figma-push plan (`figma-components-
+    plan.ts`'s `buildButtonPlan`) already assumed, confirmed via that
+    file's own git history, not a new mismatch this fix surfaced. Radius
+    was never affected by any of this — `--radius` was always a single
+    real value, not part of this bug. **Shadow ALSO now
+    bound (2026-09-16), and needed its own real fix, not a copy of the
+    `--spacing` mechanism**: a real, non-obvious finding — Tailwind v4
+    RESHUFFLED its own shadow scale relative to v3 (added a new `2xs`
+    tier, shifted names: v3's `sm` is v4's `xs`; v3's bare `DEFAULT`
+    is v4's `sm`) — this pipeline's own `shadow.tailwind.json` was built
+    matching v3, so it binds to `--shadow-xs`, NOT `--shadow-sm`, for its
+    own `sm` token (confirmed against the real npm-published
+    `tailwindcss@^4` package's own `theme.css`). A second, more important
+    finding: unlike `--spacing` (referenced live via `calc()`), Tailwind
+    v4 BAKES shadow lengths as literal numbers into each utility class at
+    build time — a later plain `:root` override (the `--spacing`
+    mechanism) has ZERO effect on `shadow-md` etc., confirmed by an actual
+    failed browser check before finding the real fix: the binding has to
+    live inside a real `@theme { }` block instead, which Tailwind's own
+    build step actually processes. Verified live with two real, different
+    shadow presets (not just the coincidentally-matching `tailwind` one)
+    that the compiled `.shadow-md` rule reflects OUR real values.
+  - **RNR — different mechanism, real fix 2026-09-16 (partial for
+    `bootstrap`, complete for the other three presets).** NativeWind here
+    is pinned to Tailwind v3 (a hard peer-dependency requirement, not this
+    pipeline's choice), a fully-enumerated JS config object, not v4's CSS
+    base-multiplier system. A real, non-obvious finding while fixing the
+    "never overridden" gap flagged 2026-09-14: three of this pipeline's
+    four spacing presets (`tailwind`/`md3`/`md2`) are, by this pipeline's
+    own design, already numerically identical to Tailwind v3's real
+    default scale — so for those three, no override was ever actually
+    needed; only `bootstrap` (non-linear, keys 0-5 only) was ever really
+    mismatched. `scaffold/react-native.ts` now extends `theme.spacing` with
+    whatever real keys this run's own `spacing.json` defines — a real,
+    verified fix for `bootstrap` (its own real vendored classes in the 0-5
+    range, e.g. `px-3`/`px-4`, now bind correctly — confirmed live with the
+    real `tailwindcss` CLI, `px-3` compiling to `16px` instead of Tailwind's
+    mismatched 12px default), and a correct, explicit no-op for the other
+    three. **Disclosed, not fixed:** `bootstrap`'s own keys beyond 5 still
+    fall back to Tailwind's real default, since `spacing.bootstrap.json`
+    itself was never scoped past key 5 — the same structural ceiling as the
+    shadcn/shadcn-vue case above, reached by an object-merge instead of a
+    single-CSS-variable mechanism. **RNR's own typography size scale ALSO
+    now bound (fixed 2026-09-16, same day) — and this one is a COMPLETE
+    fix, unlike spacing.** Confirmed real vendored `components/ui/` already
+    uses real `text-sm`/`text-lg`/`text-2xl`/etc. classes (36 real uses of
+    `text-sm` alone in one real vendored project). `scaffold/react-native.ts`
+    now extends `theme.fontSize` with all 13 of Tailwind's real named keys
+    (`xs` through `9xl` — confirmed against the real npm-published
+    `tailwindcss@^3` package's own default config), each bound to the
+    nearest real type-scale token for THAT key's own real default px
+    target. Unlike spacing, there's no "keys beyond 5" gap here — Tailwind's
+    real fontSize scale has exactly these 13 keys and nothing else to fall
+    through to, so binding all 13 is complete, not partial. Verified live
+    with the real `tailwindcss` CLI against two different presets: `tailwind`
+    (a correct no-op, matching Tailwind's own real defaults at every key
+    this pipeline's scale defines) and `md3` (genuinely different real
+    values — `text-sm` compiling to `12px` instead of Tailwind's `14px`
+    default, `text-lg` to `19px`, `text-3xl` to `28px`). **Disclosed, not a
+    bug:** this pipeline's own curated 8-value type-scale mapped onto
+    Tailwind's 13 real keys means the larger keys (`4xl` and up) often
+    share the same nearest value — confirmed in the real compiled output
+    (`4xl`/`3xl` identical for the `tailwind` preset; `6xl` through `9xl`
+    all identical to `5xl`), an honest nearest-match outcome given the
+    scale's own real cardinality, not something to "fix" further without
+    fabricating extra tokens this pipeline has no real source for.
+    **Shadow checked 2026-09-16, real, structural, NOT fixed — a
+    different, more fundamental limitation than spacing/typography's own
+    gaps.** Real vendored RNR classes DO use `shadow-sm`/`shadow-md`/etc.,
+    but checked the real npm-published `react-native-css-interop@0.2.7`
+    tarball (the actual library NativeWind pins for CSS-to-native
+    translation) rather than assume binding `theme.boxShadow` would help:
+    its own `parseBoxShadow` REJECTS any shadow with more than one layer
+    outright (`options.addValueWarning("multiple box shadows")`, then
+    drops it entirely), and even a single-layer shadow only carries over
+    `shadowColor`/`shadowRadius` — no offset, no opacity, no Android
+    `elevation`. Since this pipeline's own `md`/`lg`/`xl` shadow tokens are
+    real multi-layer definitions (matching Tailwind's own real multi-layer
+    defaults), they'd be silently dropped by NativeWind regardless of
+    whether this pipeline binds them or not — this is a structural
+    limitation of the underlying translation library, not something
+    `theme.boxShadow` binding can fix, so it wasn't attempted. **Opacity
+    and border-width checked too, found to need NO fix at all** — real
+    Tailwind v3 defaults for both already exactly match this pipeline's
+    own tokens at every key either defines (confirmed against the real
+    npm-published `tailwindcss@^3` package's own default config), unlike
+    spacing/fontSize/shadow, which all had a real, silent mismatch for at
+    least one preset. **With this, RNR's spacing and typography size gaps
+    are both closed** (spacing partially, typography size completely);
+    shadow is a real, disclosed, structural limitation, not fixable by
+    this pipeline; opacity/border-width were never actually broken; the
+    already-known font-FAMILY gap (real .ttf/.otf files, not fetched for
+    any RN scaffold) remains, unrelated to any of this.
   - **Kotlin (Jetpack Compose) / SwiftUI — a different category, not on
     this list's own scale.** There is no automated component library or
     application step for either — `generate --md3`/`--swiftui` produce
@@ -409,16 +677,22 @@ override any of the four independently — they don't have to move together.
 - **Figma component push — scope, not just fidelity.** Everything above is
   about whether an already-*applied* component's geometry matches its real
   tokens. This is a separate question: which libraries get a component
-  *pushed to Figma* at all. Today, only one does — `nextjs` + `tailwind` +
-  shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s own real
-  scope: Button only, one size). Every other combination — the other seven
-  "real theming" combinations from row 4, `files-only` mode, Kotlin/SwiftUI
-  — gets tokens pushed to Figma as variables when `figmaManaged` is true
-  (see below), but no component ever shows up there, illustrative or
-  otherwise. **Say this plainly wherever it's relevant**: at row 4 (so the
-  pick is informed) and at row 5 (so a `Figma-managed` choice doesn't carry
-  an assumption it doesn't earn) — don't let a user discover this by
-  noticing Figma stayed empty after a scaffold finished.
+  *pushed to Figma* at all. Today, only one combination does — `nextjs` +
+  `tailwind` + shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s
+  own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card**,
+  one size each, all seven proven with a real live push into a real test
+  file (Button 2026-09-15, Badge 2026-09-16, the rest 2026-09-17). Card is
+  the first real compound component (a real Header/Content structure with
+  three independent text properties, not just one label). Every
+  other combination — the other seven "real theming" combinations from
+  row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
+  as variables when
+  `figmaManaged` is true (see below), but no component ever shows up there,
+  illustrative or otherwise. **Say this plainly wherever it's relevant**:
+  at row 4 (so the pick is informed) and at row 5 (so a `Figma-managed`
+  choice doesn't carry an assumption it doesn't earn) — don't let a user
+  discover this by noticing Figma stayed empty (or only got a Button)
+  after a scaffold finished.
 - **`figmaManaged` now DOES have a real effect** — unlike the two fields
   above, this is no longer a stored-for-later field. When it's
   `Figma-managed`, row 5a's Figma link gets used right after `promote`
@@ -881,41 +1155,73 @@ override any of the four independently — they don't have to move together.
       the mechanism that stops a future re-vendor from silently
       overwriting a component the user has since customized (see
       `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson"). Say
-      plainly: spacing is now real-token-bound (fixed 2026-09-15, a real
-      `--spacing` binding) for every spacing preset except `bootstrap`'s —
-      that one's own scale isn't a constant multiplier, so only its
-      explicitly-named keys bind; every fractional spacing class still
-      falls back to Tailwind's own default — see "Known gaps," "Geometry
-      fidelity, by library."
+      plainly: spacing (fixed 2026-09-15, a real `--spacing` binding) AND
+      shadow (fixed 2026-09-16, a real `@theme` block — NOT a plain
+      `:root` override, which a real browser check showed has zero effect
+      on Tailwind v4's own shadow utilities specifically) are now
+      real-token-bound for every preset except `bootstrap`'s — that one's
+      own spacing scale isn't a constant multiplier, so only its
+      explicitly-named spacing keys bind (shadow has no such gap — see
+      below); every fractional spacing class still falls back to
+      Tailwind's own default. **Real, non-obvious detail on shadow
+      specifically**: Tailwind v4 renamed its own scale relative to v3 —
+      this pipeline's own `sm` token binds to `--shadow-xs`, not
+      `--shadow-sm`, confirmed against Tailwind v4's real source, not
+      assumed to carry over from v3's naming — see "Known gaps,"
+      "Geometry, shadow, and opacity fidelity, by library."
     - **`nextjs` + `bootstrap` (React-Bootstrap):** say bootstrap's own full
       component library is already installed as a real dependency and
-      already wired to your brand colors and real radius/spacing tokens
-      (`src/app/_variables.scss`, `src/app/globals.scss`) — nothing to
-      vendor separately, ships as one complete package. Say plainly: button
-      padding is now real-token-bound (fixed 2026-09-15, nearest real
-      spacing token, not always pixel-identical to Bootstrap's own literal
-      default), but button *text size* (`$btn-font-size`) still isn't —
-      see "Known gaps," "Geometry fidelity, by library."
+      already wired to your brand colors and real radius/spacing/type-scale
+      tokens (`src/app/_variables.scss`, `src/app/globals.scss`) — nothing
+      to vendor separately, ships as one complete package. Say plainly:
+      radius, button padding, button text size (`$btn-font-size`), shadow
+      (`$box-shadow-*`), AND disabled-button opacity (`$btn-disabled-
+      opacity`, bound 2026-09-16) are all now real-token-bound, nearest
+      real token where Bootstrap's own default doesn't land exactly on one
+      — nothing left open for this library, see "Known gaps," "Geometry,
+      shadow, and opacity fidelity, by library."
     - **`nextjs` + `md3`/`md2` (MUI):** say MUI's own full Material Design
       component library is already installed as a real dependency and
       already wired to your brand colors (`src/app/theme.ts`,
       `createTheme()`) — nothing to vendor separately. Say plainly: corner-
-      roundness is now real-token-bound for every MUI component (fixed
-      2026-09-15, `theme.shape.borderRadius`), but button padding and the
-      broader typography *size* scale (h1–h6/body pixel sizes — font
-      *family* is bound, size isn't) still aren't — see "Known gaps,"
-      "Geometry fidelity, by library."
+      roundness, button padding (medium/contained case), the full
+      typography size scale (h1–h6/subtitle/body/button/caption/overline),
+      AND the real action opacities (hover/selected/disabled/focus/
+      activated, bound 2026-09-16) are all now real-token-bound — verified
+      live in a real browser (including a real `:hover` interaction for
+      the opacity fix), not just a successful build. Narrower, disclosed
+      scope: only medium/contained gets the padding fix (other
+      variant/size combos keep MUI's own literal padding), and h1/h3 land
+      on the same `display` token since this pipeline's scale has nothing
+      bigger. **One real, structural gap, not fixed and not fixable the
+      same way**: MUI's own `theme.shadows` is a fixed 25-level
+      physically-modeled elevation array, not a named 5-tier scale —
+      different real components use different specific indices for
+      structural reasons, so there's no honest mapping from this
+      pipeline's own scale without fabricating one — see "Known gaps,"
+      "Geometry, shadow, and opacity fidelity, by library."
     - **`vuejs` + `md3`/`md2` (Vuetify):** say Vuetify's own full Material
       Design component library is already installed as a real dependency
       and already wired to your brand colors (`src/plugins/vuetify.ts`,
       `src/plugins/theme.ts`) — nothing to vendor separately, since Vuetify
       (unlike shadcn) ships as one complete package you import components
       from directly, not individual files copied into the project. Say
-      plainly: corner-roundness is now real, pixel-exact token-bound for
-      every Vuetify component (fixed 2026-09-15, `$border-radius-root` via
-      the real settings.scss Sass pipeline create-vuetify already ships) —
-      but button padding and the typography size scale still aren't — see
-      "Known gaps," "Geometry fidelity, by library."
+      plainly: corner-roundness (pixel-exact), button padding, the full
+      15-role MD3 typography size scale (each role's real default size
+      bound to the nearest real type-scale token via a real Sass
+      `map-deep-merge`), AND the real opacity/emphasis constants
+      (hover/disabled/high-emphasis/etc., bound 2026-09-16) are all now
+      real-token-bound — verified with a real compiled build for the first
+      three, and a real running app's own `getComputedStyle` for opacity
+      (these get injected at RUNTIME by Vuetify's own JS, invisible in any
+      static compiled CSS file — checked properly, not assumed to work the
+      same way as the others). Disclosed, narrower scope: the
+      stacked-button variant's own separate padding ratio isn't touched.
+      **One real, structural gap, same shape as MUI's own**: Vuetify's own
+      elevation system is a physically-modeled depth scale (matching MD3's
+      real spec), not a named size scale — no honest mapping exists from
+      this pipeline's own 5-tier scale — see "Known gaps," "Geometry,
+      shadow, and opacity fidelity, by library."
     - **`react-native` + `tailwind` (NativeWind), `--rnr` not passed:** say
       plainly this is a themed, *empty* project — colors are wired in via
       Tailwind classes (`bg-primary`, `text-foreground`, etc.), but no
@@ -926,30 +1232,74 @@ override any of the four independently — they don't have to move together.
       already styled with the real brand colors, and mention
       `sdsgt-vendored-components.json` at the project root — same
       customization-guard mechanism as shadcn/shadcn-vue (see
-      `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson"). **Say
-      this one plainly, not just in passing:** spacing isn't token-driven
-      here at all yet — NativeWind runs on Tailwind v3 here (a hard
-      peer-dependency requirement), and this pipeline's own
-      `tailwind.config.js` for RNR has never overridden `theme.spacing`,
-      so every spacing utility class uses NativeWind's own stock default
-      regardless of your spacing-rhythm choice. A real, separate,
-      not-yet-scoped gap, not something this run will fix — see "Known
-      gaps," "Geometry fidelity, by library."
+      `docs/layer2-layer3-plan.md`, Subject 2, "the ACIM lesson"). Say
+      plainly: spacing AND the typography size scale are both now
+      real-token-bound (fixed 2026-09-16). Spacing binds for classes in
+      your spacing preset's own real key range (e.g. `px-3`, `px-4`) — for
+      the `tailwind`/`md3`/`md2` spacing presets this was already correct
+      by design (those presets are numerically identical to Tailwind's own
+      real default scale), so the fix's real, visible effect is
+      specifically for the `bootstrap` spacing preset. Typography size
+      binds ALL 13 of Tailwind's real named `text-*` keys (`xs` through
+      `9xl`) — a complete fix, not a partial one, since Tailwind's fontSize
+      scale has no keys beyond these 13 to fall through to. **Still not
+      bound:** the `bootstrap` spacing preset's own keys beyond 5 (its own
+      scale was never scoped further). **Say this one plainly if they're
+      using real shadow classes on native**: `shadow-md`/`lg`/`xl` won't
+      actually render a visible shadow on a real device REGARDLESS of any
+      token binding — checked the real underlying `react-native-css-
+      interop` library, which drops any multi-layer box-shadow outright, a
+      structural limitation of the native CSS-to-shadow translation this
+      pipeline can't work around. Opacity and border-width classes need no
+      disclosure at all — checked, and Tailwind's own real defaults already
+      exactly match this pipeline's tokens. See "Known gaps," "Geometry,
+      shadow, and opacity fidelity, by library," for the exact wording.
     - **`react-native` + `md3`/`md2` (React Native Paper):** say React
       Native Paper's own full Material Design component library is already
       installed as a real dependency and already wired to your brand colors
       (`theme.ts`, wrapped in `PaperProvider` in `App.tsx`) — same
       "installed and wired, not vendored" framing as Vuetify above, since
       Paper also ships as one complete package. **Say this one plainly and
-      specifically, not just in passing:** Button's corners now match your
-      real radius token exactly (fixed 2026-09-15, `roundness` calibrated
-      to Paper's own real `5 × roundness` Button formula) — but every OTHER
-      Paper component (Card, Chip, TextInput, ...) will show a *different*,
-      non-matching radius, because Paper's own theming API only exposes one
-      global multiplier and each component type applies its own separate
-      real factor to it. This is a genuine limit of Paper's own theme
-      system, not an unfinished fix this pipeline will close later — see
-      "Known gaps," "Geometry fidelity, by library," for the exact wording.
+      specifically, not just in passing:** Button's corners match your real
+      radius token exactly via `roundness` alone (fixed 2026-09-15); ten
+      more — Card, Chip, TextInput, Snackbar, Menu, ToggleButton,
+      DrawerItem, FAB, Searchbar, and Dialog — ALSO now match exactly
+      (fixed 2026-09-16, in two rounds), but via a different real mechanism
+      — generated wrapper components under `components/` that use each real
+      component's own real, public per-instance override prop, not
+      `roundness`. **Tell them to import all ten of these from
+      `./components/`, not directly from `react-native-paper`** — importing
+      Paper's own versions directly skips the fix entirely (AGENTS.md
+      already tells an AI coding agent this). Two real, narrower-scope
+      details worth mentioning if they're using FAB or Searchbar
+      specifically: only each one's real DEFAULT case is bound
+      (`size="medium"` for FAB, `mode="bar"` for Searchbar) — other sizes/
+      modes keep Paper's own real, unmodified proportional defaults, since
+      this pipeline has no real source for what ratio they should keep
+      instead. Every OTHER Paper component not in this list of eleven still
+      isn't wrapped and will show a mismatched radius — most are real,
+      checked-as-buildable, not-yet-scoped work (same override pattern
+      confirmed to exist), but any not yet checked at all shouldn't be
+      assumed either way; Tooltip and SegmentedButtons are real, confirmed
+      exceptions with no override path at all in their own source, not just
+      unchecked. This is no longer "Paper's own theme system has a genuine
+      limit, full stop" — it has a limit for the SINGLE `roundness` value,
+      but this pipeline now works around it for eleven components via
+      Paper's own real per-instance API. See "Known gaps," "Geometry
+      fidelity, by library," for the exact wording. **Button padding and
+      the full typography size scale are ALSO now bound (fixed 2026-09-16,
+      same day)** — `Button.tsx` is a twelfth wrapper, using Button's own
+      real `labelStyle` prop (Button has no literal `padding`; its real
+      spacing is `marginVertical`/`marginHorizontal` on its label), applied
+      to every mode except `"text"` (Button's own real default when `mode`
+      is omitted has a genuinely different, smaller margin by design).
+      `theme.fonts` — a real, direct theme-level override, no wrapper
+      needed — now binds every one of the 15 real MD3 typescale roles'
+      `fontSize` to the nearest real type-scale token. Font FAMILY stays
+      unbound, a separate, unrelated gap (React Native needs real .ttf/.otf
+      files via `expo-font`, not fetched for any RN scaffold). **RN Paper
+      is no longer behind MUI/Vuetify on this dimension** — all three now
+      have color/radius/padding/typography-size fully closed.
 
     **If `figmaManaged` is true AND the scaffold just run wrote a real
     `figma-components-push-plan.json`** (today, only `nextjs` + `tailwind`

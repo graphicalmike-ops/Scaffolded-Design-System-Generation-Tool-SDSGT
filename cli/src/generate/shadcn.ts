@@ -43,6 +43,63 @@
 // PLUS a real browser's computed style (`getComputedStyle`), not just
 // reading the generated CSS text, since two competing `--spacing`
 // declarations in the same file can't be disambiguated by text alone.
+//
+// `--shadow-*` (added 2026-09-16, while auditing Layer 2 for gaps beyond
+// radius/spacing/typography specifically) — a DIFFERENT injection point
+// than `--spacing` above, not the same one (this header used to say
+// otherwise — corrected 2026-09-16, see the bootstrap-spacing paragraph
+// below for why it matters). A real, non-obvious finding while building
+// this: Tailwind v4 RESHUFFLED its shadow scale relative to v3 — confirmed
+// by reading the real npm-published `tailwindcss@^4` package's own
+// `theme.css`. v4 added a new `2xs` tier and shifted names: v3's `sm`
+// (`0 1px 2px 0 rgb(0 0 0/0.05)`) is v4's `xs`; v3's bare `DEFAULT`/
+// `shadow` is v4's `sm`. This pipeline's own `shadow.tailwind.json` was
+// built matching v3's real defaults (confirmed identical at every key it
+// defines), so its `sm` token binds to v4's `--shadow-xs` CSS variable,
+// NOT `--shadow-sm` — binding it to `--shadow-sm` would silently target
+// the wrong real v4 tier. `md`/`lg`/`xl`/`2xl` are unaffected — confirmed
+// identical between v3 and v4 at those four keys, so they map straight
+// across by name. v4's own `2xs` and (real) `sm` tiers have no
+// corresponding token in this pipeline's own 5-value scale — left
+// unbound, same "framework has more tiers than us" pattern as Bootstrap's
+// own missing `xl`/`2xl`. Skips cleanly (same as `bootstrap.ts`) if the
+// resolved shadow preset is elevation-shaped (`md3`/`md2`) rather than
+// box-shadow-shaped — see `read-tokens.ts`'s own `ShadowToken` comment.
+// Lands in a real `@theme { }` block (see `generateShadcn`'s own inline
+// comment for why plain `:root` doesn't work here, unlike `--spacing`).
+//
+// Named per-key `--spacing-<N>` overrides for NON-linear spacing presets
+// (added 2026-09-16, closing the one gap the original `--spacing` fix
+// above left open): the single `--spacing` base constant can only stand in
+// for a preset whose scale is genuinely linear (key × one constant) —
+// `computeLinearSpacingConstant` returns null for "bootstrap" (0/4/8/16/
+// 24/48px, a 4x/4x/5.33x/6x/9.6x per-step ratio), and until this fix that
+// meant a bootstrap-preset shadcn/shadcn-vue project silently got
+// Tailwind's raw untouched 4px-per-step default for every spacing
+// utility. Fixed by writing a NAMED override for each key `spacing.json`
+// itself actually defines (0-5 for bootstrap) — real vendored shadcn/ui
+// Button already uses `px-4 py-2`, both in range. Same partial-but-honest
+// "extend, don't invent" shape as RNR's own `theme.spacing` fix
+// (`scaffold/react-native.ts`): disclosed, not fixed, for any class using
+// a key beyond what the preset defines (`h-8`, `gap-6`+) or any fractional
+// class (`px-2.5`, `gap-1.5`) — both still fall back to Tailwind's raw
+// default. Shares the SAME `@theme { }` block as `--shadow-*` just above,
+// for the same reason: Tailwind only recognizes a new `--spacing-<N>` as a
+// utility-generating theme key when it's inside a real `@theme` block that
+// Tailwind's own build step scans — a plain `:root` declaration here would
+// be an inert custom property nothing reads, since Tailwind's compiled
+// `.p-4` rule falls back to `calc(var(--spacing) * 4)` regardless unless
+// `--spacing-4` was visible to Tailwind at build time. (This is also why
+// the paragraph above no longer claims the shadow fix shares `--spacing`'s
+// own plain-`:root` mechanism — it never did; that was a documentation
+// error, not a code one, caught while adding this fix.)
+const SHADOW_KEY_TO_TAILWIND_V4: Record<string, string> = {
+  sm: "--shadow-xs",
+  md: "--shadow-md",
+  lg: "--shadow-lg",
+  xl: "--shadow-xl",
+  "2xl": "--shadow-2xl",
+};
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -52,14 +109,17 @@ import {
   readJson,
   resolveAlias,
   isSemanticToken,
+  isShadowLayerToken,
+  shadowLayersToCss,
   type ColorPrimitivesFile,
   type RadiusFile,
   type SemanticFile,
   type SemanticTree,
   type SemanticToken,
+  type ShadowFile,
 } from "./read-tokens.ts";
 import { contrastText } from "./mui-color.ts";
-import { computeLinearSpacingConstant } from "./tailwind.ts";
+import { computeLinearSpacingConstant, readSpacingEntries } from "./tailwind.ts";
 
 type Primitives = ColorPrimitivesFile["color"]["primitive"];
 
@@ -204,15 +264,87 @@ export function generateShadcn(tokensDir: string, outDir: string): GenerateResul
   rootVars.push(`  --radius: ${radius.md.$value};`);
   // Only emitted when the resolved spacing preset is genuinely linear — see
   // computeLinearSpacingConstant in tailwind.ts and this file's own header.
-  // A non-linear preset (currently just "bootstrap") is disclosed in
-  // AGENTS.md and the SDSGT-start skill instead — injecting a single
-  // constant here would only ever be right for the keys it happens to
-  // share with Tailwind's own multiplier, silently wrong for the rest.
+  // A non-linear preset (currently just "bootstrap") gets the named-per-key
+  // fix below instead — a single constant here would only ever be right for
+  // the keys it happens to share with Tailwind's own multiplier, silently
+  // wrong for the rest.
   const spacingConstant = computeLinearSpacingConstant(tokensDir);
+  const spacingThemeVars: string[] = [];
   if (spacingConstant !== null) {
     rootVars.push(`  --spacing: ${spacingConstant}px;`);
+  } else {
+    // Non-linear preset (bootstrap: 0/4/8/16/24/48px, a 4x/4x/5.33x/6x/9.6x
+    // per-step ratio) — no single --spacing multiplier can stand in for it.
+    // Fixed 2026-09-16: write a NAMED override for each key spacing.json
+    // itself defines (0-5 for bootstrap), so any real vendored component
+    // class matching one of those exact integers resolves to this project's
+    // real value instead of Tailwind's raw 4px-per-step default — e.g.
+    // shadcn/ui's own real Badge uses `px-2` (in range, gets fixed here).
+    // Same "extend, don't invent," partial-but-honest shape as RNR's own
+    // theme.spacing fix (scaffold/react-native.ts) — NOT a full recreation
+    // of Tailwind's own ~30-key default scale, since this preset has no
+    // opinion on keys past 5. Disclosed, not fixed: any class using a key
+    // beyond what this preset defines, and any FRACTIONAL class — both
+    // still fall back to Tailwind's raw default, same as before this fix.
+    // A real, live example of exactly this disclosed gap, confirmed while
+    // verifying this fix (2026-09-16): shadcn/ui's own real Button uses
+    // `px-2.5` (fractional, outside this fix's scope) for its default
+    // size, while Badge's own real `px-2` is exactly the kind of class
+    // this fix covers — both checked against a fresh `shadcn add`, not
+    // assumed.
+    //
+    // Named per-key spacing overrides are a DIFFERENT mechanism than the
+    // --spacing base constant above, load-bearing to get right: Tailwind
+    // only recognizes a new --spacing-<N> as a utility-generating theme key
+    // when it's declared inside a real `@theme { }` block that Tailwind's
+    // OWN build step scans — a plain `:root` declaration here would just be
+    // an inert custom property nothing ever reads, since Tailwind's
+    // compiled `.p-4` rule falls back to `calc(var(--spacing) * 4)`
+    // regardless, unless `--spacing-4` was visible to Tailwind at build
+    // time. Same category of bug as the `--shadow-*` fix elsewhere in this
+    // file (see that comment) — confirmed by the same reasoning, not
+    // re-derived from scratch.
+    const entries = readSpacingEntries(tokensDir) ?? [];
+    for (const [key, px] of entries) {
+      spacingThemeVars.push(`  --spacing-${key}: ${px}px;`);
+    }
   }
   blocks.push([":root {", ...rootVars, "}"].join("\n"));
+
+  // Real, load-bearing difference from --spacing/--radius, found the hard
+  // way with a real browser check (not assumed to work the same way): a
+  // plain `:root { --shadow-md: ... }` — even unlayered, even placed after
+  // Tailwind's own `@theme` — has NO EFFECT on `shadow-md` etc. Confirmed
+  // by reading Tailwind v4's own real compiled output: `.shadow-md`'s
+  // LENGTHS get baked as literal numbers directly into the utility rule at
+  // BUILD time (only the color stays a live `var(--tw-shadow-color)`
+  // reference) — unlike `--spacing` (referenced live via `calc(var(
+  // --spacing) * N)`) or `--radius`/colors (referenced live via `@theme
+  // inline`'s own `var()` indirection), a later plain `:root` redefinition
+  // is invisible to shadow utilities, since they never read the variable
+  // at runtime at all. The real fix has to be a genuine `@theme { }` block
+  // — processed by Tailwind's OWN build step, not shipped to the browser
+  // as literal CSS the way `:root` is — so our real values get baked in
+  // AS the utility's own literal, not a var() Tailwind then has to know to
+  // reference. See this file's own header for the real v3->v4 key-name
+  // shift (our `sm` binds to `--shadow-xs`, not `--shadow-sm`) and why a
+  // mismatched elevation-shaped shadow preset (md3/md2) is skipped, not
+  // fabricated.
+  const { shadow } = readJson<ShadowFile>(join(tokensDir, "shadow.json"));
+  const shadowThemeVars: string[] = [];
+  for (const [key, cssVar] of Object.entries(SHADOW_KEY_TO_TAILWIND_V4)) {
+    const token = shadow[key];
+    if (token && isShadowLayerToken(token)) shadowThemeVars.push(`  ${cssVar}: ${shadowLayersToCss(token)};`);
+  }
+  // Same real `@theme { }` block for both fixes that need one (see the
+  // spacingThemeVars comment above and this file's original --shadow-*
+  // header comment) — Tailwind only scans for new utility-generating theme
+  // keys inside an actual @theme block, so both share it rather than
+  // emitting two separate blocks for no reason.
+  const themeBlockVars = [...spacingThemeVars, ...shadowThemeVars];
+  if (themeBlockVars.length > 0) {
+    blocks.push(["@theme {", ...themeBlockVars, "}"].join("\n"));
+  }
 
   if (hasDark) {
     const { color: semanticRoot } = readJson<SemanticFile>(join(tokensDir, DARK_FILE));

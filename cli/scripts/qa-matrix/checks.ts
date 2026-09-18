@@ -339,7 +339,20 @@ export async function checkTailwindRealBuild(codeOutDir: string, seed: SeedConfi
 // Bootstrap
 // ---------------------------------------------------------------------------
 
-const BOOTSTRAP_LINE = /^\$[\w-]+:\s*(#[0-9A-Fa-f]{3,8}|[\d.]+rem);$/;
+// Updated 2026-09-16 when generate/bootstrap.ts started also emitting real
+// box-shadow lines (a length quadruple + rgba color, optionally several
+// comma-joined for a multi-layer shadow) and a bare-decimal opacity line
+// ($btn-disabled-opacity) — the original regex only knew about #hex colors
+// and N.NNNrem lengths, so it started failing real, correct new output
+// rather than catching a real bug. Extended, not loosened: still rejects
+// anything that isn't one of these specific real shapes.
+// `-?` — real Tailwind-derived shadow layers routinely use a negative
+// spread (e.g. `-1px`/`-2px`, confirmed in a real generated file) to
+// produce the soft, layered look — a real, valid box-shadow value, not
+// something to reject.
+const SHADOW_LENGTH = String.raw`(?:0|-?[\d.]+rem)`;
+const SHADOW_LAYER = String.raw`${SHADOW_LENGTH} ${SHADOW_LENGTH} ${SHADOW_LENGTH} ${SHADOW_LENGTH} rgba\([\d.,\s]+\)`;
+const BOOTSTRAP_LINE = new RegExp(`^\\$[\\w-]+:\\s*(#[0-9A-Fa-f]{3,8}|[\\d.]+rem|[\\d.]+|${SHADOW_LAYER}(?:,\\s*${SHADOW_LAYER})*);$`);
 
 export function checkBootstrap(tokensDir: string, codeOutDir: string, seed: SeedConfig): CheckResult[] {
   const results: CheckResult[] = [];

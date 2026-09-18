@@ -66,6 +66,16 @@ export interface FigmaTextStylePlanItem {
   fontWeight: number;
   fontSize: number;
   lineHeight: number;
+  // Set per-field only when that field is CURRENTLY a DTCG alias into a
+  // typography primitive (the common case) — the primitive's own Figma
+  // variable name. Absent when the field is already a literal (e.g. a
+  // prior figma-pull converted it after a Figma-side override) — nothing
+  // to alias-follow in that case. Used by figma-pull.ts to decide whether
+  // a changed field is "still following its primitive" (skip, the
+  // primitive's own diff covers it) or "overridden independently"
+  // (convert to a literal) — same alias-following discipline as semantic
+  // color tokens, just per-field instead of per-token.
+  aliasFigmaNames?: Partial<Record<"fontFamily" | "fontWeight" | "fontSize" | "lineHeight", string>>;
 }
 
 export interface FigmaEffectStylePlanItem {
@@ -268,13 +278,27 @@ export function buildFigmaPushPlan(tokensDir: string): FigmaPushPlan {
 
   const textStyles: FigmaTextStylePlanItem[] = [];
   const typographySemantic = tryReadJson<{
-    typography: { semantic: Record<string, { $value: { fontFamily: string; fontWeight: string; fontSize: string; lineHeight: string } }> };
+    typography: { semantic: Record<string, { $value: { fontFamily: string | number; fontWeight: string | number; fontSize: string | number; lineHeight: string | number } }> };
   }>(join(tokensDir, "typography.semantic.json"));
   if (typographyPrimitive && typographySemantic) {
     const p = typographyPrimitive.typography.primitive;
-    const resolve = (ref: string): string | number => {
-      const [, group, key] = ref.replace(/[{}]/g, "").split(".").slice(1);
+    const isAliasRef = (v: string | number): v is string => typeof v === "string" && v.startsWith("{");
+    // A field may already be a plain literal, not an alias — e.g. a prior
+    // figma-pull converted it after a real Figma-side override (see
+    // FigmaTextStylePlanItem's own comment). This function used to assume
+    // every field was always an alias string and called .replace() on it
+    // unconditionally, which throws outright on a literal number/string —
+    // a real bug, caught while building the pull path, fixed here rather
+    // than only worked around on the pull side.
+    const resolve = (v: string | number): string | number => {
+      if (!isAliasRef(v)) return v;
+      const [, group, key] = v.replace(/[{}]/g, "").split(".").slice(1);
       return (p as any)[group][key].$value;
+    };
+    const aliasFigmaName = (v: string | number): string | undefined => {
+      if (!isAliasRef(v)) return undefined;
+      const [, group, key] = v.replace(/[{}]/g, "").split(".").slice(1);
+      return dtcgPathToFigmaName(["typography", "primitive", group, key]);
     };
     for (const [token, entry] of Object.entries(typographySemantic.typography.semantic)) {
       textStyles.push({
@@ -283,6 +307,12 @@ export function buildFigmaPushPlan(tokensDir: string): FigmaPushPlan {
         fontWeight: Number(resolve(entry.$value.fontWeight)),
         fontSize: parseFloat(String(resolve(entry.$value.fontSize))),
         lineHeight: parseFloat(String(resolve(entry.$value.lineHeight))),
+        aliasFigmaNames: {
+          fontFamily: aliasFigmaName(entry.$value.fontFamily),
+          fontWeight: aliasFigmaName(entry.$value.fontWeight),
+          fontSize: aliasFigmaName(entry.$value.fontSize),
+          lineHeight: aliasFigmaName(entry.$value.lineHeight),
+        },
       });
     }
   } else {
