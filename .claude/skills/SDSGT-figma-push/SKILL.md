@@ -384,20 +384,20 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
-**Real ground truth, proven live against a real test file for all seven
+**Real ground truth, proven live against a real test file for all eight
 components this plan covers today:** Button (2026-09-15), Badge
-(2026-09-16), Toggle, Alert, Input, Textarea, and Card (all 2026-09-17).
-shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`, `Input`, `Textarea`,
-`Card` — one size each, rest states only (see `cli/src/scaffold/
-figma-components-plan.ts`'s own header for the full scope decision,
-including the three real component shapes this plan handles —
-multi-variant `cva()` components via `buildVariantsFromCva`, single-state
-no-`cva()` components via `scanClassesForColors`, and Card's own real
-compound-component support via `sections` — and why most other real
-components don't fit any of these yet). This step's own mechanism (`for
-each item in plan.components`, no component-specific branching) is
-confirmed to genuinely generalize across seven structurally different
-components, covering all three shapes — real bugs were caught doing this,
+(2026-09-16), Toggle, Alert, Input, Textarea, and Card (all 2026-09-17),
+and Label (2026-09-18). shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`,
+`Input`, `Textarea`, `Card`, `Label` — one size each, rest states only
+(see `cli/src/scaffold/figma-components-plan.ts`'s own header for the
+full scope decision, including the three real component shapes this plan
+handles — multi-variant `cva()` components via `buildVariantsFromCva`,
+single-state no-`cva()` components via `scanClassesForColors` (Input/
+Textarea/Label), and Card's own real compound-component support via
+`sections` — and why most other real components don't fit any of these
+yet). This step's own mechanism (`for each item in plan.components`, no
+component-specific branching) is confirmed to genuinely generalize across
+eight structurally different components, covering all three shapes — real bugs were caught doing this,
 not just claimed to have been avoided: the same-tone-trap fix (below)
 used to fire for ANY variant named "destructive" regardless of its fill,
 which was correct for Button/Badge but would have produced invisible
@@ -644,10 +644,10 @@ For each item in `plan.components`, in order:
 that already has one of these component sets will create a second,
 differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
-component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card, any size
-beyond `default`, Alert's real destructive-tinted `AlertDescription` color
-(its description is modeled, but always in `text.secondary` — the real
-translucent-red tint on the destructive variant isn't bound, see
+component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Label, any
+size beyond `default`, Alert's real destructive-tinted `AlertDescription`
+color (its description is modeled, but always in `text.secondary` — the
+real translucent-red tint on the destructive variant isn't bound, see
 `buildAlertPlan`'s own comment), Input/Textarea's real typed-text state
 (they show their PLACEHOLDER text, not typed content — see
 `buildInputPlan`'s own comment), Card's real `CardFooter` (a separate
@@ -659,21 +659,23 @@ React Native source both need their own real verification before this
 same mechanism can be trusted against them — don't assume the parser
 generalizes without checking). Most of shadcn/ui's own remaining real
 components either have no size-independent color "variant" axis at all
-(Checkbox, Switch, Label, Separator, ...) or are compound/multi-part
+(Checkbox, Switch, Separator, ...) or are compound/multi-part
 components needing MORE than Card's own two-section, text-only structure
 (Dialog, Sheet, Table, Sidebar — nested interactive sub-components, not
 just more text lines) — real, larger, separate work, checked and
 deliberately not attempted yet, not an oversight.
 
-**State after this round (2026-09-17):** all seven components — Button,
-Badge, Toggle, Alert, Input, Textarea, Card — are now proven live, not
-just plan-computed. Every one went through the full build → screenshot →
-instance-swap → screenshot cycle, same bar throughout — including
+**State after this round (2026-09-18):** all eight components — Button,
+Badge, Toggle, Alert, Input, Textarea, Card, Label — are now proven live,
+not just plan-computed. Every one went through the full build → screenshot
+→ instance-swap → screenshot cycle, same bar throughout — including
 confirming live that Alert's same-tone-trap fix actually renders readable
 red text on both variants, that the radius bug fix's `radius/md` binding
-renders at the same real pixel value a live browser check showed, and
-that Card's own three independent text properties (`Title`/`Description`/
-`Content`) all bind and swap correctly on a real instance.
+renders at the same real pixel value a live browser check showed, that
+Card's own three independent text properties (`Title`/`Description`/
+`Content`) all bind and swap correctly on a real instance, and that
+Label's real bare-text shape (no fill/stroke/padding/radius at all) pushes
+and swaps cleanly with no frame styling to get wrong.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 

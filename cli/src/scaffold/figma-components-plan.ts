@@ -10,40 +10,46 @@
 //
 // Scope, deliberate (see docs/layer2-layer3-plan.md, "components must also
 // push to Figma," 2026-09-15 entry, for the full session this was proven
-// against, and its follow-ups for Badge/Toggle/Alert/Input/Textarea):
-// shadcn/ui's Button, Badge, Toggle, Alert (2026-09-17), plus Input and
-// Textarea (2026-09-17, same day) — one size each ("default" — the only
-// Tailwind height, h-8, that matches an SDSGT spacing token exactly, for
-// the components that have more than one real size), rest states only (no
-// hover:/aria-*: pseudo-states — those aren't separate Figma variants in
-// this pass), one text label each except Alert, which now also carries a
-// real second line for its own AlertDescription (see
-// `secondaryTextVariable` on `FigmaComponentPlanItem`, and buildAlertPlan's
-// own comment for the one real, disclosed simplification: always
-// text.secondary, not destructive-tinted on the destructive variant, since
-// that class sits behind a `*:data-[slot=...]:` selector prefix this
-// parser doesn't parse). Input/Textarea show their PLACEHOLDER text, not
-// typed content — see buildInputPlan's own comment. Two real component
-// shapes, both proven: `cva()`-based multi-variant components (Button/
-// Badge/Toggle/Alert, via `buildVariantsFromCva`) and single-state
-// components with no `cva()` at all (Input/Textarea, via
-// `scanClassesForColors` — same underlying class-to-variable mapping,
-// applied to one class string instead of a parsed variant axis, wrapped in
-// a plan with exactly one variant so `SDSGT-figma-push`'s own replay
-// mechanism needs zero shape-specific branching for those). The optional
-// second-text-line addition (`secondaryTextVariable` etc., proven against
-// Alert) is a real, minimal step toward the harder "compound component"
-// bucket below, NOT the same thing as actually supporting one — it adds
-// one more text line under a single frame, not multiple named sub-parts,
-// nested frames, or nested auto-layout. Confirmed to actually generalize —
-// not just Button-shaped code with the names changed — by checking EVERY
-// real component in a fully-vendored (`shadcn add --all`) project before
-// picking any of these: components with a size-independent color
-// "variant" axis went through `buildVariantsFromCva`; single-state
-// box-shaped components (Input, Textarea) went through
-// `scanClassesForColors`; compound/multi-part components that need actual
-// new structure beyond one extra text line (Card, Dialog, Sheet, Table,
-// Sidebar, ...) — real, separate, larger work, not attempted here.
+// against, and its follow-ups for Badge/Toggle/Alert/Input/Textarea/Card/
+// Label): shadcn/ui's Button, Badge, Toggle, Alert (2026-09-17), Input and
+// Textarea (2026-09-17, same day), Card (2026-09-17, first real compound
+// component), and Label (2026-09-18, first component with no box styling
+// at all) — one size each ("default" — the only Tailwind height, h-8, that
+// matches an SDSGT spacing token exactly, for the components that have
+// more than one real size), rest states only (no hover:/aria-*:
+// pseudo-states — those aren't separate Figma variants in this pass), one
+// text label each except Alert (a real second line for its own
+// AlertDescription — see `secondaryTextVariable` on
+// `FigmaComponentPlanItem`, and buildAlertPlan's own comment for the one
+// real, disclosed simplification: always text.secondary, not
+// destructive-tinted on the destructive variant, since that class sits
+// behind a `*:data-[slot=...]:` selector prefix this parser doesn't parse)
+// and Card (a real multi-section structure, see below). Input/Textarea
+// show their PLACEHOLDER text, not typed content — see buildInputPlan's
+// own comment. Three real component shapes, all proven: `cva()`-based
+// multi-variant components (Button/Badge/Toggle/Alert, via
+// `buildVariantsFromCva`), single-state components with no `cva()` at all
+// (Input/Textarea/Label, via `scanClassesForColors` — same underlying
+// class-to-variable mapping, applied to one class string instead of a
+// parsed variant axis, wrapped in a plan with exactly one variant so
+// `SDSGT-figma-push`'s own replay mechanism needs zero shape-specific
+// branching for those), and Card's own real compound-component support
+// (`sections` on `FigmaComponentPlanItem` — a vertical stack of
+// horizontally-padded text sections, see buildCardPlan's own comment). The
+// optional second-text-line addition (`secondaryTextVariable` etc.,
+// proven against Alert) is a real, minimal step toward the harder
+// "compound component" bucket, NOT the same thing as actually supporting
+// one — it adds one more text line under a single frame, not multiple
+// named sub-parts, nested frames, or nested auto-layout; Card's own
+// `sections` mechanism is the real thing. Confirmed to actually
+// generalize — not just Button-shaped code with the names changed — by
+// checking EVERY real component in a fully-vendored (`shadcn add --all`)
+// project before picking any of these: components with a size-independent
+// color "variant" axis went through `buildVariantsFromCva`; single-state
+// box-shaped components (Input, Textarea, Label) went through
+// `scanClassesForColors`; compound/multi-part components needing more
+// structure than Card's own two-section, text-only shape (Dialog, Sheet,
+// Table, Sidebar, ...) — real, separate, larger work, not attempted here.
 // Extending to more components/sizes/frameworks is a matter of adding a
 // `build<X>Plan` function reusing one of these mechanisms plus a row in
 // `COMPONENT_BUILDERS` below, not rewriting this file's own mechanism.
@@ -604,16 +610,45 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
 // change, not attempted this round. Input/Textarea don't need that; they
 // fit the EXISTING box shape (radius/padding/fill/stroke/text) exactly,
 // just with no variant axis to extract.
-function scanClassesForColors(classString: string): { fillVariable?: string; textVariable?: string; strokeVariable?: string } {
-  const result: { fillVariable?: string; textVariable?: string; strokeVariable?: string } = {};
+//
+// `fallbackTextPath` added 2026-09-18, for Label — real current source
+// (`flex items-center gap-2 text-sm leading-none font-medium select-none
+// group-data-[disabled=true]:... peer-disabled:...`) has no `text-*`
+// class at all, a genuinely different case from Input/Textarea's own
+// missing text color: theirs is a real color that's simply never spelled
+// out in the scanned string (shadcn's `placeholder:text-muted-foreground`
+// sits behind a `placeholder:` prefix this parser's plain-class regex was
+// never built to match), so both callers patched it at their own call
+// site via `?? sdsgtPathToFigmaName("text.secondary")` for their own
+// specific representational reason (showing PLACEHOLDER text color, not
+// "no class found"). Label has no hidden text class to miss — it's real
+// base-layer INHERITANCE, the same class of finding as Alert's own
+// border.default fallback (confirmed the same way: reading a real
+// compiled globals.css) — shadcn's generated `body { @apply
+// text-foreground }` rule means an unstyled Label really does render in
+// `text.primary`. Rather than making every future no-`text-*` caller
+// keep re-deriving its own inline `?? sdsgtPathToFigmaName(...)` patch,
+// this fallback now lives inside the shared function itself, defaulting
+// to `"text.primary"` (Label's own real target, and the more common of
+// the two real reasons a text class might be absent) — Input/Textarea now
+// pass `"text.secondary"` explicitly instead, a pure visibility change,
+// not a new choice: they always meant their own placeholder-color
+// exception, this just makes it a real function argument instead of a
+// same-line patch a reader could miss. `textVariable` is now always
+// returned as a real, defined string, never left undefined for the
+// caller to patch — narrower, more accurate return type reflects that.
+function scanClassesForColors(classString: string, fallbackTextPath: string = "text.primary"): { fillVariable?: string; textVariable: string; strokeVariable?: string } {
+  let fillVariable: string | undefined;
+  let textVariable: string | undefined;
+  let strokeVariable: string | undefined;
   for (const cls of classString.split(" ").filter(Boolean)) {
     const parsed = classToFigmaVariable(cls);
     if (!parsed) continue;
-    if (parsed.kind === "fill") result.fillVariable = parsed.variable;
-    else if (parsed.kind === "text") result.textVariable = parsed.variable;
-    else if (parsed.kind === "border") result.strokeVariable = parsed.variable;
+    if (parsed.kind === "fill") fillVariable = parsed.variable;
+    else if (parsed.kind === "text") textVariable = parsed.variable;
+    else if (parsed.kind === "border") strokeVariable = parsed.variable;
   }
-  return result;
+  return { fillVariable, textVariable: textVariable ?? sdsgtPathToFigmaName(fallbackTextPath), strokeVariable };
 }
 
 // Real current source: `h-8 w-full min-w-0 rounded-lg border border-input
@@ -635,7 +670,11 @@ function scanClassesForColors(classString: string): { fillVariable?: string; tex
 function buildInputPlan(tokensCss: string, inputSource: string, notes: string[]): FigmaComponentPlanItem {
   const classMatch = inputSource.match(/className=\{cn\(\s*"([^"]+)"/);
   if (!classMatch) throw new Error("Could not find Input's own className string — real vendored source may have changed shape since this parser was written.");
-  const colors = scanClassesForColors(classMatch[1]);
+  // "text.secondary" made explicit here 2026-09-18 — see scanClassesForColors's
+  // own comment. Same real value this call site always meant (Input's own
+  // PLACEHOLDER text color); no behavior change, just no longer hidden in a
+  // same-line `?? sdsgtPathToFigmaName(...)` patch below.
+  const colors = scanClassesForColors(classMatch[1], "text.secondary");
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
@@ -680,7 +719,9 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
 function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: string[]): FigmaComponentPlanItem {
   const classMatch = textareaSource.match(/className=\{cn\(\s*"([^"]+)"/);
   if (!classMatch) throw new Error("Could not find Textarea's own className string — real vendored source may have changed shape since this parser was written.");
-  const colors = scanClassesForColors(classMatch[1]);
+  // "text.secondary" made explicit here 2026-09-18 — see scanClassesForColors's
+  // own comment and buildInputPlan's identical note above; same real reason.
+  const colors = scanClassesForColors(classMatch[1], "text.secondary");
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
@@ -823,6 +864,63 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   };
 }
 
+// Eighth real component, added 2026-09-18 — the first component with NO
+// box styling at all in its own real source. Real current source:
+// `flex items-center gap-2 text-sm leading-none font-medium select-none
+// group-data-[disabled=true]:pointer-events-none group-data-
+// [disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-
+// disabled:opacity-50` — no `bg-*`/`border-*`/`rounded-*`/`px-*`/`py-*`
+// class anywhere, unlike every component built before it (even Input/
+// Textarea have an explicit border/radius/padding). `scanClassesForColors`
+// correctly finds no fill/stroke here — there genuinely isn't one, not a
+// parse miss — but does need its new `fallbackTextPath` default
+// (`"text.primary"`, see that function's own comment) for the text color,
+// since Label has no `text-*` class of its own at all; called here with no
+// second argument for exactly that reason.
+//
+// Padding and radius are both genuinely zero, not omitted or
+// approximated — a real, disclosed choice, not a gap: since Label has no
+// padding/radius class of its own, both targets are computed as a real
+// 0px through the SAME `nearestToken` mechanism every other component
+// uses (rather than hardcoding "radius/none"/"spacing/0" as string
+// literals), which correctly lands on those exact real 0px tokens
+// (confirmed present in a real generated tokens.css) with zero delta —
+// same discipline as every other numeric target in this file, not a
+// special case. The resulting Figma component is a bare text node with
+// no visible frame styling — an accurate representation of a bare text
+// label, not a placeholder box for a box that doesn't exist.
+function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[]): FigmaComponentPlanItem {
+  const classMatch = labelSource.match(/className=\{cn\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find Label's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = nearestToken(0, radius, "radius");
+  const paddingHMatch = nearestToken(0, spacing, "spacing");
+  const paddingVMatch = nearestToken(0, spacing, "spacing");
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
+
+  notes.push("Label: has no padding/radius/fill/border class of its own at all in its real source — represented as a bare text node (0px padding, radius/none, no fill, no stroke), not approximated into a box that doesn't exist.");
+  notes.push("Label: its real text color isn't set by any class of its own — inherited from shadcn's own generated `body { @apply text-foreground }` base rule, the same class of finding as Alert's own border.default fallback — bound to text.primary via scanClassesForColors's new fallbackTextPath default.");
+
+  return {
+    name: "Label",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Label",
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -842,16 +940,18 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "input.tsx", name: "Input", build: buildInputPlan },
   { filename: "textarea.tsx", name: "Textarea", build: buildTextareaPlan },
   { filename: "card.tsx", name: "Card", build: buildCardPlan },
+  { filename: "label.tsx", name: "Label", build: buildLabelPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for
 // its always-written css/tokens.css — see readCssScale above, no separate
 // --tokens-dir plumbing required). vendoredComponentsDir: the scaffolded
 // project's real component directory (e.g. "<outDir>/src/components/ui"
-// for Next.js+shadcn/ui). Button, Badge, Toggle, and Alert are built today
-// (see file header) — a component with no recognized file at this path is
-// silently absent from the plan, not an error, since not every scaffold
-// vendors every component this parser knows about yet.
+// for Next.js+shadcn/ui). Button, Badge, Toggle, Alert, Input, Textarea,
+// Card, and Label are built today (see file header) — a component with no
+// recognized file at this path is silently absent from the plan, not an
+// error, since not every scaffold vendors every component this parser
+// knows about yet.
 export function buildFigmaComponentsPushPlan(codeDir: string, vendoredComponentsDir: string): FigmaComponentsPushPlan {
   const notes: string[] = [];
   const components: FigmaComponentPlanItem[] = [];
