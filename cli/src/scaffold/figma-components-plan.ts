@@ -14,22 +14,26 @@
 // Badge, Toggle, Alert (2026-09-17), Input and Textarea (2026-09-17, same
 // day), Card (2026-09-17, first real compound component), plus Kbd,
 // NativeSelect, and Avatar's own AvatarFallback (2026-09-18, "Batch 1" of
-// the remaining-components plan) and Label (2026-09-18, "Batch 2," first
-// component with no box styling at all) — one size each ("default" — the
-// only Tailwind height, h-8, that matches an SDSGT spacing token exactly,
-// for the components that have more than one real size), rest states only
-// (no hover:/aria-*: pseudo-states — those aren't separate Figma variants
-// in this pass), one text label each except Alert, which now also carries
-// a real second line for its own AlertDescription (see
-// `secondaryTextVariable` on `FigmaComponentPlanItem`, and buildAlertPlan's
-// own comment for the one real, disclosed simplification: always
-// text.secondary, not destructive-tinted on the destructive variant, since
-// that class sits behind a `*:data-[slot=...]:` selector prefix this
-// parser doesn't parse). Input/Textarea show their PLACEHOLDER text, not
-// typed content — see buildInputPlan's own comment. Three real component
-// shapes, all proven: `cva()`-based multi-variant components (Button/
-// Badge/Toggle/Alert, via `buildVariantsFromCva`), single-state components
-// with no `cva()` at all (Input/Textarea/Kbd/NativeSelect/Avatar/Label, via
+// the remaining-components plan), Label (2026-09-18, "Batch 2," first
+// component with no box styling at all), and Skeleton (2026-09-18,
+// "Batch 3," first component with no text at all) — one size each
+// ("default" — the only Tailwind height, h-8, that matches an SDSGT
+// spacing token exactly, for the components that have more than one real
+// size), rest states only (no hover:/aria-*: pseudo-states — those aren't
+// separate Figma variants in this pass), one text label each except Alert,
+// which now also carries a real second line for its own AlertDescription
+// (see `secondaryTextVariable` on `FigmaComponentPlanItem`, and
+// buildAlertPlan's own comment for the one real, disclosed simplification:
+// always text.secondary, not destructive-tinted on the destructive
+// variant, since that class sits behind a `*:data-[slot=...]:` selector
+// prefix this parser doesn't parse), and except Skeleton, which has NO
+// text label at all (see buildSkeletonPlan's own comment and
+// `FigmaComponentVariantPlanItem.textVariable`'s). Input/Textarea show
+// their PLACEHOLDER text, not typed content — see buildInputPlan's own
+// comment. Three real component shapes, all proven: `cva()`-based
+// multi-variant components (Button/Badge/Toggle/Alert, via
+// `buildVariantsFromCva`), single-state components with no `cva()` at all
+// (Input/Textarea/Kbd/NativeSelect/Avatar/Label/Skeleton, via
 // `scanClassesForColors` — same underlying class-to-variable mapping,
 // applied to one class string instead of a parsed variant axis, wrapped in
 // a plan with exactly one variant so `SDSGT-figma-push`'s own replay
@@ -41,16 +45,20 @@
 // component" bucket, NOT the same thing as actually supporting one — it
 // adds one more text line under a single frame, not multiple named
 // sub-parts, nested frames, or nested auto-layout; Card's own `sections`
-// mechanism is the real thing. Confirmed to actually generalize — not
-// just Button-shaped code with the names changed — by checking EVERY real
-// component in a fully-vendored (`shadcn add --all`) project before
-// picking any of these: components with a size-independent color
-// "variant" axis went through `buildVariantsFromCva`; single-state
-// box-shaped components (Input, Textarea, Kbd, NativeSelect, Avatar,
-// Label) went through `scanClassesForColors`; compound/multi-part
-// components needing more structure than Card's own two-section,
-// text-only shape (Dialog, Sheet, Table, Sidebar, ...) — real, separate,
-// larger work, not attempted here.
+// mechanism is the real thing. Skeleton proves a fourth real finding — a
+// component can have NO text at all — via
+// `FigmaComponentVariantPlanItem.textVariable` going optional; see that
+// field's own comment for why this is purely additive to every earlier
+// component. Confirmed to actually generalize — not just Button-shaped
+// code with the names changed — by checking EVERY real component in a
+// fully-vendored (`shadcn add --all`) project before picking any of
+// these: components with a size-independent color "variant" axis went
+// through `buildVariantsFromCva`; single-state box-shaped components
+// (Input, Textarea, Kbd, NativeSelect, Avatar, Label, Skeleton) went
+// through `scanClassesForColors`; compound/multi-part components needing
+// more structure than Card's own two-section, text-only shape (Dialog,
+// Sheet, Table, Sidebar, ...) — real, separate, larger work, not attempted
+// here.
 // Extending to more components/sizes/frameworks is a matter of adding a
 // `build<X>Plan` function reusing one of these mechanisms plus a row in
 // `COMPONENT_BUILDERS` below, not rewriting this file's own mechanism.
@@ -78,7 +86,17 @@ import { join } from "node:path";
 export interface FigmaComponentVariantPlanItem {
   name: string; // Figma-safe variant value, e.g. "Default", "Outline"
   fillVariable?: string; // Figma variable name, e.g. "color/semantic/action/primary" — absent means transparent
-  textVariable: string;
+  // Optional as of 2026-09-18, for Skeleton — the first real component with
+  // NO text at all (a plain animated gray box; shadcn's own real
+  // `animate-pulse` shimmer isn't reproduced here — see buildSkeletonPlan's
+  // own comment, and the plan's own `notes` entry). Purely additive: every
+  // component built before Skeleton always sets this on every variant, and
+  // nothing about their own plan computation changes — only `SDSGT-figma-
+  // push`'s step 2/4 replay logic gained an `if (variant.textVariable)`/
+  // `if (component.labelPropertyName)` guard so a text-less component
+  // creates a frame with no text child at all, instead of a crash or an
+  // empty-string label.
+  textVariable?: string;
   strokeVariable?: string;
   underline?: boolean;
 }
@@ -1188,6 +1206,96 @@ function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[])
   };
 }
 
+// Twelfth real component, added 2026-09-18 — "Batch 3" of
+// figma-remaining-components-plan.md, and the first with NO text at all.
+// Real current source (verified against a real vendored `shadcn add
+// --all` project): `<div data-slot="skeleton" className={cn("animate-
+// pulse rounded-md bg-muted", className)} {...props} />` — no `cva()`,
+// exactly one plain class string (`scanClassesForColors`'s own existing
+// shape, same as Input/Textarea), `bg-muted` → `background.secondary` via
+// the existing table, no border class at all (unlike Input/Textarea's
+// explicit `border border-input`, so no stroke, and no invisible-width
+// base-layer border either — that only activates for elements that DO
+// carry a bare `border` utility, see `buildAlertPlan`'s own comment;
+// Skeleton has none).
+//
+// Real, disclosed, deliberate scope cut #1: `animate-pulse`'s real
+// shimmer (a CSS keyframe opacity animation) is NOT reproduced — Figma
+// has no token-bound equivalent for a running opacity keyframe, and this
+// pipeline's own plan format has no animation concept at all yet. Pushed
+// as a static gray box, not an animated one.
+//
+// Real, disclosed, deliberate scope cut #2, genuinely new to this file:
+// Skeleton's own real source carries NO padding/sizing class of any kind
+// — every component built before it always had SOME real padding class
+// to bind (even Input/Textarea's smallest). A bare, real, unstyled
+// Skeleton renders as a block-level div with no intrinsic height at all;
+// every real usage supplies its own explicit `h-*`/`w-*` override
+// (`<Skeleton className="h-4 w-[250px]" />`), which is caller-supplied
+// JSX this parser has no access to (it only ever reads the component's
+// OWN definition file). An empty hug-contents auto-layout frame with zero
+// children and zero padding collapses to a literal 0x0 node — invisible,
+// not a usable library component. Rather than ship that, this binds
+// `paddingHorizontalVariable`/`paddingVerticalVariable` to representative
+// spacing tokens chosen purely to give the pushed frame a visible,
+// legible footprint (~96x24px, a plausible "skeleton line" shape) — a
+// real, disclosed departure from every other component's padding, which
+// is always read from the component's own real class list. Not a claim
+// that Skeleton has a real default size; it doesn't. `radiusVariable`
+// still comes from a real class (`rounded-md`): unlike `rounded-lg`'s
+// direct 1:1 alias (`exactRadiusMd`) or `rounded-xl`'s ×1.4 multiplier
+// (Card), shadcn's real `@theme inline` maps `--radius-md: calc(var(
+// --radius) * 0.8)` — confirmed against this same vendored project's
+// real compiled `globals.css` — so this uses `nearestToken` against
+// `radius.md`'s own real resolved value times 0.8, the same discipline
+// Card's own `rounded-xl` binding already established.
+function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: string[]): FigmaComponentPlanItem {
+  const classMatch = skeletonSource.match(/className=\{cn\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find Skeleton's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusTarget = radiusMdPx * 0.8;
+  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
+  if (radiusMatch.deltaPx > 0.01) {
+    notes.push(`Skeleton radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 0.8 = ${radiusTarget.toFixed(1)}px).`);
+  }
+
+  // Representative placeholder size — see this function's own comment
+  // above for why: Skeleton's real source has no padding/sizing class of
+  // its own to bind, and an unpadded, childless auto-layout frame would
+  // otherwise be a literal 0x0 invisible node.
+  const paddingHMatch = nearestToken(48, spacing, "spacing");
+  const paddingVMatch = nearestToken(12, spacing, "spacing");
+  notes.push("Skeleton: its real source has no padding or sizing class at all — every real usage supplies its own explicit width/height override this parser can't see (caller JSX, not the component's own definition). Represented as a representative ~96x24px placeholder box (via padding on an empty frame) purely so the pushed component is visible in Figma, not a real default size — see file header for the same real, disclosed reasoning as Input's own placeholder-text choice.");
+  notes.push("Skeleton: its real `animate-pulse` shimmer animation is not reproduced — pushed as a static gray box. Figma has no token-bound equivalent for a running CSS keyframe opacity pulse, and this pipeline's plan format has no animation concept yet.");
+
+  return {
+    name: "Skeleton",
+    variantPropertyName: "Variant",
+    // No textVariable — Skeleton has no text at all (see
+    // FigmaComponentVariantPlanItem.textVariable's own comment). No
+    // labelPropertyName/defaultLabel/fontSizeVariable at the top level
+    // either — there's no label to bind.
+    variants: [{ name: "Default", fillVariable: colors.fillVariable, underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    // Required by the interface but never actually read — SDSGT-figma-
+    // push's own text-creation code (the only place that consults it) is
+    // now gated on `variant.textVariable`/`labelPropertyName` being
+    // present, neither of which Skeleton sets. Kept as a real, valid
+    // variable name (not a dummy string) purely for interface parity with
+    // every other component, not because anything binds to it.
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -1211,6 +1319,7 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "native-select.tsx", name: "NativeSelect", build: buildNativeSelectPlan },
   { filename: "avatar.tsx", name: "Avatar", build: buildAvatarPlan },
   { filename: "label.tsx", name: "Label", build: buildLabelPlan },
+  { filename: "skeleton.tsx", name: "Skeleton", build: buildSkeletonPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for

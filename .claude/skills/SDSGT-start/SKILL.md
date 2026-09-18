@@ -680,17 +680,19 @@ override any of the four independently — they don't have to move together.
   *pushed to Figma* at all. Today, only one combination does — `nextjs` +
   `tailwind` + shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s
   own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card,
-  Kbd, NativeSelect, Avatar (its AvatarFallback sub-part only), and
-  Label**, one size each, all eleven proven with a real live push into a
+  Kbd, NativeSelect, Avatar (its AvatarFallback sub-part only), Label, and
+  Skeleton**, one size each, all twelve proven with a real live push into a
   real test file (Button 2026-09-15, Badge 2026-09-16, Toggle/Alert/Input/
-  Textarea/Card 2026-09-17, Kbd/NativeSelect/Avatar/Label 2026-09-18). Card
-  is the first real compound component (a real Header/Content structure
-  with three independent text properties, not just one label); Label is
-  the first component with no box styling of its own at all — a bare text
-  node, no fill/stroke/padding/radius. See
-  `figma-remaining-components-plan.md` for the full, sequenced plan
-  covering shadcn/ui's remaining components beyond these eleven. Every
-  other combination — the other seven "real theming" combinations from
+  Textarea/Card 2026-09-17, Kbd/NativeSelect/Avatar/Label/Skeleton
+  2026-09-18). Card is the first real compound component (a real
+  Header/Content structure with three independent text properties, not
+  just one label); Label is the first component with no box styling of its
+  own at all — a bare text node, no fill/stroke/padding/radius; Skeleton is
+  the first component with no text label at all (a plain animated box —
+  the real `animate-pulse` shimmer itself isn't reproduced, pushed as a
+  static gray box). See `figma-remaining-components-plan.md` for the full,
+  sequenced plan covering shadcn/ui's remaining components beyond these
+  twelve. Every other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when
   `figmaManaged` is true (see below), but no component ever shows up there,
