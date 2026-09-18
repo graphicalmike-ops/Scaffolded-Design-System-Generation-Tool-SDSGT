@@ -679,12 +679,15 @@ override any of the four independently — they don't have to move together.
   tokens. This is a separate question: which libraries get a component
   *pushed to Figma* at all. Today, only one combination does — `nextjs` +
   `tailwind` + shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s
-  own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card**,
-  one size each, all seven proven with a real live push into a real test
-  file (Button 2026-09-15, Badge 2026-09-16, the rest 2026-09-17). Card is
-  the first real compound component (a real Header/Content structure with
-  three independent text properties, not just one label). Every
-  other combination — the other seven "real theming" combinations from
+  own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card,
+  Skeleton**, one size each, all eight proven with a real live push into a
+  real test file (Button 2026-09-15, Badge 2026-09-16, Toggle/Alert/Input/
+  Textarea/Card 2026-09-17, Skeleton 2026-09-18). Card is the first real
+  compound component (a real Header/Content structure with three
+  independent text properties, not just one label). Skeleton is the first
+  component with no text label at all (a plain animated box — the real
+  `animate-pulse` shimmer itself isn't reproduced, pushed as a static gray
+  box). Every other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when
   `figmaManaged` is true (see below), but no component ever shows up there,

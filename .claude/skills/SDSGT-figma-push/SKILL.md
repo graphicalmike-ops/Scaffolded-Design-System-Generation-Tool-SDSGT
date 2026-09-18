@@ -384,37 +384,49 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
-**Real ground truth, proven live against a real test file for all seven
+**Real ground truth, proven live against a real test file for all eight
 components this plan covers today:** Button (2026-09-15), Badge
-(2026-09-16), Toggle, Alert, Input, Textarea, and Card (all 2026-09-17).
-shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`, `Input`, `Textarea`,
-`Card` — one size each, rest states only (see `cli/src/scaffold/
-figma-components-plan.ts`'s own header for the full scope decision,
-including the three real component shapes this plan handles —
-multi-variant `cva()` components via `buildVariantsFromCva`, single-state
-no-`cva()` components via `scanClassesForColors`, and Card's own real
-compound-component support via `sections` — and why most other real
-components don't fit any of these yet). This step's own mechanism (`for
-each item in plan.components`, no component-specific branching) is
-confirmed to genuinely generalize across seven structurally different
-components, covering all three shapes — real bugs were caught doing this,
-not just claimed to have been avoided: the same-tone-trap fix (below)
-used to fire for ANY variant named "destructive" regardless of its fill,
-which was correct for Button/Badge but would have produced invisible
-white-on-light-card text for Alert's real neutral-background destructive
-variant; and every `rounded-lg`-using component's radius was bound to the
-wrong real value for two full sessions (a real 2px mismatch, confirmed
-live via `getComputedStyle` — see `exactRadiusMd`'s own comment) before
-being caught while scoping Card's own different radius formula. Both
-caught by checking real generated output/real rendered pages, not
-assuming the existing mechanism was safe. Extending this plan to more
-components is real, separate CLI work (a new plan-generator entry, not a
-change to this skill) — this step's job is only ever to replay whatever
-the plan actually contains, never to improvise a component the plan
-doesn't describe. Any component added to the plan should still get the
-SAME full screenshot-validate treatment the first time it's pushed live —
-passing plan computation alone isn't sufficient proof, as this section
-used to (incorrectly) imply was close enough for Badge.
+(2026-09-16), Toggle, Alert, Input, Textarea, and Card (all 2026-09-17),
+plus Skeleton (2026-09-18). shadcn/ui's `Button`, `Badge`, `Toggle`,
+`Alert`, `Input`, `Textarea`, `Card`, `Skeleton` — one size each, rest
+states only (see `cli/src/scaffold/figma-components-plan.ts`'s own header
+for the full scope decision, including the three real component shapes
+this plan handles — multi-variant `cva()` components via
+`buildVariantsFromCva`, single-state no-`cva()` components via
+`scanClassesForColors`, and Card's own real compound-component support via
+`sections` — and why most other real components don't fit any of these
+yet). This step's own mechanism (`for each item in plan.components`, no
+component-specific branching) is confirmed to genuinely generalize across
+eight structurally different components, covering all three shapes plus
+one real structural variation (Skeleton has no text at all) — real bugs
+were caught doing this, not just claimed to have been avoided: the
+same-tone-trap fix (below) used to fire for ANY variant named
+"destructive" regardless of its fill, which was correct for Button/Badge
+but would have produced invisible white-on-light-card text for Alert's
+real neutral-background destructive variant; and every `rounded-lg`-using
+component's radius was bound to the wrong real value for two full
+sessions (a real 2px mismatch, confirmed live via `getComputedStyle` —
+see `exactRadiusMd`'s own comment) before being caught while scoping
+Card's own different radius formula. Both caught by checking real
+generated output/real rendered pages, not assuming the existing mechanism
+was safe. Extending this plan to more components is real, separate CLI
+work (a new plan-generator entry, not a change to this skill) — this
+step's job is only ever to replay whatever the plan actually contains,
+never to improvise a component the plan doesn't describe. Any component
+added to the plan should still get the SAME full screenshot-validate
+treatment the first time it's pushed live — passing plan computation
+alone isn't sufficient proof, as this section used to (incorrectly) imply
+was close enough for Badge.
+
+**A component can now have NO text at all** (Skeleton, added 2026-09-18 —
+see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
+`figma-components-plan.ts` for why it's optional as of this addition).
+Every step below that touches a text node is now gated on
+`variant.textVariable`/`component.labelPropertyName` actually being
+present — a text-less variant gets a frame with only its fill/stroke/
+radius, no text child, no component property. This is purely additive:
+every one of the seven earlier components always sets both fields, so
+they pass through these same guards completely unaffected.
 
 **Read `<projectDir>/figma-components-push-plan.json`** (shape:
 `FigmaComponentsPushPlan` in `figma-components-plan.ts`) — `components`,
@@ -473,18 +485,49 @@ For each item in `plan.components`, in order:
      frame.strokeWeight = 1; // or bind to a real border-width/* variable if the plan names one
    }
    ```
-   Text child, same call:
+   **Text child — only when `variant.textVariable` is present.** Skeleton
+   (added 2026-09-18) is the first component with NO text at all — its
+   variant sets no `textVariable`, and the whole text-child step is
+   skipped for it, not run with an empty string:
    ```js
-   await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
-   const text = figma.createText();
-   text.name = "PrimaryText"; // lets step 4 find this specific node once a variant can have two
-   text.fontName = { family: fontFamilyValue, style: "Medium" };
-   text.characters = component.defaultLabel;
-   text.setBoundVariable("fontSize", getVar(component.fontSizeVariable));
-   text.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.textVariable))];
-   try { text.setBoundVariable("fontFamily", getVar(component.fontFamilyVariable)); } catch (e) {} // real Figma versions support this; wrap anyway
-   if (variant.underline) text.textDecoration = "UNDERLINE";
-   frame.appendChild(text);
+   if (variant.textVariable) {
+     await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
+     const text = figma.createText();
+     text.name = "PrimaryText"; // lets step 4 find this specific node once a variant can have two
+     text.fontName = { family: fontFamilyValue, style: "Medium" };
+     text.characters = component.defaultLabel;
+     text.setBoundVariable("fontSize", getVar(component.fontSizeVariable));
+     text.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.textVariable))];
+     try { text.setBoundVariable("fontFamily", getVar(component.fontFamilyVariable)); } catch (e) {} // real Figma versions support this; wrap anyway
+     if (variant.underline) text.textDecoration = "UNDERLINE";
+     frame.appendChild(text);
+   } else {
+     // Real, live-only finding (Skeleton, 2026-09-18) — don't skip this
+     // else-branch even though it looks like it should be a no-op. A
+     // hug-contents (`primaryAxisSizingMode`/`counterAxisSizingMode` both
+     // `"AUTO"`) frame with ZERO children does NOT shrink itself to its
+     // own padding sum the way it does once a child exists — confirmed
+     // live, it silently keeps `figma.createFrame()`'s own raw 100x100
+     // default instead, an invisible-content-but-wrong-size bug, not a
+     // crash, so it's easy to miss without a real screenshot check (which
+     // is exactly how this was caught). Fix: explicitly resize to the
+     // padding-derived size once there's no text child to hug around —
+     // `node.resize()` flips both sizing modes to `"FIXED"` as a side
+     // effect (confirmed live), which is the semantically CORRECT mode
+     // here anyway, since there's no content left to hug to:
+     const w = frame.paddingLeft + frame.paddingRight;
+     const h = frame.paddingTop + frame.paddingBottom;
+     frame.resize(Math.max(w, 1), Math.max(h, 1));
+   }
+   ```
+   **After combining into a `componentSet`** (step 3, below), re-check its
+   own `counterAxisSizingMode` for a text-less component — confirmed live,
+   `combineAsVariants` left the SET's own `counterAxisSizingMode` at
+   whatever `"FIXED"`-at-100 value it inherited, even though
+   `primaryAxisSizingMode` correctly went `"AUTO"` and hugged the width to
+   the single variant's real 96px. Set it explicitly:
+   ```js
+   componentSet.counterAxisSizingMode = "AUTO"; // only needed when the component has no text child — every text-bearing component already hugs correctly without this
    ```
    **If `component.secondaryTextVariable` is present** (Alert's own real
    `AlertDescription` — added 2026-09-17), the frame gets a VERTICAL inner
@@ -564,25 +607,34 @@ For each item in `plan.components`, in order:
    componentSet.layoutMode = "HORIZONTAL"; // combineAsVariants stacks at (0,0) — always re-layout after
    componentSet.itemSpacing = 24;
    ```
-4. **Add the label as a real TEXT component property**, bound to every
-   variant's text node — not just set on one. Name each text node when
-   creating it (`text.name = "PrimaryText"`, and if present,
-   `secondaryText.name = "SecondaryText"` — see step 2 above) so this step
-   can find the right one by name instead of `findOne(n => n.type ===
-   "TEXT")`, which becomes ambiguous the moment a variant has TWO text
-   nodes (Alert's own secondary line):
+4. **Add the label as a real TEXT component property — only when
+   `component.labelPropertyName` is present.** Skeleton (added 2026-09-18)
+   has no label at all, so this whole step is skipped for it — there's no
+   property to add and no text node to bind it to. For every component
+   that DOES have one, bound to every variant's text node, not just set on
+   one. Name each text node when creating it (`text.name = "PrimaryText"`,
+   and if present, `secondaryText.name = "SecondaryText"` — see step 2
+   above) so this step can find the right one by name instead of
+   `findOne(n => n.type === "TEXT")`, which becomes ambiguous the moment a
+   variant has TWO text nodes (Alert's own secondary line):
    ```js
-   const propName = componentSet.addComponentProperty(component.labelPropertyName, "TEXT", component.defaultLabel);
-   for (const variant of componentSet.children) {
-     variant.findOne(n => n.type === "TEXT" && n.name === "PrimaryText").componentPropertyReferences = { characters: propName };
-   }
-   if (component.secondaryLabelPropertyName) {
-     const secondaryPropName = componentSet.addComponentProperty(component.secondaryLabelPropertyName, "TEXT", component.defaultSecondaryLabel);
+   if (component.labelPropertyName) {
+     const propName = componentSet.addComponentProperty(component.labelPropertyName, "TEXT", component.defaultLabel);
      for (const variant of componentSet.children) {
-       variant.findOne(n => n.type === "TEXT" && n.name === "SecondaryText").componentPropertyReferences = { characters: secondaryPropName };
+       variant.findOne(n => n.type === "TEXT" && n.name === "PrimaryText").componentPropertyReferences = { characters: propName };
+     }
+     if (component.secondaryLabelPropertyName) {
+       const secondaryPropName = componentSet.addComponentProperty(component.secondaryLabelPropertyName, "TEXT", component.defaultSecondaryLabel);
+       for (const variant of componentSet.children) {
+         variant.findOne(n => n.type === "TEXT" && n.name === "SecondaryText").componentPropertyReferences = { characters: secondaryPropName };
+       }
      }
    }
    ```
+   A text-less component's instances still get the real, automatically-
+   derived `Variant` property from step 3's own naming convention (e.g.
+   Skeleton's own `"Default"` value) — `setProperties()` still has
+   something real to swap even with zero TEXT properties added here.
    **For a `sections`-based component** (Card), skip the two blocks above
    entirely and instead loop every section's every text line — there's no
    fixed `Label`/`Description` pair, just however many real lines the
@@ -644,36 +696,50 @@ For each item in `plan.components`, in order:
 that already has one of these component sets will create a second,
 differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
-component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card, any size
-beyond `default`, Alert's real destructive-tinted `AlertDescription` color
-(its description is modeled, but always in `text.secondary` — the real
-translucent-red tint on the destructive variant isn't bound, see
-`buildAlertPlan`'s own comment), Input/Textarea's real typed-text state
-(they show their PLACEHOLDER text, not typed content — see
-`buildInputPlan`'s own comment), Card's real `CardFooter` (a separate
-background/border treatment, not modeled — see `buildCardPlan`'s own
-comment) and its real `ring-1` border (approximated as `border.subtle`,
-not a true partially-transparent ring), and any framework's component
-source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files and RNR's
-React Native source both need their own real verification before this
-same mechanism can be trusted against them — don't assume the parser
-generalizes without checking). Most of shadcn/ui's own remaining real
-components either have no size-independent color "variant" axis at all
-(Checkbox, Switch, Label, Separator, ...) or are compound/multi-part
+component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Skeleton,
+any size beyond `default`, Alert's real destructive-tinted
+`AlertDescription` color (its description is modeled, but always in
+`text.secondary` — the real translucent-red tint on the destructive
+variant isn't bound, see `buildAlertPlan`'s own comment), Input/Textarea's
+real typed-text state (they show their PLACEHOLDER text, not typed
+content — see `buildInputPlan`'s own comment), Card's real `CardFooter`
+(a separate background/border treatment, not modeled — see
+`buildCardPlan`'s own comment) and its real `ring-1` border (approximated
+as `border.subtle`, not a true partially-transparent ring), Skeleton's
+real `animate-pulse` shimmer (pushed as a static box — see
+`buildSkeletonPlan`'s own comment) and its own representative, NOT
+real-class-derived ~96x24px placeholder size (it has no padding/sizing
+class of its own to bind at all — same comment), and any framework's
+component source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files
+and RNR's React Native source both need their own real verification
+before this same mechanism can be trusted against them — don't assume the
+parser generalizes without checking). Most of shadcn/ui's own remaining
+real components either have no size-independent color "variant" axis at
+all (Checkbox, Switch, Label, Separator, ...) or are compound/multi-part
 components needing MORE than Card's own two-section, text-only structure
 (Dialog, Sheet, Table, Sidebar — nested interactive sub-components, not
 just more text lines) — real, larger, separate work, checked and
 deliberately not attempted yet, not an oversight.
 
-**State after this round (2026-09-17):** all seven components — Button,
-Badge, Toggle, Alert, Input, Textarea, Card — are now proven live, not
-just plan-computed. Every one went through the full build → screenshot →
-instance-swap → screenshot cycle, same bar throughout — including
-confirming live that Alert's same-tone-trap fix actually renders readable
-red text on both variants, that the radius bug fix's `radius/md` binding
-renders at the same real pixel value a live browser check showed, and
-that Card's own three independent text properties (`Title`/`Description`/
-`Content`) all bind and swap correctly on a real instance.
+**State after this round (2026-09-18):** all eight components — Button,
+Badge, Toggle, Alert, Input, Textarea, Card, Skeleton — are now proven
+live, not just plan-computed. Every one went through the full build →
+screenshot → instance-swap → screenshot cycle, same bar throughout —
+including confirming live that Alert's same-tone-trap fix actually
+renders readable red text on both variants, that the radius bug fix's
+`radius/md` binding renders at the same real pixel value a live browser
+check showed, that Card's own three independent text properties
+(`Title`/`Description`/`Content`) all bind and swap correctly on a real
+instance, and — new this round — that a genuinely text-less component
+(Skeleton) builds, screenshots, and instance-swaps cleanly through the
+newly-guarded step 2/4 code paths, with zero visible or structural
+regression on any of the seven earlier, text-bearing components. This
+round also caught and fixed a real, live-only bug the plan JSON alone
+could never have revealed: a hug-contents frame with zero children
+doesn't self-size from its own padding (see step 2's own comment) — only
+found by actually screenshotting the first text-less component ever
+pushed, confirming once again why this section's own bar requires a real
+screenshot pass per component, not just successful API calls.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
