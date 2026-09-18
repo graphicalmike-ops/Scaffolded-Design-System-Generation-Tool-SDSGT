@@ -10,39 +10,44 @@
 //
 // Scope, deliberate (see docs/layer2-layer3-plan.md, "components must also
 // push to Figma," 2026-09-15 entry, for the full session this was proven
-// against, and its follow-ups for Badge/Toggle/Alert/Input/Textarea):
-// shadcn/ui's Button, Badge, Toggle, Alert (2026-09-17), plus Input and
-// Textarea (2026-09-17, same day) — one size each ("default" — the only
-// Tailwind height, h-8, that matches an SDSGT spacing token exactly, for
-// the components that have more than one real size), rest states only (no
-// hover:/aria-*: pseudo-states — those aren't separate Figma variants in
-// this pass), one text label each except Alert, which now also carries a
-// real second line for its own AlertDescription (see
-// `secondaryTextVariable` on `FigmaComponentPlanItem`, and buildAlertPlan's
-// own comment for the one real, disclosed simplification: always
-// text.secondary, not destructive-tinted on the destructive variant, since
-// that class sits behind a `*:data-[slot=...]:` selector prefix this
-// parser doesn't parse). Input/Textarea show their PLACEHOLDER text, not
-// typed content — see buildInputPlan's own comment. Two real component
-// shapes, both proven: `cva()`-based multi-variant components (Button/
-// Badge/Toggle/Alert, via `buildVariantsFromCva`) and single-state
-// components with no `cva()` at all (Input/Textarea, via
+// against, and its follow-ups for Badge/Toggle/Alert/Input/Textarea/Card,
+// plus figma-remaining-components-plan.md for the full batch sequence
+// covering shadcn/ui's remaining ~54 components): shadcn/ui's Button,
+// Badge, Toggle, Alert (2026-09-17), Input and Textarea (2026-09-17, same
+// day), Card (2026-09-17, same day), plus Kbd, NativeSelect, and Avatar's
+// own AvatarFallback (2026-09-18, "Batch 1" of the remaining-components
+// plan) — one size each ("default" — the only Tailwind height, h-8, that
+// matches an SDSGT spacing token exactly, for the components that have
+// more than one real size), rest states only (no hover:/aria-*:
+// pseudo-states — those aren't separate Figma variants in this pass), one
+// text label each except Alert, which now also carries a real second line
+// for its own AlertDescription (see `secondaryTextVariable` on
+// `FigmaComponentPlanItem`, and buildAlertPlan's own comment for the one
+// real, disclosed simplification: always text.secondary, not
+// destructive-tinted on the destructive variant, since that class sits
+// behind a `*:data-[slot=...]:` selector prefix this parser doesn't
+// parse). Input/Textarea show their PLACEHOLDER text, not typed content —
+// see buildInputPlan's own comment. Three real component shapes, all
+// proven: `cva()`-based multi-variant components (Button/Badge/Toggle/
+// Alert, via `buildVariantsFromCva`), single-state components with no
+// `cva()` at all (Input/Textarea/Kbd/NativeSelect/Avatar, via
 // `scanClassesForColors` — same underlying class-to-variable mapping,
 // applied to one class string instead of a parsed variant axis, wrapped in
 // a plan with exactly one variant so `SDSGT-figma-push`'s own replay
-// mechanism needs zero shape-specific branching for those). The optional
-// second-text-line addition (`secondaryTextVariable` etc., proven against
-// Alert) is a real, minimal step toward the harder "compound component"
-// bucket below, NOT the same thing as actually supporting one — it adds
-// one more text line under a single frame, not multiple named sub-parts,
-// nested frames, or nested auto-layout. Confirmed to actually generalize —
-// not just Button-shaped code with the names changed — by checking EVERY
-// real component in a fully-vendored (`shadcn add --all`) project before
+// mechanism needs zero shape-specific branching for those), and Card's own
+// real compound/`sections`-based structure. The optional second-text-line
+// addition (`secondaryTextVariable` etc., proven against Alert) is a real,
+// minimal step toward the harder "compound component" bucket, NOT the
+// same thing as actually supporting one — it adds one more text line
+// under a single frame, not multiple named sub-parts, nested frames, or
+// nested auto-layout. Confirmed to actually generalize — not just
+// Button-shaped code with the names changed — by checking EVERY real
+// component in a fully-vendored (`shadcn add --all`) project before
 // picking any of these: components with a size-independent color
 // "variant" axis went through `buildVariantsFromCva`; single-state
-// box-shaped components (Input, Textarea) went through
-// `scanClassesForColors`; compound/multi-part components that need actual
-// new structure beyond one extra text line (Card, Dialog, Sheet, Table,
+// box-shaped components (Input, Textarea, Kbd, NativeSelect, Avatar) went
+// through `scanClassesForColors`; compound/multi-part components that need
+// actual new structure beyond one extra text line (Dialog, Sheet, Table,
 // Sidebar, ...) — real, separate, larger work, not attempted here.
 // Extending to more components/sizes/frameworks is a matter of adding a
 // `build<X>Plan` function reusing one of these mechanisms plus a row in
@@ -823,6 +828,271 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   };
 }
 
+// Eighth real component, added 2026-09-18 — "Batch 1" of
+// figma-remaining-components-plan.md, picked as the lowest-risk possible
+// next slice: identical shape to Input/Textarea (one plain class string,
+// no `cva()`), zero changes to shared code. Real current source:
+// `pointer-events-none inline-flex h-5 w-fit min-w-5 items-center
+// justify-center gap-1 rounded-sm bg-muted px-1 font-sans text-xs
+// font-medium text-muted-foreground select-none in-data-
+// [slot=tooltip-content]:bg-background/20 ...`. The `in-data-
+// [slot=tooltip-content]:*` classes are a real, disclosed omission — they
+// only apply when a Kbd sits INSIDE a Tooltip's own content box (a second,
+// visually distinct at-rest state), a selector-prefixed variant this
+// parser's plain `bg-/text-/border-` regex was never built to see, same
+// class of gap as Input's own `placeholder:` prefix and Alert's `*:data-
+// [slot=...]:` prefix — this plan represents Kbd's normal (non-tooltip)
+// rest state only.
+//
+// `rounded-sm` is a genuine MULTIPLIER, not a direct alias — confirmed
+// against this project's own real generated `globals.css`
+// (`--radius-sm: calc(var(--radius) * 0.6)`, same `@theme inline` block
+// `exactRadiusMd`'s own comment already documents for `--radius-lg`) — so
+// this uses `nearestToken` against `radius.md`'s own real resolved value
+// times 0.6, the same discipline `buildCardPlan`'s own `rounded-xl`
+// handling already established, not a hardcoded guess.
+//
+// No explicit vertical-padding class at all — Kbd's real height comes
+// from a fixed `h-5` (20px), same disclosed approximation Toggle's own
+// `h-8` already uses: target vertical padding is derived as
+// `(20 − fontSize) ÷ 2`, not read from a real Tailwind class, since none
+// exists.
+function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): FigmaComponentPlanItem {
+  // Real source defines `function Kbd` before `function KbdGroup` — the
+  // FIRST `className={cn(...)}` in the file is always Kbd's own (KbdGroup's
+  // own className has no color classes anyway, but relying on match order
+  // rather than that is still worth flagging), confirmed against real
+  // vendored source, not assumed.
+  const classMatch = kbdSource.match(/className=\{cn\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find Kbd's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusTarget = radiusMdPx * 0.6;
+  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
+  if (radiusMatch.deltaPx > 0.01) {
+    notes.push(`Kbd radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 0.6 = ${radiusTarget.toFixed(1)}px).`);
+  }
+
+  const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize");
+  const paddingHMatch = nearestToken(4, spacing, "spacing");
+  const paddingVTarget = (20 - 12) / 2; // real h-5 (20px) minus text-xs (12px), halved — no real vertical-padding class to read
+  const paddingVMatch = nearestToken(paddingVTarget, spacing, "spacing");
+
+  for (const [label, match] of [
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0) {
+      notes.push(`Kbd ${label}: nearest real token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+  notes.push("Kbd: its real in-data-[slot=tooltip-content]: variant (a visually distinct look when nested inside a Tooltip) isn't represented — this parser's plain class regex doesn't see selector-prefixed classes; only the normal, non-tooltip rest state is modeled.");
+
+  return {
+    name: "Kbd",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "⌘",
+  };
+}
+
+// Ninth real component, added 2026-09-18, same batch as Kbd/Avatar. Real
+// current source for the actual `<select>` element (not the outer wrapper
+// `<div>`, which only carries layout classes): `h-8 w-full min-w-0
+// appearance-none rounded-lg border border-input bg-transparent py-1
+// pr-8 pl-2.5 text-sm ... placeholder:text-muted-foreground ...` —
+// structurally the same "bordered/filled box" shape Input/Textarea already
+// proved, but with one real, new-to-this-file wrinkle: the `<select>`
+// element's own className is a BARE string literal (`className="..."`),
+// not wrapped in `cn(...)` the way every other component's own root
+// element is — confirmed against real source, not assumed — so this
+// function's own extraction regex is necessarily different from
+// `buildInputPlan`'s (`className=\{cn\(...\)` would never match here). The
+// wrapper `<div>` around it DOES use `cn(...)`, but only carries
+// `group/native-select relative w-fit has-[select:disabled]:opacity-50` —
+// no color/spacing information — so matching the FIRST `cn(` call, Input's
+// own approach, would silently bind to the wrong element here. A
+// component-local extraction difference, not a shared-parser change.
+//
+// Real, disclosed simplification: horizontal padding is asymmetric
+// (`pr-8`=32px, reserved for the chevron icon; `pl-2.5`=10px, the actual
+// text-side inset) — this schema has only one shared
+// `paddingHorizontalVariable`, so `pl-2.5` (the real text-side value, and
+// the same real target Input's own horizontal padding already uses) is
+// used for both sides, same "one flat frame" shape every box component
+// uses; the chevron icon itself isn't drawn (icons are out of scope, same
+// as every other component).
+//
+// Real, disclosed difference from Input/Textarea's own placeholder
+// choice: NativeSelect's class list has no `placeholder:*` variant at all
+// (a native `<select>` always shows a chosen OPTION's real text, never an
+// empty placeholder state the way a text `<input>` can) — so its default
+// represented text isn't `text.secondary` (Input/Textarea's own
+// placeholder-specific choice), it falls back to `text.primary`, the same
+// base-layer-inheritance reasoning documented for Label's own fallback
+// (figma-remaining-components-plan.md, Batch 2) and Alert's own
+// `border.default` post-process below.
+function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, notes: string[]): FigmaComponentPlanItem {
+  const classMatch = nativeSelectSource.match(/<select[\s\S]*?className="([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find NativeSelect's own <select> className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = exactRadiusMd(radius);
+  const paddingHMatch = nearestToken(10, spacing, "spacing"); // pl-2.5 — same real target as Input's own horizontal padding
+  const paddingVMatch = nearestToken(4, spacing, "spacing"); // py-1
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
+
+  for (const [label, match] of [
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0) {
+      notes.push(`NativeSelect ${label}: nearest real token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+  notes.push("NativeSelect: real horizontal padding is asymmetric (pl-2.5 text-side, pr-8 reserved for its chevron icon, which isn't drawn) — this plan uses the text-side value (pl-2.5) for both sides, the same single-shared-padding shape every other box component in this file uses.");
+  notes.push("NativeSelect: represented in color/semantic/text/primary, not text/secondary — unlike Input/Textarea's own placeholder representation, a native <select> always shows a real selected option's text (no placeholder state exists for this element), inheriting shadcn's own base `text-foreground` layer.");
+
+  return {
+    name: "NativeSelect",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.primary") }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Select an option",
+  };
+}
+
+// A real, always-exact alias — confirmed by reading every one of the four
+// real preset files (`presets/radius.{tailwind,bootstrap,md3,md2}.json`)
+// directly, not assumed: `radius.full` is `9999px` in EVERY preset,
+// unconditionally, unlike `radius.md`/`radius.lg`/etc., which vary by
+// preset. Tailwind's own `rounded-full` utility is a fixed literal too
+// (not derived from `--radius` via any `calc()` formula the way
+// `rounded-lg`/`rounded-sm`/`rounded-xl` are) — so this binds directly,
+// the same "guaranteed real alias, never a nearest-guess" treatment
+// `exactRadiusMd` already established for `rounded-lg`.
+function exactRadiusFull(radius: Record<string, number>): { figmaName: string; deltaPx: number } {
+  if (radius["full"] === undefined) throw new Error("radius.json has no 'full' entry — was css/tokens.css written by this pipeline's `generate`?");
+  return { figmaName: "radius/full", deltaPx: 0 };
+}
+
+// Tenth real component, added 2026-09-18, and the first real per-batch
+// "extra check" this plan's own remaining-components plan called for:
+// verify Avatar's real box-height-vs-radius PILL look actually holds
+// under every real radius preset, the same live check Badge's own header
+// comment already did for its shape. Real current source (only its
+// `AvatarFallback` sub-part is modeled — see below): `flex size-full
+// items-center justify-center rounded-full bg-muted text-sm
+// text-muted-foreground group-data-[size=sm]/avatar:text-xs`.
+// `AvatarFallback` itself has NO size/padding classes at all (`size-full`
+// inherits from its parent) — its real fixed dimensions (`size-8`, 32px
+// for the "default" size, this file's usual "one size" scope) live on the
+// OUTER `Avatar` root instead, read here ONLY to compute a representative
+// padding target, not because `AvatarFallback`'s own scope is being
+// silently widened to cover `Avatar` generally (`AvatarImage`, a real
+// photo, is still NOT modeled — the same disclosed scope cut
+// `figma-remaining-components-plan.md`'s own Batch 1 description names,
+// parallel to how `buildCardPlan`'s own comment discloses CardFooter).
+//
+// This schema has no "fixed size, no padding" shape yet (that's real,
+// separate, later work — see figma-remaining-components-plan.md's own
+// Batch 11 for the first genuinely fixed-size frame) — represented here
+// as a hug-content box with EQUAL horizontal/vertical padding, targeted so
+// `2 × padding + fontSize ≈ 32px` (the real default box height), a
+// disclosed approximation of the real fixed square, not a precise
+// reproduction (a longer fallback label than the real 1-2 initial
+// characters this component is meant for would visibly widen the box
+// beyond a true circle — the same "hug-content approximates a fixed size"
+// caveat as every other component in this file that has no exact
+// Tailwind height match).
+//
+// The PILL/CIRCLE check itself: `rounded-full` binds to `radius/full`
+// directly via `exactRadiusFull` (9999px, confirmed identical across all
+// four real presets — see that function's own comment) rather than a
+// nearest-guess — meaning, UNLIKE Badge's own coincidental "every real
+// preset happens to be ≥ half the height" finding, Avatar's own circular
+// look is trivially guaranteed for any real preset, by construction, not
+// by checking specific preset values against a threshold. This closes the
+// batch's own named risk more strongly than the precedent it was modeled
+// on.
+//
+// Real, disclosed post-process, same reasoning as Alert's own
+// `border.default` fallback: `AvatarFallback`'s own class list has no
+// border/stroke class at all — the real visible ring comes from the OUTER
+// `Avatar` root's own `after:border after:border-border` pseudo-element
+// (a decorative ::after layer, not a real box-model border), which this
+// parser's plain-class regex can't see (an `after:`-prefixed selector, the
+// same class of gap as Alert's own `*:data-[slot=...]:` prefix, and the
+// exact gap Batch 9 of figma-remaining-components-plan.md is planned to
+// close generally via selector-prefix stripping). `border-border` itself
+// maps directly to `border.default` per the existing table — this is a
+// real, confirmed color, just applied via a hardcoded post-process rather
+// than a parsed match, the same treatment `buildAlertPlan` already uses
+// for its own `border.default` case.
+function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["group/avatar", "size-8", "function AvatarFallback", "rounded-full", "bg-muted"]) {
+    if (!avatarSource.includes(marker)) {
+      throw new Error(`Avatar's real source no longer contains "${marker}" — shadcn/ui's real Avatar has likely changed shape since buildAvatarPlan was written. Re-verify against the current vendored avatar.tsx before trusting this plan.`);
+    }
+  }
+  const fallbackMatch = avatarSource.match(/function AvatarFallback[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!fallbackMatch) throw new Error("Could not find AvatarFallback's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(fallbackMatch[1]);
+  colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // see file header — real ring lives on Avatar's own after:border-border pseudo-element, not AvatarFallback's own class list
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = exactRadiusFull(radius);
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // text-sm, the "default" size's real font size
+  const paddingTarget = (32 - 14) / 2; // real size-8 (32px) minus text-sm (14px), halved — Avatar has no real padding class of its own to read (see file header)
+  const paddingMatch = nearestToken(paddingTarget, spacing, "spacing");
+
+  if (paddingMatch.deltaPx > 0) {
+    notes.push(`Avatar padding: nearest real spacing token is ${paddingMatch.deltaPx}px off the computed target (${paddingTarget}px) — see file header for why this is a computed target, not a real Tailwind class value.`);
+  }
+  notes.push("Avatar: only its real AvatarFallback is modeled, and represented as a hug-content box with symmetric padding approximating its real fixed 32×32px (\"default\" size) square — AvatarImage (a real photo) isn't modeled, the same disclosed scope cut as Card's own CardFooter.");
+  notes.push("Avatar: its real visible ring comes from the outer Avatar root's own after:border-border pseudo-element, not a class on AvatarFallback itself — bound to border/default via a hardcoded post-process, the same treatment Alert's own border.default fallback already uses, since this parser's plain-class regex can't see an after:-prefixed selector.");
+
+  return {
+    name: "Avatar",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingMatch.figmaName,
+    paddingVerticalVariable: paddingMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "JD",
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -842,16 +1112,19 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "input.tsx", name: "Input", build: buildInputPlan },
   { filename: "textarea.tsx", name: "Textarea", build: buildTextareaPlan },
   { filename: "card.tsx", name: "Card", build: buildCardPlan },
+  { filename: "kbd.tsx", name: "Kbd", build: buildKbdPlan },
+  { filename: "native-select.tsx", name: "NativeSelect", build: buildNativeSelectPlan },
+  { filename: "avatar.tsx", name: "Avatar", build: buildAvatarPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for
 // its always-written css/tokens.css — see readCssScale above, no separate
 // --tokens-dir plumbing required). vendoredComponentsDir: the scaffolded
 // project's real component directory (e.g. "<outDir>/src/components/ui"
-// for Next.js+shadcn/ui). Button, Badge, Toggle, and Alert are built today
-// (see file header) — a component with no recognized file at this path is
-// silently absent from the plan, not an error, since not every scaffold
-// vendors every component this parser knows about yet.
+// for Next.js+shadcn/ui). See the file header for the full list of
+// components built today — a component with no recognized file at this
+// path is silently absent from the plan, not an error, since not every
+// scaffold vendors every component this parser knows about yet.
 export function buildFigmaComponentsPushPlan(codeDir: string, vendoredComponentsDir: string): FigmaComponentsPushPlan {
   const notes: string[] = [];
   const components: FigmaComponentPlanItem[] = [];
