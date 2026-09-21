@@ -1960,6 +1960,107 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
   };
 }
 
+// Eighteenth real component, added 2026-09-21 — "Batch 7" of
+// figma-remaining-components-plan.md, and the first component to combine
+// TWO existing mechanisms that had only ever been used separately before:
+// a real `cva()` color-variant axis (`buildVariantsFromCva`, the
+// Button/Badge/Toggle/Alert shape) for the outer frame, plus `sections`
+// (the Card/Breadcrumb/Empty/Field shape) for the body. No schema change
+// was needed — `FigmaComponentPlanItem` already allowed `variants` and
+// `sections` together, nothing had exercised it. Real current source
+// (`item.tsx`, confirmed against a real vendored `shadcn add --all`
+// project): an 8-part API (`Item`/`ItemMedia`/`ItemContent`/`ItemActions`/
+// `ItemGroup`/`ItemSeparator`/`ItemHeader`/`ItemFooter`, plus `ItemTitle`/
+// `ItemDescription`) — only the outer `Item` frame and `ItemTitle`/
+// `ItemDescription` (as a single section, mirroring Card's own Header
+// shape) are modeled. `ItemMedia` (an icon/image slot) and `ItemActions`
+// (real interactive buttons) are excluded — the same declared NEEDS-ICON
+// and NEEDS-INTERACTIVE-STRUCTURE reasons already named in
+// figma-remaining-components-plan.md's own permanently-out-of-scope list.
+//
+// Real `variant` axis, via `parseCvaAxis(itemSource, "variant")`: three
+// real options — `default` (`border-transparent` — no real border color,
+// same "no recognized color class" null-fill/null-stroke path
+// `classToFigmaVariable` already handles), `outline` (`border-border` —
+// `border.default`, an ordinary match), and `muted` (`border-transparent
+// bg-muted/50` — `background.secondary`, via the same "opacity modifier
+// silently dropped" simplification already documented for Badge's own
+// `bg-destructive/10` case: the real 50%-translucent muted background
+// becomes a SOLID `background.secondary` fill here, a disclosed
+// approximation, not a parser miss). Item's real `size` axis
+// (`default`/`sm`/`xs`) is NOT modeled — only `size: "default"`'s own
+// classes are read, the same "one size" scope every other component in
+// this file already uses.
+//
+// Real, load-bearing finding this batch exists to confirm: `rounded-lg`
+// is `item.tsx`'s own real base-class radius, exactly like Toggle/Badge/
+// Input/Textarea/Card before it — bound via `exactRadiusMd`, a real EXACT
+// alias to `radius.md` (see that function's own comment for the 2px
+// mismatch bug this discipline already caught once), never a `nearestToken`
+// guess against a hardcoded target.
+//
+// Real, disclosed schema limitation, genuinely new to this batch:
+// `ItemContent`'s own real `gap-1` (4px, the real space between Title and
+// Description) has no home in `FigmaComponentSectionPlanItem` — a
+// section's own `textLines` stack directly adjacent in the replay, same
+// as Card's own Title/Description pair, relying only on each line's own
+// line-height for visual separation. Card's own real Header/Description
+// gap happens to read as acceptable this way; Item's real 4px gap is
+// disclosed explicitly here rather than silently inheriting the same
+// unflagged treatment.
+function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Item(", "function ItemTitle", "function ItemDescription", "itemVariants"]) {
+    if (!itemSource.includes(marker)) {
+      throw new Error(`Item's real source no longer contains "${marker}" — shadcn/ui's real Item has likely changed shape since buildItemPlan was written. Re-verify against the current vendored item.tsx before trusting this plan.`);
+    }
+  }
+
+  const { variants, skippedVariants } = buildVariantsFromCva(itemSource, "variant");
+  if (variants.some((v) => v.fillVariable === sdsgtPathToFigmaName("background.secondary"))) {
+    notes.push("Item: its real Muted variant's bg-muted/50 (a 50% translucent background) is represented as a SOLID background.secondary fill — this parser drops opacity modifiers on bg-*/text-*/border-* classes (same simplification already documented for Badge's own destructive/10 case), not a faithful reproduction of the real translucency.");
+  }
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = exactRadiusMd(radius); // real rounded-lg -> a real EXACT alias to radius.md, not a nearest-value guess — see this function's own comment
+  const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
+  const paddingVMatch = nearestToken(10, spacing, "spacing"); // real py-2.5
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // ItemTitle/ItemDescription's real text-sm, shared
+
+  for (const [label, match] of [
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0) {
+      notes.push(`Item ${label}: nearest real spacing token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push("Item: only its real outer frame and ItemTitle/ItemDescription are modeled — ItemMedia (an icon/image slot) and ItemActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons named in figma-remaining-components-plan.md. Its real size axis (default/sm/xs) isn't modeled either — always its default size's own classes.");
+  notes.push("Item: ItemContent's real gap-1 (4px) between Title and Description has no home in this schema's sections/textLines shape — the two lines stack directly adjacent in the replay, relying only on each line's own line-height for visual separation, not a bound 4px gap.");
+
+  return {
+    name: "Item",
+    variantPropertyName: "Variant",
+    variants,
+    skippedVariants,
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    sectionGapVariable: paddingVMatch.figmaName,
+    sections: [
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Item title" },
+          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
+        ],
+      },
+    ],
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -1989,6 +2090,7 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "field.tsx", name: "Field", build: buildFieldPlan },
   { filename: "separator.tsx", name: "Separator", build: buildSeparatorPlan },
   { filename: "field.tsx", name: "FieldSeparator", build: buildFieldSeparatorPlan },
+  { filename: "item.tsx", name: "Item", build: buildItemPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for

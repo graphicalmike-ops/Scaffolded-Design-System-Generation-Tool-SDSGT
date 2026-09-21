@@ -385,37 +385,41 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
 **Real ground truth, proven live against a real test file ("SDSGT test
-file") for all seventeen components this plan covers today:** Button
+file") for all eighteen components this plan covers today:** Button
 (2026-09-15), Badge (2026-09-16), Toggle, Alert, Input, Textarea, and Card
 (all 2026-09-17), Kbd, NativeSelect, Avatar, Label, and Skeleton (all
-2026-09-18), and Breadcrumb, Empty, Field, Separator, and FieldSeparator
-(all 2026-09-21). shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`,
+2026-09-18), and Breadcrumb, Empty, Field, Separator, FieldSeparator, and
+Item (all 2026-09-21). shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`,
 `Input`, `Textarea`, `Card`, `Kbd`, `NativeSelect`, `Avatar`, `Label`,
-`Skeleton`, `Breadcrumb`, `Empty`, `Field`, `Separator`, `FieldSeparator`
-— one size each, rest states only (see
+`Skeleton`, `Breadcrumb`, `Empty`, `Field`, `Separator`, `FieldSeparator`,
+`Item` — one size each, rest states only (see
 `cli/src/scaffold/figma-components-plan.ts`'s own header for the full
 scope decision, including the real component shapes this plan handles —
 multi-variant `cva()` components via `buildVariantsFromCva`, single-state
 no-`cva()` components via `scanClassesForColors`
 (Input/Textarea/Kbd/NativeSelect/Avatar/Label), Card's own real
 compound-component support via `sections` (vertical, and — since
-Breadcrumb — horizontal too), and a genuinely non-box fixed-size `line`
-shape (Separator/FieldSeparator) — and why most other real components
-don't fit any of these yet). This step's own mechanism (`for each item in
-plan.components`, no component-specific branching) is confirmed to
-genuinely generalize across seventeen structurally different components,
-covering every shape above plus real structural variations (Skeleton has
-no text at all; Breadcrumb's `sections` lay out horizontally instead of
-vertically; Separator/FieldSeparator are fixed-size rectangles/rows, not
-auto-layout frames at all) — real bugs were caught doing this, not just
-claimed to have been avoided: the same-tone-trap fix (below) used to fire
-for ANY variant named "destructive" regardless of its fill, which was
-correct for Button/Badge but would have produced invisible
-white-on-light-card text for Alert's real neutral-background destructive
-variant; every `rounded-lg`-using component's radius was bound to the
-wrong real value for two full sessions (a real 2px mismatch, confirmed
-live via `getComputedStyle` — see `exactRadiusMd`'s own comment) before
-being caught while scoping Card's own different radius formula; and
+Breadcrumb — horizontal too), a genuinely non-box fixed-size `line` shape
+(Separator/FieldSeparator), and — since Item — a real `cva()`
+color-variant axis COMBINED with `sections` in the same component set —
+and why most other real components don't fit any of these yet). This
+step's own mechanism (`for each item in plan.components`, no
+component-specific branching) is confirmed to genuinely generalize across
+eighteen structurally different components, covering every shape above
+plus real structural variations (Skeleton has no text at all; Breadcrumb's
+`sections` lay out horizontally instead of vertically;
+Separator/FieldSeparator are fixed-size rectangles/rows, not auto-layout
+frames at all; Item's `sections` render correctly across three real
+independently-colored variants in one component set, not just a single
+"Default") — real bugs were caught doing this, not just claimed to have
+been avoided: the same-tone-trap fix (below) used to fire for ANY variant
+named "destructive" regardless of its fill, which was correct for
+Button/Badge but would have produced invisible white-on-light-card text
+for Alert's real neutral-background destructive variant; every
+`rounded-lg`-using component's radius was bound to the wrong real value
+for two full sessions (a real 2px mismatch, confirmed live via
+`getComputedStyle` — see `exactRadiusMd`'s own comment) before being
+caught while scoping Card's own different radius formula; and
 `createComponentFromNode(node)` was found live (2026-09-21, pushing
 Breadcrumb) to invalidate the ORIGINAL node reference passed into it —
 reading a property off that stale reference afterward (e.g. `frame.name`)
@@ -464,6 +468,20 @@ used to (incorrectly) imply was close enough for Badge.
   (FieldSeparator's row), both combine into a real variant set, and
   FieldSeparator's `Label` property swaps independently on a real
   instance.
+- **Item combines a real `cva()` color-variant axis with `sections` in the
+  same component set for the first time** — three real variants
+  (Default/Outline/Muted, via `buildVariantsFromCva`) each carrying their
+  own real fill/stroke, with `sections` supplying the Title/Description
+  body inside every one of them. Live-proven per the plan's own flagged
+  risk: `sections` genuinely renders correctly across all three variants
+  in one set, not just a single "Default" the way Card/Breadcrumb/Empty/
+  Field/FieldSeparator each only ever exercised — each variant's own real
+  fill/stroke (transparent/`border.default`/`background.secondary`) AND
+  its `Title`/`Description` text properties all swap correctly and
+  independently on real per-variant instances. Also confirms `rounded-lg`
+  binds to `radius.md` — a real exact alias, not `radius.lg` — via
+  `exactRadiusMd`, the same discipline that already caught a real 2px
+  mismatch bug once (see this section's own opening paragraph).
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -870,7 +888,7 @@ differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
 component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Kbd/
 NativeSelect/Avatar/Label/Skeleton/Breadcrumb/Empty/Field/Separator/
-FieldSeparator, any size beyond `default`, Breadcrumb's real
+FieldSeparator/Item, any size beyond `default`, Breadcrumb's real
 `BreadcrumbEllipsis` (a collapsed-items affordance with its own icon, not
 modeled — see `buildBreadcrumbPlan`'s own comment), its support for any
 item count beyond a fixed three-item trail, its real
@@ -899,7 +917,14 @@ as `border.subtle`, not a true partially-transparent ring), Avatar's real
 Skeleton's real `animate-pulse` shimmer (pushed as a static box — see
 `buildSkeletonPlan`'s own comment) and its own representative, NOT
 real-class-derived ~96x24px placeholder size (it has no padding/sizing
-class of its own to bind at all — same comment), and any framework's
+class of its own to bind at all — same comment), Item's real `ItemMedia`
+(an icon/image slot) and `ItemActions` (real interactive buttons, not
+modeled at all — the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE
+gaps as elsewhere), its real `size` axis (default/sm/xs — always its
+default size), and its real `gap-1` (4px) between Title and Description
+(no home in this schema's `sections`/`textLines` shape — the two lines
+stack directly adjacent, relying only on line-height for spacing), and
+any framework's
 component source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files
 and RNR's React Native source both need their own real verification
 before this same mechanism can be trusted against them — don't assume the
@@ -957,6 +982,26 @@ sets (the five above, plus Skeleton/Label/Kbd/NativeSelect/Avatar from
 prior rounds — Button/Badge/Toggle/Alert/Input/Textarea/Card were proven
 live in an earlier session/file, not this one) sit correctly inside the
 shared "Components" section, with zero orphaned instances left behind.
+
+**State after this round (2026-09-21, "Batch 7"):** Item — the first
+component to combine a real `cva()` color-variant axis with `sections` in
+the same component set — is now proven live too, folded into the "all
+eighteen... proven live" statement above. Built all three real variants
+(Default/Outline/Muted) as their own frames (fill/stroke bound per
+variant, `sections` supplying the shared Title/Description body in each),
+combined into one component set, then validated the plan's own explicitly
+flagged risk directly: created one real instance PER variant, confirmed
+each variant's own fill/stroke rendered correctly, and swapped
+`Title`/`Description` independently on all three — `sections` genuinely
+works across N>1 variants in one set, not just a single "Default" the way
+every earlier `sections`-based component only ever exercised. Also
+confirmed live that `rounded-lg` renders at a real computed
+`border-radius: 6px`, matching `radius.md`'s own value exactly (not the
+8px `radius.lg` a naive nearest-value search would have picked) — direct
+live confirmation of the `exactRadiusMd` discipline holding for a fifth
+real component. A final full-page check confirmed all eleven of this
+file's component sets sit correctly inside the shared "Components"
+section, with zero orphaned instances left behind.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
