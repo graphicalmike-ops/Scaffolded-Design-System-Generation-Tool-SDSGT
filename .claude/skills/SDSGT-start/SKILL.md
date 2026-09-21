@@ -681,24 +681,32 @@ override any of the four independently — they don't have to move together.
   `tailwind` + shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s
   own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card,
   Kbd, NativeSelect, Avatar (its AvatarFallback sub-part only), Label,
-  Skeleton, and Breadcrumb**, one size each, all thirteen proven with a
-  real live push into a real test file (Button 2026-09-15, Badge
-  2026-09-16, Toggle/Alert/Input/Textarea/Card 2026-09-17,
-  Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18, Breadcrumb
-  2026-09-21). Card is the first real compound component (a real
-  Header/Content structure with three independent text properties, not
-  just one label); Label is the first component with no box styling of its
-  own at all — a bare text node, no fill/stroke/padding/radius; Skeleton is
-  the first component with no text label at all (a plain animated box —
-  the real `animate-pulse` shimmer itself isn't reproduced, pushed as a
-  static gray box); Breadcrumb is the first `sections`-based component
-  whose items lay out horizontally instead of stacking vertically, and
-  disclosed to use a plain "›" text glyph in place of its real separator
-  icon (an SVG `<ChevronRightIcon>`, not drawn — see
-  `figma-components-plan.ts`'s own `buildBreadcrumbPlan` comment). See
-  `figma-remaining-components-plan.md` for the full, sequenced plan
-  covering shadcn/ui's remaining components beyond these thirteen. Every
-  other combination — the other seven "real theming" combinations from
+  Skeleton, Breadcrumb, Empty (its Header/Content sub-parts only), and
+  Field (its FieldLabel/FieldDescription/FieldError sub-parts only)**, one
+  size each — fifteen real components in scope as of 2026-09-21 (Batches
+  4-6 of `figma-remaining-components-plan.md`), but only the first twelve
+  are proven with a real live push into a real test file so far (Button
+  2026-09-15, Badge 2026-09-16, Toggle/Alert/Input/Textarea/Card
+  2026-09-17, Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18);
+  Breadcrumb, Empty, and Field are plan-verified and live-rendered-page-
+  verified only as of this writing — not yet pushed into a real Figma
+  file, see `docs/layer2-layer3-plan.md`'s own dated entries. Card is the
+  first real compound component (a real Header/Content structure with
+  three independent text properties, not just one label); Label is the
+  first component with no box styling of its own at all — a bare text
+  node, no fill/stroke/padding/radius; Skeleton is the first component
+  with no text label at all (a plain animated box — the real
+  `animate-pulse` shimmer itself isn't reproduced, pushed as a static gray
+  box); Breadcrumb is the first `sections`-based component whose items lay
+  out horizontally instead of stacking vertically, and disclosed to use a
+  plain "›" text glyph in place of its real separator icon (an SVG
+  `<ChevronRightIcon>`, not drawn — see `figma-components-plan.ts`'s own
+  `buildBreadcrumbPlan` comment); Empty and Field are the first real
+  second/third consumers of Card's own `sections` mechanism, Field proving
+  a simpler "N independent one-line sections" shape Card itself never
+  exercised. See `figma-remaining-components-plan.md` for the full,
+  sequenced plan covering shadcn/ui's remaining components beyond these
+  fifteen. Every other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when
   `figmaManaged` is true (see below), but no component ever shows up there,

@@ -1465,6 +1465,267 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
   };
 }
 
+// Fourteenth real component, added 2026-09-21 — "Batch 4" of
+// figma-remaining-components-plan.md, and the first `sections`-based
+// component since Card itself (2026-09-17) to reuse that exact mechanism
+// with zero schema changes. Real current source (verified against a real
+// vendored `shadcn add --all` project): a 6-part API (`Empty`/
+// `EmptyHeader`/`EmptyMedia`/`EmptyTitle`/`EmptyDescription`/
+// `EmptyContent`) — only `EmptyHeader` (Title + Description) and
+// `EmptyContent` are modeled here, the exact same disclosed scope cut
+// Card's own `CardFooter` already established (`EmptyMedia`, an icon
+// slot, is excluded for the same real, separate NEEDS-ICON reason named
+// in figma-remaining-components-plan.md's own permanently-out-of-scope
+// list — not attempted here).
+//
+// `Empty`'s own real root: `flex w-full min-w-0 flex-1 flex-col
+// items-center justify-center gap-4 rounded-xl border-dashed p-6
+// text-center text-balance`. `border-dashed` sets a border STYLE only —
+// there's no accompanying `border`/`border-2`/etc. WIDTH utility anywhere
+// in this class list, and Tailwind's own preflight reset leaves every
+// element's border-width at 0 unless a width utility sets it — so a real,
+// unstyled Empty renders with NO visible border at all despite
+// `border-dashed` being present (confirmed live via a real rendered
+// page's own computed `border-width: 0px`, not assumed from the class
+// name alone). Represented here with no stroke, for that real reason, not
+// a parser miss. No `bg-*` class either — CSS `background-color` isn't an
+// inherited property the way `color` is, so this is a real, plain
+// transparent fill, not a base-layer-inheritance case the way the text
+// findings below are.
+//
+// `EmptyTitle` has no `text-*` class of its own (`font-heading text-sm
+// font-medium tracking-tight`) — the same real base-layer-inheritance
+// finding as Label's own fallback (figma-remaining-components-plan.md,
+// Batch 2) and Alert's own `border.default` fallback: shadcn's generated
+// `body { @apply text-foreground }` rule means it really does render in
+// `text.primary`, hardcoded directly here (this `sections`-based builder
+// sets each line's color directly, the same way `buildCardPlan` hardcodes
+// `text.on-surface` rather than calling `scanClassesForColors` — no
+// dependency on Batch 2's `fallbackTextPath` parameter). `EmptyContent`
+// (`flex w-full max-w-sm min-w-0 flex-col items-center gap-2.5 text-sm
+// text-balance`) has the exact same real gap — no `text-*` class of its
+// own either — so it gets the same `text.primary` fallback, not
+// `text.secondary`: unlike Card's own `CardContent`, which sits inside a
+// real `bg-card`-filled surface (making `text.on-surface` a meaningfully
+// different color from plain body text), Empty's own root has no fill of
+// its own at all (see above), so there's nothing for `text.on-surface` to
+// mean here beyond the plain base-layer `text.primary`. `EmptyDescription`
+// (`text-sm/relaxed text-muted-foreground ...`) maps directly via the
+// existing table (`text-muted-foreground` -> `text.secondary`) — an
+// already-tabled path, no fallback needed, exactly like `buildCardPlan`'s
+// own `CardDescription` line.
+//
+// `rounded-xl`: the exact same real ×1.4 multiplier as Card's own radius
+// (both use `--radius-xl: calc(var(--radius) * 1.4)`), computed the same
+// way (`radius.md`'s own real resolved value × 1.4, via `nearestToken`,
+// never a hardcoded guess) — not re-derived as a new formula.
+//
+// Real, disclosed schema limitation, genuinely new to this batch: Empty's
+// real vertical rhythm has TWO different values — a 24px outer `p-6`
+// (also its own real horizontal inset, since neither `EmptyHeader` nor
+// `EmptyContent` carry any padding of their own) and a smaller, real 16px
+// `gap-4` between the two sections — but `sectionGapVariable` is ONE
+// shared value serving both the inter-section gap AND the outer frame's
+// own top/bottom padding (see that field's own interface comment). Unlike
+// Card, where `--card-spacing` really is the exact same value for both
+// roles (confirmed by reading its own real source — `gap-(--card-spacing)`
+// and `py-(--card-spacing)` are the SAME custom property), Empty's two
+// real values genuinely differ. Bound here to the OUTER padding's real
+// value (`spacing/6`, 24px) — preserving Empty's own defining
+// generous-whitespace look — at the cost of the real, smaller 16px gap
+// between Header and Content being approximated up to 24px; disclosed via
+// `notes`, not silently picked.
+function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["rounded-xl", "border-dashed", "function EmptyHeader", "function EmptyTitle", "function EmptyDescription", "function EmptyContent"]) {
+    if (!emptySource.includes(marker)) {
+      throw new Error(`Empty's real source no longer contains "${marker}" — shadcn/ui's real Empty has likely changed shape since buildEmptyPlan was written. Re-verify against the current vendored empty.tsx before trusting this plan.`);
+    }
+  }
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusTarget = radiusMdPx * 1.4;
+  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
+  if (radiusMatch.deltaPx > 0.01) {
+    notes.push(`Empty radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 1.4 = ${radiusTarget.toFixed(1)}px) — same real rounded-xl formula as Card's own radius.`);
+  }
+
+  const paddingHMatch = nearestToken(24, spacing, "spacing"); // real p-6, the only horizontal inset Empty actually has (neither section carries its own)
+  const sectionGapMatch = nearestToken(24, spacing, "spacing"); // see file header — bound to the real OUTER padding value, not the real (smaller) inter-section gap-4
+  const titleFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // EmptyTitle's real text-sm
+  const bodyFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // EmptyDescription/EmptyContent's real text-sm
+
+  notes.push("Empty: only its real Header (Title + Description) and Content sections are modeled — EmptyMedia (an icon slot) isn't, the same declared-out-of-scope NEEDS-ICON reason as Checkbox/Switch/etc. (figma-remaining-components-plan.md).");
+  notes.push("Empty: its real border-dashed class has no accompanying border-width utility of its own — Tailwind's own preflight reset leaves border-width at 0 absent one, so a real unstyled Empty has NO visible border despite border-dashed being present. Represented with no stroke.");
+  notes.push("Empty: two different real vertical-spacing values (a 24px outer p-6 and a 16px inter-section gap-4) collapse onto this schema's one shared sectionGapVariable — bound to the larger, outer-padding value (spacing/6, 24px) to preserve Empty's own defining generous-whitespace look; its real, smaller 16px inter-section gap is approximated up to 24px as a result.");
+
+  return {
+    name: "Empty",
+    variantPropertyName: "Variant",
+    variants: [
+      { name: "Default", textVariable: sdsgtPathToFigmaName("text.primary"), underline: false },
+    ],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    sectionGapVariable: sectionGapMatch.figmaName,
+    sections: [
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: titleFontSize.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "No results found" },
+          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: bodyFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Try adjusting your search or filters." },
+        ],
+      },
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: bodyFontSize.figmaName, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the empty state's main content." },
+        ],
+      },
+    ],
+  };
+}
+
+// Fifteenth real component, added 2026-09-21, same batch as Empty. Real
+// current source (`field.tsx`) is a large, mostly-structural API
+// (`FieldSet`/`FieldLegend`/`FieldGroup`/`Field`/`FieldContent`/
+// `FieldLabel`/`FieldTitle`/`FieldDescription`/`FieldSeparator`/
+// `FieldError`) — only `FieldLabel`, `FieldDescription`, and `FieldError`
+// are modeled, per the user's own scope decision (`FieldSeparator` is
+// Batch 5's own job, being built in a parallel worktree, adding a
+// genuinely new `line` shape this batch must not touch or anticipate).
+//
+// Modeled via the SIMPLE one-line-per-section pattern `sections` already
+// allowed but nothing had exercised yet — three independent sections, one
+// text line each — not Card's own two-lines-in-one-Header shape.
+//
+// `FieldLabel` wraps a real `<Label>` (`import { Label } from
+// "@/components/ui/label"`) — its own className only ADDS structural/
+// conditional classes on top (`group/field-label ...`,
+// `has-data-checked:border-primary/30`, `dark:has-data-checked:...`,
+// etc. — every one of these is either a bare layout utility or sits
+// behind a `has-`/`group-`/`dark:` selector prefix `scanClassesForColors`'s
+// plain regex was never built to match), no plain, unconditional
+// `text-*`/`bg-*`/`border-*` class of its own anywhere. Its real rendered
+// color is exactly Label's own (`text.primary`, via base-layer
+// inheritance — see `buildLabelPlan`'s own comment) —
+// `scanClassesForColors` called here with no second argument, reusing
+// that same default, not a new path.
+//
+// `FieldDescription` (`text-left text-sm leading-normal font-normal
+// text-muted-foreground ...`) maps directly via the existing table
+// (`text-muted-foreground` -> `text.secondary`) — an already-tabled path,
+// no fallback needed.
+//
+// `FieldError` (`text-sm font-normal text-destructive`) — confirmed here
+// against real vendored source, per this batch's own required check
+// (figma-remaining-components-plan.md never quoted this file's exact
+// string): a PLAIN, unconditional `text-destructive` class, not hidden
+// behind a data-attribute or selector prefix. Maps directly via the
+// existing table (`destructive` -> `status.error`) — the ordinary path,
+// not the `destructive-foreground` same-tone-trap special case
+// `classToFigmaVariable` carves out (that only fires for the literal
+// `-foreground` suffix; plain `destructive` was always meant to resolve
+// here), and no same-tone risk the way Button/Badge's own destructive
+// FILL variants have — FieldError is plain text with no fill of its own
+// to collide with.
+//
+// None of the three sub-parts, nor `Field` itself, carry any real padding
+// or radius class. `Field`'s own root (`group/field flex w-full gap-2
+// data-[invalid=true]:text-destructive`, via a real `cva()` `orientation`
+// axis this batch does NOT model — only the default "vertical" shape's
+// base classes, which carry no color of their own, are represented, the
+// same "one shape only" disclosed scope every single-state component in
+// this file already uses) has no padding class either. Padding/radius are
+// computed as real 0px through the same `nearestToken` mechanism as every
+// other numeric target in this file (landing exactly on
+// `spacing/0`/`radius/none`), the same "bare text node, not an
+// approximated box" treatment `buildLabelPlan` already established, not a
+// new special case.
+//
+// `Field`'s own real `gap-2` (8px, its real inter-row gap in the default
+// vertical orientation) is the only real spacing value on this component
+// at all — bound to `sectionGapVariable`, for the same real reason
+// Empty's own larger value was (see that function's own comment): this
+// schema's one shared field forces the same 8px onto the outer frame's
+// own top/bottom padding too, which Field's real root doesn't have (0px)
+// — a real, disclosed, smaller version of Empty's own trade-off, in this
+// same batch.
+function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Field(", "function FieldLabel", "function FieldDescription", "function FieldError"]) {
+    if (!fieldSource.includes(marker)) {
+      throw new Error(`Field's real source no longer contains "${marker}" — shadcn/ui's real Field has likely changed shape since buildFieldPlan was written. Re-verify against the current vendored field.tsx before trusting this plan.`);
+    }
+  }
+
+  // Each sub-part's own className is extracted separately, scoped to its
+  // own function body (same "function <X>[\s\S]*?className=\{cn\(" shape
+  // `buildAvatarPlan` already uses for `AvatarFallback`) — field.tsx has
+  // several OTHER `className={cn(...)}` calls (FieldSet, FieldGroup,
+  // Field, FieldContent, FieldTitle, FieldSeparator's inner span) that
+  // would wrongly match a plain, unscoped `cn(\s*"..."` regex.
+  const labelMatch = fieldSource.match(/function FieldLabel[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!labelMatch) throw new Error("Could not find FieldLabel's own className string — real vendored source may have changed shape since this parser was written.");
+  const descriptionMatch = fieldSource.match(/function FieldDescription[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!descriptionMatch) throw new Error("Could not find FieldDescription's own className string — real vendored source may have changed shape since this parser was written.");
+  const errorMatch = fieldSource.match(/function FieldError[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!errorMatch) throw new Error("Could not find FieldError's own className string — real vendored source may have changed shape since this parser was written.");
+
+  const labelColors = scanClassesForColors(labelMatch[1]);
+  const descriptionColors = scanClassesForColors(descriptionMatch[1]);
+  const errorColors = scanClassesForColors(errorMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const paddingHMatch = nearestToken(0, spacing, "spacing"); // real, genuine zero — see file header
+  const radiusMatch = nearestToken(0, radius, "radius"); // real, genuine zero — see file header
+  const sectionGapMatch = nearestToken(8, spacing, "spacing"); // real gap-2 — see file header for its dual role
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // all three sub-parts are real text-sm
+
+  notes.push("Field: only its real FieldLabel/FieldDescription/FieldError are modeled — FieldSeparator isn't (a genuinely new shape, tracked as its own later batch), and Field's own real orientation axis (vertical/horizontal/responsive) isn't modeled — always its default vertical shape, whose base classes carry no color of their own.");
+  notes.push("Field: FieldLabel/Field/FieldError/FieldDescription have no real padding or radius class of their own at all — represented as bare text rows (0px padding, radius/none, no fill, no stroke), the same 'bare text node' treatment buildLabelPlan already established, not approximated into boxes that don't exist.");
+  notes.push("Field: its real gap-2 (8px) inter-row gap is the only real spacing value present — bound to sectionGapVariable, which this schema also applies to the outer frame's own top/bottom padding (Field's real root has none) — the same real, disclosed schema trade-off as Empty's own, in this same batch, just an 8px version.");
+
+  return {
+    name: "Field",
+    variantPropertyName: "Variant",
+    variants: [
+      { name: "Default", textVariable: sdsgtPathToFigmaName("text.primary"), underline: false },
+    ],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    sectionGapVariable: sectionGapMatch.figmaName,
+    sections: [
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: labelColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Label", defaultLabel: "Email address" },
+        ],
+      },
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: descriptionColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "We'll never share your email." },
+        ],
+      },
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: errorColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Error", defaultLabel: "This field is required." },
+        ],
+      },
+    ],
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -1490,6 +1751,8 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "label.tsx", name: "Label", build: buildLabelPlan },
   { filename: "skeleton.tsx", name: "Skeleton", build: buildSkeletonPlan },
   { filename: "breadcrumb.tsx", name: "Breadcrumb", build: buildBreadcrumbPlan },
+  { filename: "empty.tsx", name: "Empty", build: buildEmptyPlan },
+  { filename: "field.tsx", name: "Field", build: buildFieldPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for
