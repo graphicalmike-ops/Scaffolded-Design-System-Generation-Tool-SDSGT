@@ -419,6 +419,26 @@ SAME full screenshot-validate treatment the first time it's pushed live —
 passing plan computation alone isn't sufficient proof, as this section
 used to (incorrectly) imply was close enough for Badge.
 
+**A thirteenth component, Breadcrumb, was added to the plan 2026-09-21
+("Batch 6" of figma-remaining-components-plan.md) but is NOT YET part of
+the "proven live" set above** — its plan JSON generation, a real
+`next build`, and a live rendered-page check were all done, but the
+live-Figma-push half of this step's own bar (build → screenshot →
+instance-swap → screenshot) was deliberately deferred, since this batch
+ran in an isolated worktree alongside two sibling batches touching the
+same live Figma file concurrently. **Treat Breadcrumb as plan-computed
+only until someone actually runs steps 1-5 below against it and updates
+this note** — same "passing plan computation alone isn't sufficient
+proof" discipline the paragraph above already states. It is the first
+`sections`-based component whose items lay out HORIZONTALLY (a row)
+rather than stacking vertically the way Card's own Header/Content do —
+see the `sections` branch below and `FigmaComponentSectionPlanItem.
+textLineDirection`'s own comment in `figma-components-plan.ts`. It also
+introduces a real, disclosed decorative-only text glyph
+(`separatorGlyph`) standing in for Breadcrumb's actual separator, a real
+SVG `<ChevronRightIcon>` (lucide-react) this pipeline doesn't draw — see
+`buildBreadcrumbPlan`'s own comment for the full reasoning.
+
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
 `figma-components-plan.ts` for why it's optional as of this addition).
@@ -559,20 +579,43 @@ For each item in `plan.components`, in order:
    compound-component support, one level beyond the secondary-text-line
    case above), it REPLACES the text-child step entirely — don't also do
    the single/double text-line steps above for this component. The outer
-   frame becomes a VERTICAL stack of sections instead of one horizontal
-   frame around a text node:
+   frame becomes a stack of sections instead of one horizontal frame
+   around a text node — **VERTICAL by default** (Card's own real shape),
+   **HORIZONTAL when a section's own `textLineDirection` is `"horizontal"`**
+   (Breadcrumb — added 2026-09-21, "Batch 6" of
+   figma-remaining-components-plan.md, the first `sections` consumer whose
+   items lay out side by side instead of stacking). Every section within
+   one component always carries the SAME `textLineDirection` value, so
+   checking the first section's own field is enough to decide the whole
+   component's stacking axis:
    ```js
-   frame.layoutMode = "VERTICAL"; // overrides the HORIZONTAL default from step 1
-   frame.paddingLeft = 0;
-   frame.paddingRight = 0; // Card's real root has no horizontal padding of its own — each section supplies its own
-   frame.setBoundVariable("paddingTop", getVar(component.sectionGapVariable));
-   frame.setBoundVariable("paddingBottom", getVar(component.sectionGapVariable));
-   frame.itemSpacing = 0;
-   frame.setBoundVariable("itemSpacing", getVar(component.sectionGapVariable)); // real Plugin API: bind itemSpacing the same way as padding
+   const sectionsAreHorizontal = component.sections[0]?.textLineDirection === "horizontal";
+   frame.layoutMode = sectionsAreHorizontal ? "HORIZONTAL" : "VERTICAL"; // overrides the HORIZONTAL default from step 1; absent textLineDirection (every component before Breadcrumb) always resolves to "VERTICAL" — Card's own original line, unchanged
+   if (sectionsAreHorizontal) {
+     // Breadcrumb's own real shape — its root <nav> has no padding of its
+     // own at all (see buildBreadcrumbPlan's own comment); the only real
+     // spacing value is the GAP between items.
+     frame.paddingLeft = 0;
+     frame.paddingRight = 0;
+     frame.paddingTop = 0;
+     frame.paddingBottom = 0;
+     frame.itemSpacing = 0;
+     frame.setBoundVariable("itemSpacing", getVar(component.sectionGapVariable));
+   } else {
+     // Card's own original vertical stack — UNCHANGED from before this
+     // batch, byte-for-byte, so Card's existing live-proven replay isn't
+     // at risk from this addition.
+     frame.paddingLeft = 0;
+     frame.paddingRight = 0; // Card's real root has no horizontal padding of its own — each section supplies its own
+     frame.setBoundVariable("paddingTop", getVar(component.sectionGapVariable));
+     frame.setBoundVariable("paddingBottom", getVar(component.sectionGapVariable));
+     frame.itemSpacing = 0;
+     frame.setBoundVariable("itemSpacing", getVar(component.sectionGapVariable)); // real Plugin API: bind itemSpacing the same way as padding
+   }
 
    for (const section of component.sections) {
      const sectionFrame = figma.createFrame();
-     sectionFrame.layoutMode = "VERTICAL";
+     sectionFrame.layoutMode = section.textLineDirection === "horizontal" ? "HORIZONTAL" : "VERTICAL"; // absent (every section before Breadcrumb) always resolves to "VERTICAL" — Card's own original line, unchanged
      sectionFrame.primaryAxisSizingMode = "AUTO";
      sectionFrame.counterAxisSizingMode = "AUTO";
      sectionFrame.fills = []; // sections have no fill/stroke of their own in this pass (Card's real Footer would need one — not modeled, see buildCardPlan's own comment)
@@ -580,7 +623,7 @@ For each item in `plan.components`, in order:
      sectionFrame.setBoundVariable("paddingRight", getVar(section.paddingHorizontalVariable));
      for (const line of section.textLines) {
        const lineText = figma.createText();
-       lineText.name = line.labelPropertyName; // e.g. "Title", "Description", "Content" — distinct per line, for step 4's property binding
+       lineText.name = line.labelPropertyName; // e.g. "Title", "Description", "Content", or Breadcrumb's own "Item1"/"Item2"/"CurrentPage" — distinct per line, for step 4's property binding
        lineText.fontName = { family: fontFamilyValue, style: line.weight }; // "Medium" or "Regular", per the plan
        lineText.characters = line.defaultLabel;
        lineText.setBoundVariable("fontSize", getVar(line.fontSizeVariable));
@@ -588,12 +631,33 @@ For each item in `plan.components`, in order:
        sectionFrame.appendChild(lineText);
      }
      frame.appendChild(sectionFrame);
+
+     // Decorative separator glyph — only when `section.separatorGlyph` is
+     // present (Breadcrumb's own real separator, an SVG <ChevronRightIcon>
+     // this pipeline doesn't draw — see
+     // FigmaComponentSectionPlanItem.separatorGlyph's own comment). A
+     // plain sibling text node, its own child of the OUTER frame (not
+     // `sectionFrame`), so it sits between items rather than inside one.
+     // Deliberately NOT given a component property in step 4 below, and
+     // not bound to any color/size variable — purely decorative, matching
+     // the plan's own explicit disclosure that it isn't wired to anything
+     // editable. No component built before Breadcrumb ever sets this
+     // field, so this whole block never runs for them.
+     if (section.separatorGlyph) {
+       const sep = figma.createText();
+       sep.name = "Separator";
+       sep.fontName = { family: fontFamilyValue, style: "Regular" };
+       sep.characters = section.separatorGlyph;
+       frame.appendChild(sep);
+     }
    }
    ```
    Every text line across every section still needs a real component
    property in step 4, same as any other label — just more of them, named
    per `line.labelPropertyName` instead of the fixed `Label`/`Description`
-   pair.
+   pair. A `Separator` text node is never one of them (see above) — step
+   4's own `sections` loop only ever iterates `section.textLines`, never
+   touches separator nodes.
 3. **Convert each variant frame to a component, then `combineAsVariants`** —
    name each component `"<variantPropertyName>=<variant.name>"` (e.g.
    `"Variant=Destructive"`) before combining; Figma derives the variant
@@ -698,7 +762,14 @@ that already has one of these component sets will create a second,
 differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
 component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Kbd/
-NativeSelect/Avatar/Label/Skeleton, any size beyond `default`, Alert's
+NativeSelect/Avatar/Label/Skeleton/Breadcrumb, any size beyond `default`,
+Breadcrumb's real `BreadcrumbEllipsis` (a collapsed-items affordance with
+its own icon, not modeled — see `buildBreadcrumbPlan`'s own comment), its
+support for any item count beyond a fixed three-item trail, its real
+`hover:text-foreground` link color (rest state only, per this whole
+file's own scope), and its real `<ChevronRightIcon>` separator (a plain
+decorative "›" text glyph stands in for it — not wired to any component
+property, not a faithful reproduction of the chevron shape), Alert's
 real destructive-tinted `AlertDescription` color (its description is
 modeled, but always in `text.secondary` — the real translucent-red tint on
 the destructive variant isn't bound, see `buildAlertPlan`'s own comment),
@@ -746,6 +817,28 @@ padding (see step 2's own comment) — only found by actually screenshotting
 the first text-less component ever pushed, confirming once again why this
 section's own bar requires a real screenshot pass per component, not just
 successful API calls.
+
+**Addendum, 2026-09-21 — Breadcrumb added to the plan, live-Figma-push
+step deliberately deferred:** "Batch 6" of
+figma-remaining-components-plan.md added a thirteenth component,
+Breadcrumb — the first `sections` consumer whose items lay out
+HORIZONTALLY. Its plan JSON was regenerated and inspected against a real
+scaffolded test project, and a real `next build` plus a live rendered-page
+check confirmed the real vendored `breadcrumb.tsx`'s own layout direction
+and separator markup match what the plan describes. **Unlike every
+component above, Breadcrumb has NOT yet gone through this step's own
+live-push bar** (build → `figma_capture_screenshot` → instance
+`setProperties()` swap → screenshot → cleanup) — this batch ran in an
+isolated worktree specifically to avoid touching the same live Figma file
+two sibling batches (Empty/Field/Separator/Item's own `line` shape) were
+concurrently editing. Whoever merges all three batches in should run this
+step's full live-push bar against Breadcrumb, one batch at a time, same
+as every earlier component — including confirming live that the outer
+frame actually lays out its three items in a row (not stacked), that the
+"›" separator glyphs land between items and not after the last one, and
+that all three text properties (`Item1`/`Item2`/`CurrentPage`) bind and
+swap independently on a real instance. Only then should this note be
+folded into the "all N components... proven live" statement above.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
