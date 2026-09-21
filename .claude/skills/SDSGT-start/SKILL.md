@@ -684,14 +684,17 @@ override any of the four independently — they don't have to move together.
   Skeleton, Breadcrumb, Empty (its Header/Content sub-parts only), Field
   (its FieldLabel/FieldDescription/FieldError sub-parts only), Separator,
   `field.tsx`'s FieldSeparator, Item (its outer frame plus
-  ItemTitle/ItemDescription only), and Marker** — nineteen real components
-  in scope as of 2026-09-21 (Batches 4-8 of
-  `figma-remaining-components-plan.md`), and all nineteen are now proven
-  with a real live push into a real test file (Button 2026-09-15, Badge
-  2026-09-16, Toggle/Alert/Input/Textarea/Card 2026-09-17,
+  ItemTitle/ItemDescription only), Marker, and Bubble** — twenty real
+  components in scope as of 2026-09-21 (Batches 4-10 of
+  `figma-remaining-components-plan.md`, Batch 9 being pure parser
+  infrastructure with no new component of its own). Nineteen of twenty are
+  proven with a real live push into a real test file (Button 2026-09-15,
+  Badge 2026-09-16, Toggle/Alert/Input/Textarea/Card 2026-09-17,
   Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18,
-  Breadcrumb/Empty/Field/Separator/FieldSeparator/Item/Marker 2026-09-21)
-  — see
+  Breadcrumb/Empty/Field/Separator/FieldSeparator/Item/Marker 2026-09-21);
+  Bubble is plan-verified and live-rendered-page-verified only as of this
+  writing (a real `next build` + Playwright `getComputedStyle` check) —
+  not yet pushed into a real Figma file, see
   `docs/layer2-layer3-plan.md`'s own dated entries and
   `SDSGT-figma-push/SKILL.md` step 7's own "proven live" statement for the
   full verification detail. Card is the first real compound component (a
@@ -722,9 +725,16 @@ override any of the four independently — they don't have to move together.
   own decision — its real `cva()` variant axis (default/separator/border)
   is ignored entirely, since none of its options differ in color in any
   way that matters (a same-tone-different-availability, not a
-  different-hue, distinction — see `buildMarkerPlan`'s own comment). See
-  `figma-remaining-components-plan.md` for the full, sequenced plan
-  covering shadcn/ui's remaining components beyond these nineteen. Every
+  different-hue, distinction — see `buildMarkerPlan`'s own comment); Batch
+  9 extends `classToFigmaVariable`/`buildVariantsFromCva` with selector-
+  prefix stripping and a generalized arbitrary-value skip rule (pure
+  infrastructure, no new component); Bubble is the first real consumer of
+  that infrastructure — 5 real built variants (Default/Muted/Outline/
+  Ghost/Destructive) via `buildVariantsFromCva`, with `secondary` and
+  `tinted` both skipped for real, distinct, disclosed reasons (see
+  `buildBubblePlan`'s own comment). See `figma-remaining-components-plan.md`
+  for the full, sequenced plan covering shadcn/ui's remaining components
+  beyond these twenty. Every
   other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when

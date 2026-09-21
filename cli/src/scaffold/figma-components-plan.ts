@@ -70,6 +70,24 @@
 // `buildBreadcrumbPlan`'s own comment for the real, disclosed decorative
 // text-glyph stand-in used for its real separator icon.
 //
+// "Batch 9" of the remaining-components plan (2026-09-21) is pure parser
+// infrastructure, not a new component — no new row in `COMPONENT_BUILDERS`.
+// Two additions to `classToFigmaVariable`/`buildVariantsFromCva`, the most
+// reused code in this file: (1) `classToFigmaVariable` now strips a known
+// `*:data-[slot=...]:`/`data-[key=value]:` selector prefix before its real
+// match, a pure preprocessing step (see that function's own comment); (2)
+// `buildVariantsFromCva`'s existing `bg-secondary`/`text-secondary-
+// foreground` skip special case is now followed by a GENERAL rule: any
+// `bg-`/`text-`/`border-` class using Tailwind's arbitrary-value bracket
+// syntax gets skipped with a generated reason, rather than silently
+// falling through `classToFigmaVariable` as an unmatched null (see that
+// function's own comment). Both are strict supersets of prior behavior —
+// verified against every real class string already being parsed correctly
+// by Button/Badge/Toggle/Alert/Item (this file's own real `cva()`
+// consumers) before landing, per the plan's own "high relative risk"
+// callout for this batch. Nothing consumes the new capability yet;
+// Batch 10 (`bubble.tsx`) is the first real consumer, next.
+//
 // The shadcn CSS-var -> SDSGT semantic path table below is the exact
 // mapping contracts-and-seeds.md's "shadcn/ui theming" section documents
 // for generate/shadcn.ts, applied in the OPPOSITE direction (there: SDSGT
@@ -330,8 +348,31 @@ function sdsgtPathToFigmaName(path: string): string {
 // disclosed simplification, not a parse failure). Returns null for
 // anything unrecognized so the caller can record what got skipped, rather
 // than silently guessing.
+//
+// Selector-prefix stripping added 2026-09-21 ("Batch 9" of
+// figma-remaining-components-plan.md, infrastructure only — no new
+// component consumes this yet). Real vendored shadcn source repeatedly
+// gates an otherwise-ordinary bg-/text-/border- class behind a conditional
+// data-attribute selector this parser never used to see past — two real
+// shapes already named elsewhere in this file's own comments:
+// `*:data-[slot=alert-description]:text-destructive/90` (Alert's own
+// AlertDescription, see `FigmaComponentPlanItem.secondaryTextVariable`'s
+// comment) and `data-[invalid=true]:text-destructive` (Field's own root,
+// see `buildFieldPlan`'s comment). Both match one pattern: an optional
+// leading `*:`, then a bare `data-[key=value]:` block. Stripping it before
+// the real match below is a PURE preprocessing step — the class that
+// remains is matched exactly the same way an unprefixed class always was,
+// and the function's own return contract (kind/variable shape, or null)
+// is completely unchanged. Real classes with no such prefix (every
+// existing caller's own already-working input — Button/Badge/Toggle/
+// Alert/Item's real `cva()` variant strings, none of which start with
+// `data-[` or `*:`) pass through this `.replace()` as a no-op, so this is
+// a strict superset of prior behavior, not a rewrite of it.
+const SELECTOR_PREFIX_PATTERN = /^\*?:?data-\[[a-z-]+=[a-z-]+\]:/;
+
 function classToFigmaVariable(className: string): { kind: "fill" | "text" | "border"; variable: string } | null {
-  const match = className.match(/^(bg|text|border)-([a-z-]+?)(\/\d+)?$/);
+  const stripped = className.replace(SELECTOR_PREFIX_PATTERN, "");
+  const match = stripped.match(/^(bg|text|border)-([a-z-]+?)(\/\d+)?$/);
   if (!match) return null;
   const [, prefix, varName] = match;
   const sdsgtPath = varName === "destructive-foreground" ? null : SHADCN_VAR_TO_SDSGT_PATH[varName];
@@ -498,6 +539,57 @@ function buildVariantsFromCva(
       continue;
     }
 
+    // Generalized arbitrary-value skip rule, added 2026-09-21 ("Batch 9" of
+    // figma-remaining-components-plan.md). The check above is a specific,
+    // more-informative special case (a MISSING optional brand color) that
+    // still fires first and is left untouched; this is the general rule
+    // for the different, unfixable case a class matching this shape can
+    // never resolve to any token, regardless of what the seed supplied:
+    // Tailwind's own arbitrary-value bracket syntax (`bg-[oklch(...)]`,
+    // `text-[#fff]`, `border-[3px_solid_red]`, ...) names a literal,
+    // caller-supplied value with no semantic token behind it at all. Real
+    // trigger this rule exists for (figma-remaining-components-plan.md,
+    // Batch 10): bubble.tsx's own real `tinted` variant
+    // (`bg-[oklch(0.94_0.03_255)]` or similar) is permanently skipped by
+    // this rule alone, with no Bubble-specific carve-out needed — before
+    // this change, `classToFigmaVariable`'s own regex would have just
+    // returned null for it (arbitrary bracket contents don't match
+    // `[a-z-]+`), silently producing a variant with no fill and a
+    // fallback text color instead of disclosing the real gap. Checked
+    // against each real class in the variant's own list (not the whole
+    // classString at once) so the skip reason can name the exact
+    // offending class, the same specificity the check above already has.
+    //
+    // Real bug found building Bubble (Batch 10, 2026-09-21) and fixed
+    // here rather than papered over with a Bubble-specific carve-out, per
+    // figma-remaining-components-plan.md's own instruction for this case:
+    // Batch 9's rule above tested each RAW class token, but Bubble's real
+    // `tinted` variant's arbitrary classes are never raw — every one of
+    // them sits behind the exact same `*:data-[slot=bubble-content]:`
+    // selector prefix Batch 9's OWN stripping logic was built for
+    // (`*:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.93_
+    // calc(c*0.4)_h)]`, confirmed against real vendored bubble.tsx) — so
+    // `/^(bg|text|border)-\[/` never matched (the string starts with
+    // `*:data-[slot=...`, not `bg-[`), and this rule silently failed to
+    // fire. Without this fix, `tinted` would fall through to a normal
+    // built variant with fillVariable left undefined (the arbitrary class
+    // returns null from `classToFigmaVariable`, same as it always did)
+    // and textVariable falling back to text.primary — exactly Ghost's own
+    // shape, misrepresenting a real (if unrepresentable) tinted
+    // background as an intentionally transparent one. Fixed by testing
+    // the PREFIX-STRIPPED class, the same string `classToFigmaVariable`
+    // itself would test — a strict superset for every existing caller
+    // (Button/Badge/Toggle/Alert/Item have no such prefixes at all, so
+    // `.replace()` is a no-op and this change is invisible to them).
+    const arbitraryValueClass = classes.find((cls) => /^(bg|text|border)-\[/.test(cls.replace(SELECTOR_PREFIX_PATTERN, "")));
+    if (arbitraryValueClass) {
+      skippedVariants.push({
+        name,
+        reason: `real class '${arbitraryValueClass}' uses an arbitrary Tailwind value with no possible design token to bind to`,
+      });
+      continue;
+    }
+
     variants.push({
       name: capitalize(name),
       fillVariable,
@@ -509,7 +601,6 @@ function buildVariantsFromCva(
 
   return { variants, skippedVariants };
 }
-
 function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[]): FigmaComponentPlanItem {
   const { variants, skippedVariants } = buildVariantsFromCva(buttonSource, "variant");
 
@@ -2168,6 +2259,106 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
     defaultLabel: "Marker",
   };
 }
+// Batch 10 of figma-remaining-components-plan.md ("chat/AI kit" registry
+// extension), first real consumer of Batch 9's selector-prefix stripping.
+// Real vendored bubble.tsx has a genuine multi-option color-variant axis
+// (`bubbleVariants = cva(..., { variants: { variant: {...} } })`), unlike
+// Marker's own single-option reframing — so this uses `buildVariantsFromCva`
+// the normal way, not `scanClassesForColors`. All seven of its real
+// variants' color classes live behind the exact same
+// `*:data-[slot=bubble-content]:` selector prefix (they style the CHILD
+// `BubbleContent` div, not the outer `Bubble` wrapper itself) — confirmed
+// against real source before writing this, not assumed from Base UI
+// convention:
+//   default:     *:data-[slot=bubble-content]:bg-primary / text-primary-foreground
+//   secondary:   *:data-[slot=bubble-content]:bg-secondary / text-secondary-foreground
+//   muted:       *:data-[slot=bubble-content]:bg-muted (no text-* class at all)
+//   tinted:      *:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.93_calc(c*0.4)_h)] / text-foreground
+//   outline:     *:data-[slot=bubble-content]:border-border / bg-background
+//   ghost:       *:data-[slot=bubble-content]:bg-transparent (plus border-none, unprefixed)
+//   destructive: *:data-[slot=bubble-content]:bg-destructive/10 / text-destructive
+// `secondary` is NOT actually buildable despite what the plan's own Batch
+// 10 section predicted ("Default/secondary/muted/outline/ghost/destructive
+// become buildable") — its real classString contains the literal substring
+// `bg-secondary`, which trips the EXISTING, unconditional
+// `classString.includes("bg-secondary")` skip in `buildVariantsFromCva`
+// (the same one Button/Badge's own `secondary` variant already hits,
+// verified live against this same test seed — see that skip's own
+// comment). This isn't new Bubble-specific behavior; the plan's own text
+// was simply optimistic about what "reuse already-tabled paths" would
+// produce here. `tinted` is skipped by Batch 9's generalized
+// arbitrary-value rule, but only after a real bug in that rule (it tested
+// the raw, prefixed class instead of the stripped one) was found and fixed
+// above — see that fix's own comment for the full real trace.
+// `destructive` recreates Badge's own real same-tone trap for the same
+// real reason (`bg-destructive/10` + `text-destructive` both resolve to
+// status.error once the opacity modifier is dropped) — `buildVariantsFromCva`'s
+// existing gated fix (checked on the resolved FILL, not just the variant's
+// name) fires correctly here too, confirmed in the generated plan JSON,
+// not assumed from the code alone.
+// `muted` has no explicit text-* class at all — falls back to the shared
+// `text.primary` default the same way Ghost's own colorless variants
+// already do, a real, not a missing, finding.
+// No universal `border.default` fallback the way `buildAlertPlan` adds
+// one — Bubble's real BubbleContent explicitly sets `border-transparent`
+// as its own DEFAULT border color (a real, intentional "no border" design
+// choice confirmed in source), the opposite finding from Alert's own real
+// global base-layer inheritance; forcing a border here would be wrong, not
+// a gap.
+function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Bubble(", "function BubbleContent", "bubbleVariants"]) {
+    if (!bubbleSource.includes(marker)) {
+      throw new Error(`Bubble's real source no longer contains "${marker}" — shadcn/ui's real Bubble has likely changed shape since buildBubblePlan was written. Re-verify against the current vendored bubble.tsx before trusting this plan.`);
+    }
+  }
+
+  const { variants, skippedVariants } = buildVariantsFromCva(bubbleSource, "variant");
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  // BubbleContent's own real classes: "rounded-xl border border-transparent
+  // px-3 py-2 text-sm leading-relaxed ..." — rounded-xl is the same
+  // MULTIPLIER (not a direct alias) already documented at buildCardPlan's
+  // own comment (`--radius-xl: calc(var(--radius) * 1.4)`), computed from
+  // radius.md's own real resolved value, not a hardcoded guess.
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusTarget = radiusMdPx * 1.4;
+  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
+  const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
+  const paddingVMatch = nearestToken(8, spacing, "spacing"); // real py-2
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+
+  for (const [label, match] of [
+    ["radius", radiusMatch],
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0.01) {
+      notes.push(`Bubble ${label}: nearest real token is ${match.deltaPx.toFixed(1)}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push("Bubble: only the outer Bubble/BubbleContent color+shape is modeled — BubbleGroup (pure layout, no color) and BubbleReactions (a separate floating pill, real overlay-positioning structure) aren't. The `tinted` variant is permanently skipped (see the generalized arbitrary-value rule's own comment); `secondary` is skipped whenever the seed has no secondary brand color, same as Button/Badge's own `secondary` variant.");
+  notes.push("Bubble: a real, new finding confirmed via a live browser check (2026-09-21) — unlike every earlier `cva()`-based component, Bubble's real `ghost` variant ALSO overrides geometry, not just color (`*:data-[slot=bubble-content]:rounded-none *:data-[slot=bubble-content]:p-0`, real computed border-radius/padding both 0px, vs. every other variant's shared 8.4px/12px/8px). This schema has no per-variant geometry — `radiusVariable`/`paddingHorizontalVariable`/`paddingVerticalVariable` are single, component-wide fields — so the Figma Ghost variant will show the SAME rounded, padded box as Default/Muted/Outline/Destructive, not its real flush, borderless, paddingless rendering. Disclosed, not modeled; a real per-variant-geometry schema change would be needed to close this, out of scope for this batch.");
+  notes.push("Bubble: its real `destructive` variant's `bg-destructive/10` (a translucent 10% tint) is represented as a SOLID status.error fill, same opacity-drop simplification already documented for Badge's and Item's own destructive/muted variants — confirmed via a live browser check that the real rendered color is a light translucent tint, not the solid color this plan binds.");
+
+  return {
+    name: "Bubble",
+    variantPropertyName: "Variant",
+    variants,
+    skippedVariants,
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Hi there! How can I help?",
+  };
+}
 
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
@@ -2200,6 +2391,7 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "field.tsx", name: "FieldSeparator", build: buildFieldSeparatorPlan },
   { filename: "item.tsx", name: "Item", build: buildItemPlan },
   { filename: "marker.tsx", name: "Marker", build: buildMarkerPlan },
+  { filename: "bubble.tsx", name: "Bubble", build: buildBubblePlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for
