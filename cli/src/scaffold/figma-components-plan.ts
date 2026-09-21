@@ -559,7 +559,29 @@ function buildVariantsFromCva(
     // against each real class in the variant's own list (not the whole
     // classString at once) so the skip reason can name the exact
     // offending class, the same specificity the check above already has.
-    const arbitraryValueClass = classes.find((cls) => /^(bg|text|border)-\[/.test(cls));
+    //
+    // Real bug found building Bubble (Batch 10, 2026-09-21) and fixed
+    // here rather than papered over with a Bubble-specific carve-out, per
+    // figma-remaining-components-plan.md's own instruction for this case:
+    // Batch 9's rule above tested each RAW class token, but Bubble's real
+    // `tinted` variant's arbitrary classes are never raw — every one of
+    // them sits behind the exact same `*:data-[slot=bubble-content]:`
+    // selector prefix Batch 9's OWN stripping logic was built for
+    // (`*:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.93_
+    // calc(c*0.4)_h)]`, confirmed against real vendored bubble.tsx) — so
+    // `/^(bg|text|border)-\[/` never matched (the string starts with
+    // `*:data-[slot=...`, not `bg-[`), and this rule silently failed to
+    // fire. Without this fix, `tinted` would fall through to a normal
+    // built variant with fillVariable left undefined (the arbitrary class
+    // returns null from `classToFigmaVariable`, same as it always did)
+    // and textVariable falling back to text.primary — exactly Ghost's own
+    // shape, misrepresenting a real (if unrepresentable) tinted
+    // background as an intentionally transparent one. Fixed by testing
+    // the PREFIX-STRIPPED class, the same string `classToFigmaVariable`
+    // itself would test — a strict superset for every existing caller
+    // (Button/Badge/Toggle/Alert/Item have no such prefixes at all, so
+    // `.replace()` is a no-op and this change is invisible to them).
+    const arbitraryValueClass = classes.find((cls) => /^(bg|text|border)-\[/.test(cls.replace(SELECTOR_PREFIX_PATTERN, "")));
     if (arbitraryValueClass) {
       skippedVariants.push({
         name,
@@ -2131,6 +2153,107 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   };
 }
 
+// Batch 10 of figma-remaining-components-plan.md ("chat/AI kit" registry
+// extension), first real consumer of Batch 9's selector-prefix stripping.
+// Real vendored bubble.tsx has a genuine multi-option color-variant axis
+// (`bubbleVariants = cva(..., { variants: { variant: {...} } })`), unlike
+// Marker's own single-option reframing — so this uses `buildVariantsFromCva`
+// the normal way, not `scanClassesForColors`. All seven of its real
+// variants' color classes live behind the exact same
+// `*:data-[slot=bubble-content]:` selector prefix (they style the CHILD
+// `BubbleContent` div, not the outer `Bubble` wrapper itself) — confirmed
+// against real source before writing this, not assumed from Base UI
+// convention:
+//   default:     *:data-[slot=bubble-content]:bg-primary / text-primary-foreground
+//   secondary:   *:data-[slot=bubble-content]:bg-secondary / text-secondary-foreground
+//   muted:       *:data-[slot=bubble-content]:bg-muted (no text-* class at all)
+//   tinted:      *:data-[slot=bubble-content]:bg-[oklch(from_var(--primary)_0.93_calc(c*0.4)_h)] / text-foreground
+//   outline:     *:data-[slot=bubble-content]:border-border / bg-background
+//   ghost:       *:data-[slot=bubble-content]:bg-transparent (plus border-none, unprefixed)
+//   destructive: *:data-[slot=bubble-content]:bg-destructive/10 / text-destructive
+// `secondary` is NOT actually buildable despite what the plan's own Batch
+// 10 section predicted ("Default/secondary/muted/outline/ghost/destructive
+// become buildable") — its real classString contains the literal substring
+// `bg-secondary`, which trips the EXISTING, unconditional
+// `classString.includes("bg-secondary")` skip in `buildVariantsFromCva`
+// (the same one Button/Badge's own `secondary` variant already hits,
+// verified live against this same test seed — see that skip's own
+// comment). This isn't new Bubble-specific behavior; the plan's own text
+// was simply optimistic about what "reuse already-tabled paths" would
+// produce here. `tinted` is skipped by Batch 9's generalized
+// arbitrary-value rule, but only after a real bug in that rule (it tested
+// the raw, prefixed class instead of the stripped one) was found and fixed
+// above — see that fix's own comment for the full real trace.
+// `destructive` recreates Badge's own real same-tone trap for the same
+// real reason (`bg-destructive/10` + `text-destructive` both resolve to
+// status.error once the opacity modifier is dropped) — `buildVariantsFromCva`'s
+// existing gated fix (checked on the resolved FILL, not just the variant's
+// name) fires correctly here too, confirmed in the generated plan JSON,
+// not assumed from the code alone.
+// `muted` has no explicit text-* class at all — falls back to the shared
+// `text.primary` default the same way Ghost's own colorless variants
+// already do, a real, not a missing, finding.
+// No universal `border.default` fallback the way `buildAlertPlan` adds
+// one — Bubble's real BubbleContent explicitly sets `border-transparent`
+// as its own DEFAULT border color (a real, intentional "no border" design
+// choice confirmed in source), the opposite finding from Alert's own real
+// global base-layer inheritance; forcing a border here would be wrong, not
+// a gap.
+function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Bubble(", "function BubbleContent", "bubbleVariants"]) {
+    if (!bubbleSource.includes(marker)) {
+      throw new Error(`Bubble's real source no longer contains "${marker}" — shadcn/ui's real Bubble has likely changed shape since buildBubblePlan was written. Re-verify against the current vendored bubble.tsx before trusting this plan.`);
+    }
+  }
+
+  const { variants, skippedVariants } = buildVariantsFromCva(bubbleSource, "variant");
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  // BubbleContent's own real classes: "rounded-xl border border-transparent
+  // px-3 py-2 text-sm leading-relaxed ..." — rounded-xl is the same
+  // MULTIPLIER (not a direct alias) already documented at buildCardPlan's
+  // own comment (`--radius-xl: calc(var(--radius) * 1.4)`), computed from
+  // radius.md's own real resolved value, not a hardcoded guess.
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusTarget = radiusMdPx * 1.4;
+  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
+  const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
+  const paddingVMatch = nearestToken(8, spacing, "spacing"); // real py-2
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+
+  for (const [label, match] of [
+    ["radius", radiusMatch],
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0.01) {
+      notes.push(`Bubble ${label}: nearest real token is ${match.deltaPx.toFixed(1)}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push("Bubble: only the outer Bubble/BubbleContent color+shape is modeled — BubbleGroup (pure layout, no color) and BubbleReactions (a separate floating pill, real overlay-positioning structure) aren't. The `tinted` variant is permanently skipped (see the generalized arbitrary-value rule's own comment); `secondary` is skipped whenever the seed has no secondary brand color, same as Button/Badge's own `secondary` variant.");
+  notes.push("Bubble: a real, new finding confirmed via a live browser check (2026-09-21) — unlike every earlier `cva()`-based component, Bubble's real `ghost` variant ALSO overrides geometry, not just color (`*:data-[slot=bubble-content]:rounded-none *:data-[slot=bubble-content]:p-0`, real computed border-radius/padding both 0px, vs. every other variant's shared 8.4px/12px/8px). This schema has no per-variant geometry — `radiusVariable`/`paddingHorizontalVariable`/`paddingVerticalVariable` are single, component-wide fields — so the Figma Ghost variant will show the SAME rounded, padded box as Default/Muted/Outline/Destructive, not its real flush, borderless, paddingless rendering. Disclosed, not modeled; a real per-variant-geometry schema change would be needed to close this, out of scope for this batch.");
+  notes.push("Bubble: its real `destructive` variant's `bg-destructive/10` (a translucent 10% tint) is represented as a SOLID status.error fill, same opacity-drop simplification already documented for Badge's and Item's own destructive/muted variants — confirmed via a live browser check that the real rendered color is a light translucent tint, not the solid color this plan binds.");
+
+  return {
+    name: "Bubble",
+    variantPropertyName: "Variant",
+    variants,
+    skippedVariants,
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Hi there! How can I help?",
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -2161,6 +2284,7 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "separator.tsx", name: "Separator", build: buildSeparatorPlan },
   { filename: "field.tsx", name: "FieldSeparator", build: buildFieldSeparatorPlan },
   { filename: "item.tsx", name: "Item", build: buildItemPlan },
+  { filename: "bubble.tsx", name: "Bubble", build: buildBubblePlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for

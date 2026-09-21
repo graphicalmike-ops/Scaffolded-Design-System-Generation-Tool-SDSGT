@@ -717,7 +717,19 @@ override any of the four independently — they don't have to move together.
   (a real exact alias) rather than `radius.lg`, via `exactRadiusMd` — the
   same discipline that already caught a real 2px mismatch bug once. See
   `figma-remaining-components-plan.md` for the full, sequenced plan
-  covering shadcn/ui's remaining components beyond these eighteen. Every
+  covering shadcn/ui's remaining components beyond these eighteen.
+  **Bubble added 2026-09-21 (Batch 10)**, on top of Batch 9's own
+  selector-prefix-stripping/arbitrary-value-skip parser infrastructure —
+  **nineteen** real components on this branch. Bubble's real 5 built
+  variants (Default, Muted, Outline, Ghost, Destructive) via
+  `buildVariantsFromCva`; `secondary` and `tinted` both skipped for real,
+  disclosed reasons (see `buildBubblePlan`'s own comment). Plan- and
+  browser-verified (real `next build` + live Playwright check); not yet
+  live-pushed — see `docs/layer2-layer3-plan.md`'s own dated entry,
+  including a real bug found and fixed in Batch 9's own arbitrary-value
+  rule while building this. Batch 8 (Marker) is not present on this
+  branch's base; the real combined count needs re-confirming once
+  Batches 8/9/10 are merged. Every
   other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when
