@@ -70,6 +70,24 @@
 // `buildBreadcrumbPlan`'s own comment for the real, disclosed decorative
 // text-glyph stand-in used for its real separator icon.
 //
+// "Batch 9" of the remaining-components plan (2026-09-21) is pure parser
+// infrastructure, not a new component — no new row in `COMPONENT_BUILDERS`.
+// Two additions to `classToFigmaVariable`/`buildVariantsFromCva`, the most
+// reused code in this file: (1) `classToFigmaVariable` now strips a known
+// `*:data-[slot=...]:`/`data-[key=value]:` selector prefix before its real
+// match, a pure preprocessing step (see that function's own comment); (2)
+// `buildVariantsFromCva`'s existing `bg-secondary`/`text-secondary-
+// foreground` skip special case is now followed by a GENERAL rule: any
+// `bg-`/`text-`/`border-` class using Tailwind's arbitrary-value bracket
+// syntax gets skipped with a generated reason, rather than silently
+// falling through `classToFigmaVariable` as an unmatched null (see that
+// function's own comment). Both are strict supersets of prior behavior —
+// verified against every real class string already being parsed correctly
+// by Button/Badge/Toggle/Alert/Item (this file's own real `cva()`
+// consumers) before landing, per the plan's own "high relative risk"
+// callout for this batch. Nothing consumes the new capability yet;
+// Batch 10 (`bubble.tsx`) is the first real consumer, next.
+//
 // The shadcn CSS-var -> SDSGT semantic path table below is the exact
 // mapping contracts-and-seeds.md's "shadcn/ui theming" section documents
 // for generate/shadcn.ts, applied in the OPPOSITE direction (there: SDSGT
@@ -330,8 +348,31 @@ function sdsgtPathToFigmaName(path: string): string {
 // disclosed simplification, not a parse failure). Returns null for
 // anything unrecognized so the caller can record what got skipped, rather
 // than silently guessing.
+//
+// Selector-prefix stripping added 2026-09-21 ("Batch 9" of
+// figma-remaining-components-plan.md, infrastructure only — no new
+// component consumes this yet). Real vendored shadcn source repeatedly
+// gates an otherwise-ordinary bg-/text-/border- class behind a conditional
+// data-attribute selector this parser never used to see past — two real
+// shapes already named elsewhere in this file's own comments:
+// `*:data-[slot=alert-description]:text-destructive/90` (Alert's own
+// AlertDescription, see `FigmaComponentPlanItem.secondaryTextVariable`'s
+// comment) and `data-[invalid=true]:text-destructive` (Field's own root,
+// see `buildFieldPlan`'s comment). Both match one pattern: an optional
+// leading `*:`, then a bare `data-[key=value]:` block. Stripping it before
+// the real match below is a PURE preprocessing step — the class that
+// remains is matched exactly the same way an unprefixed class always was,
+// and the function's own return contract (kind/variable shape, or null)
+// is completely unchanged. Real classes with no such prefix (every
+// existing caller's own already-working input — Button/Badge/Toggle/
+// Alert/Item's real `cva()` variant strings, none of which start with
+// `data-[` or `*:`) pass through this `.replace()` as a no-op, so this is
+// a strict superset of prior behavior, not a rewrite of it.
+const SELECTOR_PREFIX_PATTERN = /^\*?:?data-\[[a-z-]+=[a-z-]+\]:/;
+
 function classToFigmaVariable(className: string): { kind: "fill" | "text" | "border"; variable: string } | null {
-  const match = className.match(/^(bg|text|border)-([a-z-]+?)(\/\d+)?$/);
+  const stripped = className.replace(SELECTOR_PREFIX_PATTERN, "");
+  const match = stripped.match(/^(bg|text|border)-([a-z-]+?)(\/\d+)?$/);
   if (!match) return null;
   const [, prefix, varName] = match;
   const sdsgtPath = varName === "destructive-foreground" ? null : SHADCN_VAR_TO_SDSGT_PATH[varName];
@@ -494,6 +535,35 @@ function buildVariantsFromCva(
       skippedVariants.push({
         name,
         reason: "requires color/semantic/action/secondary, which only exists when the original seed supplied a secondary brand color — not fabricated when it doesn't.",
+      });
+      continue;
+    }
+
+    // Generalized arbitrary-value skip rule, added 2026-09-21 ("Batch 9" of
+    // figma-remaining-components-plan.md). The check above is a specific,
+    // more-informative special case (a MISSING optional brand color) that
+    // still fires first and is left untouched; this is the general rule
+    // for the different, unfixable case a class matching this shape can
+    // never resolve to any token, regardless of what the seed supplied:
+    // Tailwind's own arbitrary-value bracket syntax (`bg-[oklch(...)]`,
+    // `text-[#fff]`, `border-[3px_solid_red]`, ...) names a literal,
+    // caller-supplied value with no semantic token behind it at all. Real
+    // trigger this rule exists for (figma-remaining-components-plan.md,
+    // Batch 10): bubble.tsx's own real `tinted` variant
+    // (`bg-[oklch(0.94_0.03_255)]` or similar) is permanently skipped by
+    // this rule alone, with no Bubble-specific carve-out needed — before
+    // this change, `classToFigmaVariable`'s own regex would have just
+    // returned null for it (arbitrary bracket contents don't match
+    // `[a-z-]+`), silently producing a variant with no fill and a
+    // fallback text color instead of disclosing the real gap. Checked
+    // against each real class in the variant's own list (not the whole
+    // classString at once) so the skip reason can name the exact
+    // offending class, the same specificity the check above already has.
+    const arbitraryValueClass = classes.find((cls) => /^(bg|text|border)-\[/.test(cls));
+    if (arbitraryValueClass) {
+      skippedVariants.push({
+        name,
+        reason: `real class '${arbitraryValueClass}' uses an arbitrary Tailwind value with no possible design token to bind to`,
       });
       continue;
     }
