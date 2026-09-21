@@ -2061,6 +2061,114 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   };
 }
 
+// Nineteenth real component, added 2026-09-21 — "Batch 8" of
+// figma-remaining-components-plan.md, and the first of the six real
+// "chat/AI kit" registry files (a newer shadcn/ui registry extension, not
+// the classic component set) to ship. Real current source (`marker.tsx`,
+// confirmed against a real vendored `shadcn add --all` project) is a
+// `cva()`-based component — same mechanism shape as Button/Badge/Toggle/
+// Alert/Item — but per the user's own prior decision (this batch's own
+// section in figma-remaining-components-plan.md) it's modeled the SAME
+// way Input/Textarea/Kbd/Label are: a single colorless "Default" box via
+// `scanClassesForColors`, with the real `cva()` axis ignored entirely
+// rather than run through `buildVariantsFromCva`.
+//
+// Real `cva()` shape: `cva("group/marker relative flex min-h-4 w-full
+// items-center gap-2 text-left text-sm text-muted-foreground
+// [&_svg:not([class*='size-'])]:size-4 [a]:underline
+// [a]:underline-offset-3 [a]:hover:text-foreground", { variants: {
+// variant: { default: "", separator: "before:mr-1 before:h-px
+// before:min-w-0 before:flex-1 before:bg-border after:ml-1 after:h-px
+// after:min-w-0 after:flex-1 after:bg-border", border: "border-b
+// border-border pb-2" } } })` — confirmed `default` is genuinely an empty
+// no-op, so ALL of Marker's real styling lives on cva()'s own BASE class
+// string, not on any per-variant entry (checked below at build time, not
+// assumed — a future shadcn update moving real styling onto `default`
+// itself would silently invalidate this whole reframing otherwise).
+//
+// Real, disclosed finding from this batch's own required verification
+// pass (figma-remaining-components-plan.md's own Batch 8 section claims
+// "none of its options differ in color" — checked against real source,
+// not taken on faith): that claim is true in the sense that matters (no
+// option ever resolves to a DIFFERENT color/hue than another — the only
+// color either non-default option ever references is `border-border`,
+// the exact same already-tabled `border.default` token used everywhere
+// else in this file), but it understates one real detail — `border`'s own
+// classes (`border-b border-border pb-2`) DO contain a real, parseable
+// `border-border` match `classToFigmaVariable` would bind if this ran
+// through `buildVariantsFromCva`, unlike `default` (empty) and
+// `separator` (whose own `before:.../after:...bg-border` references sit
+// behind a `before:`/`after:` pseudo-element selector prefix this
+// parser's plain class regex was never built to match, so they're
+// invisible to it regardless). This is presence-vs-absence of one
+// already-correct token, not a same-tone-trap-style wrong value — but per
+// this project's own disclosure policy, it's still surfaced explicitly
+// here rather than silently building against the plan's own slightly
+// looser framing. Ignoring the whole cva() axis (the user's own decision)
+// means both `separator` (flanking hairlines) and `border` (a real bottom
+// rule) go fully unrepresented, not just their color-bearing parts.
+//
+// Real, disclosed finding, genuinely new to this batch: Marker has NO
+// `rounded-*` class anywhere in its real source — across all three real
+// options, not just `default` — and NO padding class of its own either
+// (only the ignored `border` option's own `pb-2` has one). This isn't a
+// parser miss papered over with a guess: `nearestToken(0, ...)` is used
+// for both radius and padding, landing on the real exact `radius/none`
+// (0px) and `spacing/0` (0px) tokens, the same "genuinely zero, not
+// hardcoded" discipline already established for Label's own padding/
+// radius and bare Separator's own radius. Its real rendered height comes
+// entirely from `text-sm`'s own line-height — `min-h-4` (16px) is a
+// MINIMUM only, not a hard height this schema has any way to enforce, and
+// in practice text-sm's own line-height already exceeds it.
+function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Marker(", "markerVariants = cva(", "text-muted-foreground"]) {
+    if (!markerSource.includes(marker)) {
+      throw new Error(`Marker's real source no longer contains "${marker}" — shadcn/ui's real marker.tsx has likely changed shape since buildMarkerPlan was written. Re-verify against the current vendored marker.tsx before trusting this plan.`);
+    }
+  }
+
+  // Confirm `default` is genuinely a no-op before trusting the base-class
+  // extraction below — see this function's own comment above.
+  const variantEntries = parseCvaAxis(markerSource, "variant");
+  const defaultEntry = variantEntries.find(([key]) => key === "default");
+  if (!defaultEntry || defaultEntry[1] !== "") {
+    throw new Error(`Marker's real "default" variant option is no longer an empty no-op (found "${defaultEntry?.[1] ?? "<missing>"}") — buildMarkerPlan's own base-class extraction is only valid when it is. Re-verify against the current vendored marker.tsx before trusting this plan.`);
+  }
+
+  const classMatch = markerSource.match(/cva\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find Marker's own base cva() class string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = nearestToken(0, radius, "radius"); // genuinely no rounded-* class anywhere in real source — see this function's own comment
+  const paddingHMatch = nearestToken(0, spacing, "spacing"); // genuinely no padding class of its own — see this function's own comment
+  const paddingVMatch = nearestToken(0, spacing, "spacing");
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+
+  if (fontSizeMatch.deltaPx > 0) {
+    notes.push(`Marker font size: nearest real token is ${fontSizeMatch.deltaPx}px off shadcn's own exact Tailwind value.`);
+  }
+  notes.push("Marker: modeled as a single colorless 'Default' box, per the user's own decision (figma-remaining-components-plan.md, Batch 8) — its real cva() variant axis (default/separator/border) is ignored entirely, not just its color-bearing parts. `border`'s own classes DO carry a real, parseable border.default match (the same already-tabled token used everywhere else in this file, not a new/different hue) that this reframing doesn't represent — see this function's own comment for the full finding.");
+  notes.push("Marker: has no padding or radius class of its own in its real source (confirmed: no `rounded-*` class anywhere in the file, and no padding class outside the ignored `border` option's own `pb-2`) — represented as a bare text node (0px padding, radius/none), the same real finding and treatment already established for Label.");
+
+  return {
+    name: "Marker",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Marker",
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -2091,6 +2199,7 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "separator.tsx", name: "Separator", build: buildSeparatorPlan },
   { filename: "field.tsx", name: "FieldSeparator", build: buildFieldSeparatorPlan },
   { filename: "item.tsx", name: "Item", build: buildItemPlan },
+  { filename: "marker.tsx", name: "Marker", build: buildMarkerPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for

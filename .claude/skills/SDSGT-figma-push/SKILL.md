@@ -385,19 +385,19 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
 **Real ground truth, proven live against a real test file ("SDSGT test
-file") for all eighteen components this plan covers today:** Button
+file") for all nineteen components this plan covers today:** Button
 (2026-09-15), Badge (2026-09-16), Toggle, Alert, Input, Textarea, and Card
 (all 2026-09-17), Kbd, NativeSelect, Avatar, Label, and Skeleton (all
-2026-09-18), and Breadcrumb, Empty, Field, Separator, FieldSeparator, and
-Item (all 2026-09-21). shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`,
-`Input`, `Textarea`, `Card`, `Kbd`, `NativeSelect`, `Avatar`, `Label`,
-`Skeleton`, `Breadcrumb`, `Empty`, `Field`, `Separator`, `FieldSeparator`,
-`Item` — one size each, rest states only (see
+2026-09-18), and Breadcrumb, Empty, Field, Separator, FieldSeparator,
+Item, and Marker (all 2026-09-21). shadcn/ui's `Button`, `Badge`,
+`Toggle`, `Alert`, `Input`, `Textarea`, `Card`, `Kbd`, `NativeSelect`,
+`Avatar`, `Label`, `Skeleton`, `Breadcrumb`, `Empty`, `Field`, `Separator`,
+`FieldSeparator`, `Item`, `Marker` — one size each, rest states only (see
 `cli/src/scaffold/figma-components-plan.ts`'s own header for the full
 scope decision, including the real component shapes this plan handles —
 multi-variant `cva()` components via `buildVariantsFromCva`, single-state
 no-`cva()` components via `scanClassesForColors`
-(Input/Textarea/Kbd/NativeSelect/Avatar/Label), Card's own real
+(Input/Textarea/Kbd/NativeSelect/Avatar/Label/Marker), Card's own real
 compound-component support via `sections` (vertical, and — since
 Breadcrumb — horizontal too), a genuinely non-box fixed-size `line` shape
 (Separator/FieldSeparator), and — since Item — a real `cva()`
@@ -405,14 +405,16 @@ color-variant axis COMBINED with `sections` in the same component set —
 and why most other real components don't fit any of these yet). This
 step's own mechanism (`for each item in plan.components`, no
 component-specific branching) is confirmed to genuinely generalize across
-eighteen structurally different components, covering every shape above
+nineteen structurally different components, covering every shape above
 plus real structural variations (Skeleton has no text at all; Breadcrumb's
 `sections` lay out horizontally instead of vertically;
 Separator/FieldSeparator are fixed-size rectangles/rows, not auto-layout
 frames at all; Item's `sections` render correctly across three real
 independently-colored variants in one component set, not just a single
-"Default") — real bugs were caught doing this, not just claimed to have
-been avoided: the same-tone-trap fix (below) used to fire for ANY variant
+"Default"; Marker reuses `scanClassesForColors` against a real `cva()`
+component's own BASE classes, deliberately ignoring its own real variant
+axis entirely) — real bugs were caught doing this, not just claimed to
+have been avoided: the same-tone-trap fix (below) used to fire for ANY variant
 named "destructive" regardless of its fill, which was correct for
 Button/Badge but would have produced invisible white-on-light-card text
 for Alert's real neutral-background destructive variant; every
@@ -482,6 +484,15 @@ used to (incorrectly) imply was close enough for Badge.
   binds to `radius.md` — a real exact alias, not `radius.lg` — via
   `exactRadiusMd`, the same discipline that already caught a real 2px
   mismatch bug once (see this section's own opening paragraph).
+- **Marker is a real `cva()`-based component reframed to ignore its own
+  color-variant axis entirely** — per the user's own decision, modeled as
+  a single colorless "Default" box via `scanClassesForColors` against just
+  its `default` option's own (empty, no-op) base classes, the same
+  mechanism Input/Textarea/Kbd/NativeSelect/Avatar/Label already use, not
+  `buildVariantsFromCva`. Live-proven: renders as plain, unstyled text
+  (`text.secondary`, no fill/stroke/padding/radius — the same bare-text
+  treatment Label already established), and its `Label` property swaps
+  independently on a real instance.
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -888,7 +899,7 @@ differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
 component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Kbd/
 NativeSelect/Avatar/Label/Skeleton/Breadcrumb/Empty/Field/Separator/
-FieldSeparator/Item, any size beyond `default`, Breadcrumb's real
+FieldSeparator/Item/Marker, any size beyond `default`, Breadcrumb's real
 `BreadcrumbEllipsis` (a collapsed-items affordance with its own icon, not
 modeled — see `buildBreadcrumbPlan`'s own comment), its support for any
 item count beyond a fixed three-item trail, its real
@@ -923,7 +934,11 @@ modeled at all — the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE
 gaps as elsewhere), its real `size` axis (default/sm/xs — always its
 default size), and its real `gap-1` (4px) between Title and Description
 (no home in this schema's `sections`/`textLines` shape — the two lines
-stack directly adjacent, relying only on line-height for spacing), and
+stack directly adjacent, relying only on line-height for spacing);
+Marker's real `separator`/`border` variant options (its own real `cva()`
+axis is ignored entirely, per the user's own decision, not just its
+color-bearing parts — `border`'s own real `border-border` class, a
+genuine parseable color match, is disclosed but not represented), and
 any framework's
 component source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files
 and RNR's React Native source both need their own real verification
@@ -1002,6 +1017,23 @@ live confirmation of the `exactRadiusMd` discipline holding for a fifth
 real component. A final full-page check confirmed all eleven of this
 file's component sets sit correctly inside the shared "Components"
 section, with zero orphaned instances left behind.
+
+**State after this round (2026-09-21, "Batch 8"):** Marker is now proven
+live too, folded into the "all nineteen... proven live" statement above —
+a real `cva()`-based component (three real variant options:
+default/separator/border) deliberately reframed to ignore its own
+variant axis entirely, per the user's own decision, and modeled instead
+via `scanClassesForColors` against the `default` option's own (empty)
+base classes — the same single-flat-variant mechanism Input/Kbd/Label
+already use, not `buildVariantsFromCva`. Built as a single "Default" box
+(no fill/stroke/padding/radius, `radius/none` and `spacing/0` both real
+exact zeros, not guesses), screenshotted (plain gray text, no box styling
+at all — matching the disclosed bare-text treatment), created one real
+instance, swapped its `Label` property independently, screenshotted
+again, and removed the validation instance. A final full-page check
+confirmed all twelve of this file's component sets sit correctly inside
+the shared "Components" section, with zero orphaned instances left
+behind.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
