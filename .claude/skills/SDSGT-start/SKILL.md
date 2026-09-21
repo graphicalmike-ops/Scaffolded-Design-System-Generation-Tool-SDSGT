@@ -685,16 +685,14 @@ override any of the four independently — they don't have to move together.
   (its FieldLabel/FieldDescription/FieldError sub-parts only), Separator,
   and `field.tsx`'s FieldSeparator** — seventeen real components in scope
   as of 2026-09-21 (Batches 4-6 of `figma-remaining-components-plan.md`),
-  but only the first twelve are proven with a real live push into a real
-  test file so far (Button 2026-09-15, Badge 2026-09-16,
+  and all seventeen are now proven with a real live push into a real test
+  file (Button 2026-09-15, Badge 2026-09-16,
   Toggle/Alert/Input/Textarea/Card 2026-09-17,
-  Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18); Breadcrumb, Empty,
-  Field, Separator, and FieldSeparator are plan-verified and
-  live-rendered-page-verified only as of this writing (a real `next build`
-  + Playwright `getComputedStyle` check for each) — not yet pushed into a
-  real Figma file, see `docs/layer2-layer3-plan.md`'s own dated entries
-  and `SDSGT-figma-push/SKILL.md` step 7's own "State after this round"
-  note for that disclosure. Card is the first real compound component (a
+  Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18, Breadcrumb/Empty/
+  Field/Separator/FieldSeparator 2026-09-21) — see
+  `docs/layer2-layer3-plan.md`'s own dated entries and
+  `SDSGT-figma-push/SKILL.md` step 7's own "proven live" statement for the
+  full verification detail. Card is the first real compound component (a
   real Header/Content structure with three independent text properties,
   not just one label); Label is the first component with no box styling
   of its own at all — a bare text node, no fill/stroke/padding/radius;

@@ -384,32 +384,47 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
-**Real ground truth, proven live against a real test file for all twelve
-components this plan covers today:** Button (2026-09-15), Badge
-(2026-09-16), Toggle, Alert, Input, Textarea, and Card (all 2026-09-17),
-and Kbd, NativeSelect, Avatar, Label, and Skeleton (all 2026-09-18).
-shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`, `Input`, `Textarea`,
-`Card`, `Kbd`, `NativeSelect`, `Avatar`, `Label`, `Skeleton` — one size
-each, rest states only (see `cli/src/scaffold/figma-components-plan.ts`'s
-own header for the full scope decision, including the three real
-component shapes this plan handles — multi-variant `cva()` components via
-`buildVariantsFromCva`, single-state no-`cva()` components via
-`scanClassesForColors` (Input/Textarea/Kbd/NativeSelect/Avatar/Label), and
-Card's own real compound-component support via `sections` — and why most
-other real components don't fit any of these yet). This step's own
-mechanism (`for each item in plan.components`, no component-specific
-branching) is confirmed to genuinely generalize across twelve structurally
-different components, covering all three shapes plus one real structural
-variation (Skeleton has no text at all) — real bugs were caught doing
-this, not just claimed to have been avoided: the same-tone-trap fix
-(below) used to fire for ANY variant named "destructive" regardless of its
-fill, which was correct for Button/Badge but would have produced
-invisible white-on-light-card text for Alert's real neutral-background
-destructive variant; and every `rounded-lg`-using component's radius was
-bound to the wrong real value for two full sessions (a real 2px mismatch,
-confirmed live via `getComputedStyle` — see `exactRadiusMd`'s own comment)
-before being caught while scoping Card's own different radius formula.
-Both caught by checking real generated output/real rendered pages, not
+**Real ground truth, proven live against a real test file ("SDSGT test
+file") for all seventeen components this plan covers today:** Button
+(2026-09-15), Badge (2026-09-16), Toggle, Alert, Input, Textarea, and Card
+(all 2026-09-17), Kbd, NativeSelect, Avatar, Label, and Skeleton (all
+2026-09-18), and Breadcrumb, Empty, Field, Separator, and FieldSeparator
+(all 2026-09-21). shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`,
+`Input`, `Textarea`, `Card`, `Kbd`, `NativeSelect`, `Avatar`, `Label`,
+`Skeleton`, `Breadcrumb`, `Empty`, `Field`, `Separator`, `FieldSeparator`
+— one size each, rest states only (see
+`cli/src/scaffold/figma-components-plan.ts`'s own header for the full
+scope decision, including the real component shapes this plan handles —
+multi-variant `cva()` components via `buildVariantsFromCva`, single-state
+no-`cva()` components via `scanClassesForColors`
+(Input/Textarea/Kbd/NativeSelect/Avatar/Label), Card's own real
+compound-component support via `sections` (vertical, and — since
+Breadcrumb — horizontal too), and a genuinely non-box fixed-size `line`
+shape (Separator/FieldSeparator) — and why most other real components
+don't fit any of these yet). This step's own mechanism (`for each item in
+plan.components`, no component-specific branching) is confirmed to
+genuinely generalize across seventeen structurally different components,
+covering every shape above plus real structural variations (Skeleton has
+no text at all; Breadcrumb's `sections` lay out horizontally instead of
+vertically; Separator/FieldSeparator are fixed-size rectangles/rows, not
+auto-layout frames at all) — real bugs were caught doing this, not just
+claimed to have been avoided: the same-tone-trap fix (below) used to fire
+for ANY variant named "destructive" regardless of its fill, which was
+correct for Button/Badge but would have produced invisible
+white-on-light-card text for Alert's real neutral-background destructive
+variant; every `rounded-lg`-using component's radius was bound to the
+wrong real value for two full sessions (a real 2px mismatch, confirmed
+live via `getComputedStyle` — see `exactRadiusMd`'s own comment) before
+being caught while scoping Card's own different radius formula; and
+`createComponentFromNode(node)` was found live (2026-09-21, pushing
+Breadcrumb) to invalidate the ORIGINAL node reference passed into it —
+reading a property off that stale reference afterward (e.g. `frame.name`)
+throws an internal "node does not exist" error rather than a clear one.
+Fix: capture anything needed from the pre-conversion node (like the
+variant's own name) into a plain variable BEFORE calling
+`createComponentFromNode`, never read it off the node reference
+afterward — the code samples throughout this step already reflect this.
+All caught by checking real generated output/real rendered pages, not
 assuming the existing mechanism was safe. Extending this plan to more
 components is real, separate CLI work (a new plan-generator entry, not a
 change to this skill) — this step's job is only ever to replay whatever
@@ -419,19 +434,6 @@ SAME full screenshot-validate treatment the first time it's pushed live —
 passing plan computation alone isn't sufficient proof, as this section
 used to (incorrectly) imply was close enough for Badge.
 
-**Four more components — Breadcrumb, Empty, Field, Separator, and
-FieldSeparator — were added to the plan 2026-09-21 (Batches 4-6 of
-figma-remaining-components-plan.md) but are NOT YET part of the "proven
-live" set above.** Each one's plan JSON generation, a real `next build`,
-and a live rendered-page check were all done, but the live-Figma-push half
-of this step's own bar (build → screenshot → instance-swap → screenshot)
-was deliberately deferred for all five, since these batches were built
-concurrently in isolated worktrees, each touching the same live Figma
-file. **Treat all five as plan-computed and render-verified only, until
-someone actually runs steps 1-5 below against each of them and updates
-this note** — same "passing plan computation alone isn't sufficient
-proof" discipline the paragraph above already states.
-
 - **Breadcrumb** is the first `sections`-based component whose items lay
   out HORIZONTALLY (a row) rather than stacking vertically the way Card's
   own Header/Content do — see the `sections` branch below and
@@ -440,11 +442,16 @@ proof" discipline the paragraph above already states.
   decorative-only text glyph (`separatorGlyph`) standing in for
   Breadcrumb's actual separator, a real SVG `<ChevronRightIcon>`
   (lucide-react) this pipeline doesn't draw — see `buildBreadcrumbPlan`'s
-  own comment for the full reasoning.
+  own comment for the full reasoning. Live-proven: all three text
+  properties (`Item1`/`Item2`/`CurrentPage`) bind and swap independently
+  on a real instance, and the outer frame genuinely lays out its items in
+  a row with the "›" glyphs landing between items, never after the last.
 - **Empty and Field** reuse the existing `sections` mechanism exactly as
   Card established it, with no schema change — Empty proving Card's own
   Header/Content shape a second time, Field proving a simpler "N
-  independent one-line sections" shape nothing had exercised yet.
+  independent one-line sections" shape nothing had exercised yet. Live-
+  proven: every text property on both (Title/Description/Content for
+  Empty; Label/Description/Error for Field) binds and swaps independently.
 - **A component can now be a genuinely non-box shape** (Separator and
   `field.tsx`'s FieldSeparator — see `FigmaComponentLinePlanItem`'s own
   comment in `figma-components-plan.ts` for the full reasoning). Step 2
@@ -452,7 +459,11 @@ proof" discipline the paragraph above already states.
   (`figma.createRectangle()`, never an auto-layout frame), or a
   `[line, text, line]` row when `component.line.centerLabel` is present
   (FieldSeparator only — a real, confirmed feature, not speculative; bare
-  Separator never supports a label).
+  Separator never supports a label). Live-proven: `createComponentFromNode`
+  works directly on a `RECTANGLE` (Separator) and on a `FRAME` wrapping one
+  (FieldSeparator's row), both combine into a real variant set, and
+  FieldSeparator's `Label` property swaps independently on a real
+  instance.
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -924,63 +935,28 @@ the first text-less component ever pushed, confirming once again why this
 section's own bar requires a real screenshot pass per component, not just
 successful API calls.
 
-**Addendum, 2026-09-21 — Empty and Field added to the plan, live-Figma-push
-step deliberately deferred:** "Batch 4" of figma-remaining-components-plan.md
-added Empty (Header/Content sub-parts only) and Field (FieldLabel/
-FieldDescription/FieldError sub-parts only), both reusing the existing
-`sections` mechanism with no schema change. Plan JSON was regenerated and
-inspected against a real scaffolded test project, and a real `next build`
-plus a live Playwright `getComputedStyle` check confirmed every real value
-the plan claims (colors, padding, radius, gap) matches the actually-
-rendered components exactly. **Neither has yet gone through this step's own
-live-push bar** — built in an isolated worktree alongside two sibling
-batches (5, 6) touching the same live Figma file concurrently, per this
-round's own shared-file safety constraint.
-
-**Addendum, 2026-09-21 — Breadcrumb added to the plan, live-Figma-push
-step deliberately deferred:** "Batch 6" of
-figma-remaining-components-plan.md added Breadcrumb — the first
-`sections` consumer whose items lay out HORIZONTALLY. Its plan JSON was
-regenerated and inspected against a real scaffolded test project, and a
-real `next build` plus a live rendered-page check confirmed the real
-vendored `breadcrumb.tsx`'s own layout direction and separator markup
-match what the plan describes. **Breadcrumb has NOT yet gone through this
-step's own live-push bar** (build → `figma_capture_screenshot` → instance
-`setProperties()` swap → screenshot → cleanup) — this batch ran in an
-isolated worktree specifically to avoid touching the same live Figma file
-two sibling batches (4 — Empty/Field; 5 — Separator/FieldSeparator) were
-concurrently editing. Whoever merges all three batches in should run this
-step's full live-push bar against Breadcrumb, one batch at a time, same
-as every earlier component — including confirming live that the outer
-frame actually lays out its three items in a row (not stacked), that the
-"›" separator glyphs land between items and not after the last one, and
-that all three text properties (`Item1`/`Item2`/`CurrentPage`) bind and
-swap independently on a real instance. Only then should this note be
-folded into the "all N components... proven live" statement above.
-
-**State after this round (2026-09-21, "Batch 5" of
-`figma-remaining-components-plan.md`):** Separator and FieldSeparator are
-added to the plan, the first genuinely non-box ("line") shape this file
-produces — see step 2's new branch, above, and
-`FigmaComponentLinePlanItem`'s own comment in `figma-components-plan.ts`
-for the full reasoning. FieldSeparator's real `centerLabel` capability
-(confirmed against real source, not assumed) is represented as a
-non-overlapping `[line, text, line]` row, a disclosed approximation of the
-real absolute-position + background-mask technique. **Plan-computed and
-verified against real rendered output (a real `next build` + Playwright
-`getComputedStyle` check — line thickness exactly 1px, line color an exact
-hex match to `border.default`, the label's real gap an exact 8px match to
-`spacing/2`, label color an exact hex match to `text.secondary`), but NOT
-yet proven through a live Figma push** — per this round's own scope
-constraint (a shared live test file with two other batches' agents
-working concurrently), the live build → screenshot → instance-swap →
-screenshot cycle for these two components is still outstanding. Whoever
-runs the next live push against this plan should give Separator and
-FieldSeparator that same full treatment, not skip it because the
-mechanism looks similar to an already-proven one — exactly the mistake
-this section's own history already warns against (Badge's own early
-"passing plan computation alone isn't sufficient proof" correction,
-above).
+**State after this round (2026-09-21):** all five remaining components —
+Breadcrumb, Empty, Field, Separator, and FieldSeparator (Batches 4-6 of
+`figma-remaining-components-plan.md`, built concurrently in three isolated
+worktrees, merged in, then pushed live in one session against "SDSGT test
+file") — are now proven live too, folded into the "all seventeen... proven
+live" statement above. Every one went through the same full build →
+screenshot → instance-swap → screenshot cycle: Breadcrumb's three text
+properties (`Item1`/`Item2`/`CurrentPage`) swapped independently and its
+outer frame genuinely laid out in a row with the "›" glyphs landing
+between items, never after the last; Empty's and Field's every section
+text property swapped independently with the right colors/weights; and
+both `line`-shaped components confirmed `createComponentFromNode` works
+directly on a bare `RECTANGLE` (Separator) and on a `FRAME` wrapping one
+(FieldSeparator's row), with FieldSeparator's `Label` property swapping
+independently. This round also caught and fixed a new real, live-only
+bug: `createComponentFromNode(node)` invalidates the original node
+reference it's given — see this section's own opening paragraph for the
+fix. A final full-page check confirmed all ten of this file's component
+sets (the five above, plus Skeleton/Label/Kbd/NativeSelect/Avatar from
+prior rounds — Button/Badge/Toggle/Alert/Input/Textarea/Card were proven
+live in an earlier session/file, not this one) sit correctly inside the
+shared "Components" section, with zero orphaned instances left behind.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
