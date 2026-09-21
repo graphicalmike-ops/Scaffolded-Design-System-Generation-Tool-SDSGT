@@ -153,7 +153,72 @@ export interface FigmaComponentSectionPlanItem {
     defaultLabel: string;
   }>;
 }
-
+// A single, real non-"hug contents" shape, added 2026-09-21 ("Batch 5" of
+// figma-remaining-components-plan.md) — the first component in this file
+// that isn't box-shaped at all. A 1px divider line has no auto-layout
+// equivalent (an auto-layout frame always needs at least one real child to
+// "hug" around; a bare line has no content). Represents shadcn's own
+// `Separator` (a `bg-<color> h-px w-full` / `w-px h-full` rule, real source
+// confirmed against a `shadcn add --all` vendor) as a FIXED-size,
+// non-auto-layout rectangle instead — real geometry, not squeezed into a
+// box shape that doesn't apply here. See `buildSeparatorPlan`'s own
+// comment for the full real-source derivation.
+//
+// `thicknessPx` is a raw, UNBOUND pixel literal, not a Figma variable name
+// — a real, deliberate departure from every other numeric measurement in
+// this file (always bound via `nearestToken` against a real spacing/radius
+// scale). Confirmed by reading every real `presets/spacing.*.json` file
+// directly: the smallest real spacing token is `spacing/1` (4px in the
+// tailwind preset) — nothing close to a real 1px hairline (`h-px`/`w-px`).
+// Running 1px through `nearestToken` would bind to `spacing/0` (0px, since
+// |0-1|=1 is numerically closer than |4-1|=3) — an INVISIBLE
+// zero-thickness line, a worse, silent failure, not a disclosed
+// approximation. A literal `1` (px) is used directly instead.
+//
+// `representativeLengthPx` is a real, disclosed stand-in for shadcn's own
+// `w-full`/`self-stretch` — a real Separator has no intrinsic length of
+// its own (it always fills whatever container width/height its caller
+// gives it, which this parser has no access to — the same "caller-supplied
+// JSX, not the component's own definition" gap `buildSkeletonPlan`'s own
+// comment already documents for its own sizing). Chosen purely to give the
+// pushed line a visible, plausible footprint, not a claim that either
+// component has this as a real default length.
+//
+// `centerLabel`, optional: real support for `FieldSeparator`'s own
+// centered text (confirmed against real vendored `field.tsx` source —
+// passing `children` renders a `<span className="... bg-background ...
+// text-muted-foreground ...">` centered over the line via absolute
+// positioning + a background-color mask, e.g. a login form's "OR
+// CONTINUE WITH" divider). Bare `Separator` itself NEVER supports this —
+// confirmed against its own real source (`@base-ui/react/separator`, no
+// `children` prop at all, purely a line) — `centerLabel` is only ever set
+// on `FieldSeparator`'s own plan item, see `buildFieldSeparatorPlan`. The
+// real implementation OVERLAPS the label span on top of one continuous
+// line and masks it with a matching background fill; this plan instead
+// represents it as three side-by-side segments (`[line, text, line]`, each
+// `representativeLengthPx` wide) — a real, disclosed simplification:
+// Figma auto-layout has no direct "absolutely position and
+// background-mask" equivalent, and a non-overlapping row reads visually
+// the same as the real masked version without needing a background-fill
+// patch behind the text. `gapVariable` is real and derived (`px-2` on the
+// real label span, the gap between each line segment and the text), not a
+// guess. Orientation is not modeled anywhere in this interface — every
+// `line` in this file is a horizontal (`representativeLengthPx` wide ×
+// `thicknessPx` tall) rule only, the same "one shape only" scope this
+// file's every other component already carries (e.g. Button's own "one
+// size" cut).
+export interface FigmaComponentLinePlanItem {
+  colorVariable: string;
+  thicknessPx: number;
+  representativeLengthPx: number;
+  centerLabel?: {
+    textVariable: string;
+    fontSizeVariable: string;
+    gapVariable: string;
+    labelPropertyName: string;
+    defaultLabel: string;
+  };
+}
 export interface FigmaComponentPlanItem {
   name: string; // "Button"
   variantPropertyName: string; // "Variant"
@@ -205,6 +270,25 @@ export interface FigmaComponentPlanItem {
   // `buildCardPlan`'s own comment.
   sections?: FigmaComponentSectionPlanItem[];
   sectionGapVariable?: string;
+  // Real, genuinely new shape, added 2026-09-21 ("Batch 5" of
+  // figma-remaining-components-plan.md) — a fixed-size, non-"hug contents"
+  // line (Separator/FieldSeparator; see `FigmaComponentLinePlanItem`'s own
+  // comment for the full reasoning). MUTUALLY EXCLUSIVE with BOTH
+  // `variants`'s real per-variant fill/text/stroke content AND `sections`
+  // above — a `line`-based component has no color-variant axis and no
+  // compound text-section body; its whole visible appearance lives on this
+  // field instead. `variantPropertyName`/`variants`/`skippedVariants`
+  // themselves stay REQUIRED and still get set (a single "Default" entry
+  // with no fill/text/stroke of its own) purely for interface-shape
+  // parity with every other component — same precedent `buildCardPlan`
+  // already established (it keeps a real "Default" variant entry even
+  // though `sections` is what actually drives its body). `radiusVariable`
+  // also stays required/set (bound to a real 0px token — a bare line has
+  // no corner radius of its own) for the same reason.
+  // `SKILL.md` step 7 branches on `line` FIRST, before ever falling
+  // through to `sections` or the normal box-building logic — a line
+  // component never reaches either of those code paths.
+  line?: FigmaComponentLinePlanItem;
 }
 
 export interface FigmaComponentsPushPlan {
@@ -1726,6 +1810,156 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
   };
 }
 
+// Sixteenth real component, added 2026-09-21 — "Batch 5" of
+// figma-remaining-components-plan.md, and the first genuinely non-box
+// shape in this file (see `FigmaComponentLinePlanItem`'s own comment for
+// the full reasoning behind the new `line` field this introduces). Real
+// current source (`@base-ui/react/separator`, confirmed against a real
+// `shadcn add --all` vendor):
+//   data-slot="separator"
+//   className: "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full
+//               data-vertical:w-px data-vertical:self-stretch"
+// `bg-border` maps directly to `border.default` via the existing
+// `SHADCN_VAR_TO_SDSGT_PATH` table — a real, ordinary fill-class match
+// (the line's "fill" IS its visible color, there's no separate stroke
+// concept for a solid rectangle), not a special case. The
+// `data-horizontal:`/`data-vertical:` prefixed classes are real
+// orientation-conditional Tailwind data-attribute variants this parser's
+// plain-class regex was never built to parse — same class of gap as the
+// `placeholder:`/`*:data-[slot=...]:`/`after:` prefixes already documented
+// elsewhere in this file. Orientation itself isn't modeled (see
+// `FigmaComponentLinePlanItem`'s own comment) — only the real horizontal,
+// 1px-thick line.
+function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ['data-slot="separator"', "bg-border", "data-horizontal:h-px"]) {
+    if (!separatorSource.includes(marker)) {
+      throw new Error(`Separator's real source no longer contains "${marker}" — shadcn/ui's real Separator has likely changed shape since buildSeparatorPlan was written. Re-verify against the current vendored separator.tsx before trusting this plan.`);
+    }
+  }
+  const classMatch = separatorSource.match(/className=\{cn\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find Separator's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+  if (!colors.fillVariable) throw new Error("Separator's own bg-border class didn't resolve to a fill variable — real vendored source may have changed shape since this parser was written.");
+
+  const radius = readCssScale(tokensCss, "radius");
+  const radiusMatch = nearestToken(0, radius, "radius"); // a bare line has no real corner radius of its own — lands on the real exact 0px token, same discipline as buildLabelPlan's own zero targets
+
+  notes.push("Separator: represented as a fixed 1px-thick line at a representative 200px length — its real source has no intrinsic length of its own (shadcn's own w-full/self-stretch always fills whatever container the caller supplies, which this parser can't see), and its real thickness (a bare Tailwind h-px) has no matching spacing token to bind (the smallest real spacing token is 4px) — see FigmaComponentLinePlanItem's own comment for why thicknessPx is a raw, unbound pixel literal instead of a nearest-token approximation that would round it to either an invisible 0px or an oversized 4px line.");
+  notes.push("Separator: orientation (horizontal vs vertical) isn't modeled — only the real horizontal line is represented, the same 'one shape only' scope this file's every other component already carries.");
+
+  return {
+    name: "Separator",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own here — the line's own color lives on `line.colorVariable` instead, see that field's own comment
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    line: {
+      colorVariable: colors.fillVariable,
+      thicknessPx: 1,
+      representativeLengthPx: 200,
+    },
+  };
+}
+
+// Seventeenth real component, added 2026-09-21 — same batch as Separator,
+// built as its second real consumer per this project's own "extract once a
+// second consumer needs it" discipline (figma-remaining-components-plan.md
+// deliberately scheduled both in the same batch, rather than a
+// Separator-only special case). Real current source (`field.tsx`,
+// confirmed against the same real vendor):
+//   <div data-slot="field-separator" data-content={!!children}
+//     className="relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2">
+//     <Separator className="absolute inset-0 top-1/2" />
+//     {children && (
+//       <span className="relative mx-auto block w-fit bg-background px-2 text-muted-foreground"
+//         data-slot="field-separator-content">
+//         {children}
+//       </span>
+//     )}
+//   </div>
+// Confirms, against real source rather than assumption, that a centered
+// label IS a real, supported feature here (e.g. a login form's "OR
+// CONTINUE WITH" divider) — genuinely different from bare `Separator`,
+// whose own real source (`@base-ui/react/separator`) has no `children`
+// prop at all. This plan represents FieldSeparator WITH its label present
+// (not the label-less default) specifically to exercise the new
+// `centerLabel` path this batch introduces — an empty FieldSeparator would
+// be visually indistinguishable from bare Separator and wouldn't
+// demonstrate the one real thing that makes this a second, genuinely
+// different consumer, not a duplicate of the first.
+//
+// The nested `<Separator>`'s own real color (`bg-border` → `border.default`)
+// is hardcoded here, not re-derived from a second source file —
+// `COMPONENT_BUILDERS` passes this function only `field.tsx`'s own source,
+// never `separator.tsx`'s, so there's no file-driven way to re-confirm it
+// from here. Reusing the exact real value `buildSeparatorPlan` derives
+// from `separator.tsx` directly, the same "real, confirmed value, applied
+// via a hardcoded post-process rather than a parsed match" treatment
+// `buildAvatarPlan`'s own `border.default` case already uses for the same
+// underlying reason (a color living on a DIFFERENT real element than the
+// one this function's own source string can see).
+//
+// The label span's own real classes (confirmed by matching the actual
+// string, not assumed): `bg-background px-2 text-muted-foreground`.
+// `text-muted-foreground` → `text.secondary` via the existing table.
+// `bg-background` (the real background-COLOR MASK the label sits on, so
+// it visually "cuts" the continuous line underneath) is NOT modeled as a
+// separate fill here — see `FigmaComponentLinePlanItem.centerLabel`'s own
+// comment: this plan's `[line, text, line]` row uses three
+// NON-overlapping segments instead of the real absolute-position overlap,
+// so there is no line running underneath the text to mask in the first
+// place. `px-2` (8px) IS modeled — it's the real gap between the label and
+// each flanking line segment — bound to `gapVariable` via `nearestToken`,
+// landing on a real exact match (`spacing/2` = 8px in the tailwind
+// preset).
+function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ['data-slot="field-separator"', 'data-slot="field-separator-content"', "bg-background", "text-muted-foreground"]) {
+    if (!fieldSource.includes(marker)) {
+      throw new Error(`FieldSeparator's real source no longer contains "${marker}" — shadcn/ui's real field.tsx has likely changed shape since buildFieldSeparatorPlan was written. Re-verify against the current vendored field.tsx before trusting this plan.`);
+    }
+  }
+  const labelClassMatch = fieldSource.match(/className="([^"]*bg-background[^"]*)"/);
+  if (!labelClassMatch) throw new Error("Could not find FieldSeparator's own label <span> className string — real vendored source may have changed shape since this parser was written.");
+  const labelColors = scanClassesForColors(labelClassMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = nearestToken(0, radius, "radius"); // a bare line has no real corner radius of its own
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // text-sm, the label span's own real size
+  const gapMatch = nearestToken(8, spacing, "spacing"); // px-2, the label span's own real horizontal padding — the gap between it and each flanking line segment
+  if (gapMatch.deltaPx > 0) {
+    notes.push(`FieldSeparator gap: nearest real spacing token is ${gapMatch.deltaPx}px off shadcn's own exact Tailwind value (px-2, 8px).`);
+  }
+
+  notes.push("FieldSeparator: pushed WITH its optional centered label present (a real, confirmed feature of this component — passing children renders a centered span over the line, e.g. a login form's 'OR CONTINUE WITH' divider), not its label-less default state, specifically to exercise this batch's new centerLabel path. Bare Separator itself never supports a label at all — confirmed against its own real source, not assumed.");
+  notes.push("FieldSeparator: its real implementation absolutely-positions the label span OVER one continuous line and masks it with a bg-background fill; this plan instead represents it as three non-overlapping segments ([line, text, line]) — a disclosed simplification, not a parse failure. The label's own real bg-background masking fill isn't modeled, since the non-overlapping row has no line running underneath the text to mask in the first place.");
+  notes.push("FieldSeparator: its inner Separator's own real border.default color is reused directly from buildSeparatorPlan's own derivation (this function only ever sees field.tsx's own source, not separator.tsx's) — a real, confirmed value applied via a hardcoded post-process, the same treatment buildAvatarPlan's own border.default case already uses.");
+
+  return {
+    name: "FieldSeparator",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    line: {
+      colorVariable: sdsgtPathToFigmaName("border.default"), // see this function's own header comment — reused from Separator's own real derivation, not re-parsed here
+      thicknessPx: 1,
+      representativeLengthPx: 80, // each flanking segment — shorter than bare Separator's own 200px, a plausible footprint for a divider flanking a short label rather than a full-width rule
+      centerLabel: {
+        textVariable: labelColors.textVariable,
+        fontSizeVariable: fontSizeMatch.figmaName,
+        gapVariable: gapMatch.figmaName,
+        labelPropertyName: "Label",
+        defaultLabel: "OR",
+      },
+    },
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -1753,6 +1987,8 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "breadcrumb.tsx", name: "Breadcrumb", build: buildBreadcrumbPlan },
   { filename: "empty.tsx", name: "Empty", build: buildEmptyPlan },
   { filename: "field.tsx", name: "Field", build: buildFieldPlan },
+  { filename: "separator.tsx", name: "Separator", build: buildSeparatorPlan },
+  { filename: "field.tsx", name: "FieldSeparator", build: buildFieldSeparatorPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for

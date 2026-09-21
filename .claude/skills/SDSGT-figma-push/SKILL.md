@@ -419,25 +419,40 @@ SAME full screenshot-validate treatment the first time it's pushed live —
 passing plan computation alone isn't sufficient proof, as this section
 used to (incorrectly) imply was close enough for Badge.
 
-**A thirteenth component, Breadcrumb, was added to the plan 2026-09-21
-("Batch 6" of figma-remaining-components-plan.md) but is NOT YET part of
-the "proven live" set above** — its plan JSON generation, a real
-`next build`, and a live rendered-page check were all done, but the
-live-Figma-push half of this step's own bar (build → screenshot →
-instance-swap → screenshot) was deliberately deferred, since this batch
-ran in an isolated worktree alongside two sibling batches touching the
-same live Figma file concurrently. **Treat Breadcrumb as plan-computed
-only until someone actually runs steps 1-5 below against it and updates
+**Four more components — Breadcrumb, Empty, Field, Separator, and
+FieldSeparator — were added to the plan 2026-09-21 (Batches 4-6 of
+figma-remaining-components-plan.md) but are NOT YET part of the "proven
+live" set above.** Each one's plan JSON generation, a real `next build`,
+and a live rendered-page check were all done, but the live-Figma-push half
+of this step's own bar (build → screenshot → instance-swap → screenshot)
+was deliberately deferred for all five, since these batches were built
+concurrently in isolated worktrees, each touching the same live Figma
+file. **Treat all five as plan-computed and render-verified only, until
+someone actually runs steps 1-5 below against each of them and updates
 this note** — same "passing plan computation alone isn't sufficient
-proof" discipline the paragraph above already states. It is the first
-`sections`-based component whose items lay out HORIZONTALLY (a row)
-rather than stacking vertically the way Card's own Header/Content do —
-see the `sections` branch below and `FigmaComponentSectionPlanItem.
-textLineDirection`'s own comment in `figma-components-plan.ts`. It also
-introduces a real, disclosed decorative-only text glyph
-(`separatorGlyph`) standing in for Breadcrumb's actual separator, a real
-SVG `<ChevronRightIcon>` (lucide-react) this pipeline doesn't draw — see
-`buildBreadcrumbPlan`'s own comment for the full reasoning.
+proof" discipline the paragraph above already states.
+
+- **Breadcrumb** is the first `sections`-based component whose items lay
+  out HORIZONTALLY (a row) rather than stacking vertically the way Card's
+  own Header/Content do — see the `sections` branch below and
+  `FigmaComponentSectionPlanItem.textLineDirection`'s own comment in
+  `figma-components-plan.ts`. It also introduces a real, disclosed
+  decorative-only text glyph (`separatorGlyph`) standing in for
+  Breadcrumb's actual separator, a real SVG `<ChevronRightIcon>`
+  (lucide-react) this pipeline doesn't draw — see `buildBreadcrumbPlan`'s
+  own comment for the full reasoning.
+- **Empty and Field** reuse the existing `sections` mechanism exactly as
+  Card established it, with no schema change — Empty proving Card's own
+  Header/Content shape a second time, Field proving a simpler "N
+  independent one-line sections" shape nothing had exercised yet.
+- **A component can now be a genuinely non-box shape** (Separator and
+  `field.tsx`'s FieldSeparator — see `FigmaComponentLinePlanItem`'s own
+  comment in `figma-components-plan.ts` for the full reasoning). Step 2
+  above is the new branch: a fixed-size, non-auto-layout rectangle
+  (`figma.createRectangle()`, never an auto-layout frame), or a
+  `[line, text, line]` row when `component.line.centerLabel` is present
+  (FieldSeparator only — a real, confirmed feature, not speculative; bare
+  Separator never supports a label).
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -468,7 +483,88 @@ For each item in `plan.components`, in order:
    (e.g. "skipping the Secondary variant — this project's tokens don't
    have a secondary brand color"). Don't build a fallback/approximation for
    a skipped variant — the plan already decided it shouldn't exist.
-2. **Build each real variant as its own auto-layout frame**, via
+2. **Check `component.line` FIRST, before doing anything else in this
+   step** (Separator/`field.tsx`'s FieldSeparator — added 2026-09-21, the
+   first genuinely non-box shape this plan produces; see
+   `FigmaComponentLinePlanItem`'s own comment in `figma-components-plan.ts`
+   for the full reasoning). If present, this REPLACES the entire
+   auto-layout-frame procedure below for this component — skip straight to
+   this branch instead, then jump directly to step 4
+   (`combineAsVariants`)/step 5 (label properties) using whichever node
+   this produces in place of the usual auto-layout `frame`:
+   ```js
+   if (component.line) {
+     const lineColor = getVar(component.line.colorVariable);
+     function makeLineRect(lengthPx) {
+       const rect = figma.createRectangle();
+       rect.resize(lengthPx, component.line.thicknessPx); // fixed size, NOT auto-layout — a bare line has no content to "hug"
+       rect.fills = [bindPaint({ r: 0, g: 0, b: 0 }, lineColor)];
+       return rect;
+     }
+
+     let node; // plays the same role `frame` plays for every other component below
+     if (component.line.centerLabel) {
+       // [line, text, line] row — a disclosed, non-overlapping approximation
+       // of FieldSeparator's real absolute-position + background-mask
+       // technique (see FigmaComponentLinePlanItem's own comment). Only
+       // FieldSeparator sets centerLabel — bare Separator never does.
+       const row = figma.createFrame();
+       row.layoutMode = "HORIZONTAL";
+       row.primaryAxisSizingMode = "AUTO"; // hug contents — the two fixed-size line segments plus the text node
+       row.counterAxisSizingMode = "AUTO";
+       row.primaryAxisAlignItems = "CENTER";
+       row.counterAxisAlignItems = "CENTER";
+       row.fills = [];
+       row.setBoundVariable("itemSpacing", getVar(component.line.centerLabel.gapVariable));
+       row.appendChild(makeLineRect(component.line.representativeLengthPx));
+
+       await figma.loadFontAsync({ family: fontFamilyValue, style: "Regular" });
+       const label = figma.createText();
+       label.name = "CenterLabelText"; // lets step 5 find this specific node by name, same convention as PrimaryText/SecondaryText
+       label.fontName = { family: fontFamilyValue, style: "Regular" };
+       label.characters = component.line.centerLabel.defaultLabel;
+       label.setBoundVariable("fontSize", getVar(component.line.centerLabel.fontSizeVariable));
+       label.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(component.line.centerLabel.textVariable))];
+       row.appendChild(label);
+
+       row.appendChild(makeLineRect(component.line.representativeLengthPx));
+       node = row;
+     } else {
+       // Separator's own default case — the rectangle itself IS the
+       // component; no wrapping frame needed at all.
+       node = makeLineRect(component.line.representativeLengthPx);
+     }
+
+     const comp = figma.createComponentFromNode(node); // works directly on a RECTANGLE, not just a FRAME — confirmed real Plugin API behavior
+     comp.name = `${plan.variantPropertyName}=${variant.name}`; // "Variant=Default" — same naming convention as every other component, even with only one real variant (Skeleton/Avatar/Label/... precedent)
+     // ...append `comp` to this component's own `components` array exactly
+     // like every other variant below, then go straight to step 4's
+     // combineAsVariants. Skip the ENTIRE auto-layout frame procedure
+     // below (fills/strokes/padding/radius binding, the text-child step,
+     // the secondaryTextVariable/sections branches) for this component —
+     // none of it applies to a line.
+   }
+   ```
+   In step 5, a `line`-based component never has `component.labelPropertyName`
+   set (neither Separator nor FieldSeparator's plan sets it at the top
+   level), so that whole TEXT-property block is skipped automatically —
+   but if `component.line.centerLabel` is present, add ONE additional TEXT
+   property for it, bound to the `CenterLabelText` node by name (same
+   by-name lookup step 5 already uses for `PrimaryText`/`SecondaryText`):
+   ```js
+   if (component.line?.centerLabel) {
+     const centerPropName = componentSet.addComponentProperty(component.line.centerLabel.labelPropertyName, "TEXT", component.line.centerLabel.defaultLabel);
+     for (const variant of componentSet.children) {
+       variant.findOne(n => n.type === "TEXT" && n.name === "CenterLabelText").componentPropertyReferences = { characters: centerPropName };
+     }
+   }
+   ```
+   Separator itself (no `centerLabel`) gets no TEXT property at all — same
+   as Skeleton, the automatically-derived `Variant` property (`"Default"`)
+   is the only real property to swap during step 6's validation.
+3. **Build each real variant as its own auto-layout frame** (skip this
+   entire step for a `component.line` component — handled above instead),
+   via
    `figma_execute` (no dedicated component-creation tool exists — same
    "raw Plugin API through `figma_execute`" treatment as text/effect
    styles in step 5). Real, verified pattern:
@@ -514,7 +610,7 @@ For each item in `plan.components`, in order:
    if (variant.textVariable) {
      await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
      const text = figma.createText();
-     text.name = "PrimaryText"; // lets step 4 find this specific node once a variant can have two
+     text.name = "PrimaryText"; // lets step 5 find this specific node once a variant can have two
      text.fontName = { family: fontFamilyValue, style: "Medium" };
      text.characters = component.defaultLabel;
      text.setBoundVariable("fontSize", getVar(component.fontSizeVariable));
@@ -541,7 +637,7 @@ For each item in `plan.components`, in order:
      frame.resize(Math.max(w, 1), Math.max(h, 1));
    }
    ```
-   **After combining into a `componentSet`** (step 3, below), re-check its
+   **After combining into a `componentSet`** (step 4, below), re-check its
    own `counterAxisSizingMode` for a text-less component — confirmed live,
    `combineAsVariants` left the SET's own `counterAxisSizingMode` at
    whatever `"FIXED"`-at-100 value it inherited, even though
@@ -623,7 +719,7 @@ For each item in `plan.components`, in order:
      sectionFrame.setBoundVariable("paddingRight", getVar(section.paddingHorizontalVariable));
      for (const line of section.textLines) {
        const lineText = figma.createText();
-       lineText.name = line.labelPropertyName; // e.g. "Title", "Description", "Content", or Breadcrumb's own "Item1"/"Item2"/"CurrentPage" — distinct per line, for step 4's property binding
+       lineText.name = line.labelPropertyName; // e.g. "Title", "Description", "Content", or Breadcrumb's own "Item1"/"Item2"/"CurrentPage" — distinct per line, for step 5's property binding
        lineText.fontName = { family: fontFamilyValue, style: line.weight }; // "Medium" or "Regular", per the plan
        lineText.characters = line.defaultLabel;
        lineText.setBoundVariable("fontSize", getVar(line.fontSizeVariable));
@@ -653,12 +749,12 @@ For each item in `plan.components`, in order:
    }
    ```
    Every text line across every section still needs a real component
-   property in step 4, same as any other label — just more of them, named
+   property in step 5, same as any other label — just more of them, named
    per `line.labelPropertyName` instead of the fixed `Label`/`Description`
    pair. A `Separator` text node is never one of them (see above) — step
-   4's own `sections` loop only ever iterates `section.textLines`, never
+   5's own `sections` loop only ever iterates `section.textLines`, never
    touches separator nodes.
-3. **Convert each variant frame to a component, then `combineAsVariants`** —
+4. **Convert each variant frame to a component, then `combineAsVariants`** —
    name each component `"<variantPropertyName>=<variant.name>"` (e.g.
    `"Variant=Destructive"`) before combining; Figma derives the variant
    property and its options from that naming convention automatically, no
@@ -672,13 +768,13 @@ For each item in `plan.components`, in order:
    componentSet.layoutMode = "HORIZONTAL"; // combineAsVariants stacks at (0,0) — always re-layout after
    componentSet.itemSpacing = 24;
    ```
-4. **Add the label as a real TEXT component property — only when
+5. **Add the label as a real TEXT component property — only when
    `component.labelPropertyName` is present.** Skeleton (added 2026-09-18)
    has no label at all, so this whole step is skipped for it — there's no
    property to add and no text node to bind it to. For every component
    that DOES have one, bound to every variant's text node, not just set on
    one. Name each text node when creating it (`text.name = "PrimaryText"`,
-   and if present, `secondaryText.name = "SecondaryText"` — see step 2
+   and if present, `secondaryText.name = "SecondaryText"` — see step 3
    above) so this step can find the right one by name instead of
    `findOne(n => n.type === "TEXT")`, which becomes ambiguous the moment a
    variant has TWO text nodes (Alert's own secondary line):
@@ -697,7 +793,7 @@ For each item in `plan.components`, in order:
    }
    ```
    A text-less component's instances still get the real, automatically-
-   derived `Variant` property from step 3's own naming convention (e.g.
+   derived `Variant` property from step 4's own naming convention (e.g.
    Skeleton's own `"Default"` value) — `setProperties()` still has
    something real to swap even with zero TEXT properties added here.
    **For a `sections`-based component** (Card), skip the two blocks above
@@ -714,7 +810,7 @@ For each item in `plan.components`, in order:
      }
    }
    ```
-5. **Validate before moving to the next component — never batch multiple
+6. **Validate before moving to the next component — never batch multiple
    components in one unvalidated pass:**
    - `figma_capture_screenshot` (plugin `exportAsync`, NOT
      `figma_take_screenshot` — that one goes through the REST API and can
@@ -735,8 +831,8 @@ For each item in `plan.components`, in order:
      deliverable.
    - **`setProperties()` keys aren't always the plain property name** —
      confirmed live on Badge: the variant axis (derived from the
-     `Name=Value` naming convention in step 3) keeps its plain name
-     (`"Variant"`), but an explicitly-added TEXT property (step 4, e.g.
+     `Name=Value` naming convention in step 4) keeps its plain name
+     (`"Variant"`), but an explicitly-added TEXT property (step 5, e.g.
      `labelPropertyName`) comes back from Figma with an
      auto-appended `#<nodeId>` suffix (e.g. `"Label#15:0"`). Calling
      `setProperties({ Label: ... })` fails outright
@@ -751,7 +847,7 @@ For each item in `plan.components`, in order:
      leftover validation instance in the final full-page screenshot before
      reporting done (a real orphan of exactly this kind was caught and
      removed during Badge's own live validation).
-6. **Report back**: which component(s) got built, how many real variants
+7. **Report back**: which component(s) got built, how many real variants
    each has (and which were skipped, with the plan's own stated reason),
    and — if any binding needed a nearest-token approximation per the plan's
    `notes` — say so plainly, the same "don't present an approximate result
@@ -762,14 +858,24 @@ that already has one of these component sets will create a second,
 differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
 component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Kbd/
-NativeSelect/Avatar/Label/Skeleton/Breadcrumb, any size beyond `default`,
-Breadcrumb's real `BreadcrumbEllipsis` (a collapsed-items affordance with
-its own icon, not modeled — see `buildBreadcrumbPlan`'s own comment), its
-support for any item count beyond a fixed three-item trail, its real
+NativeSelect/Avatar/Label/Skeleton/Breadcrumb/Empty/Field/Separator/
+FieldSeparator, any size beyond `default`, Breadcrumb's real
+`BreadcrumbEllipsis` (a collapsed-items affordance with its own icon, not
+modeled — see `buildBreadcrumbPlan`'s own comment), its support for any
+item count beyond a fixed three-item trail, its real
 `hover:text-foreground` link color (rest state only, per this whole
 file's own scope), and its real `<ChevronRightIcon>` separator (a plain
 decorative "›" text glyph stands in for it — not wired to any component
-property, not a faithful reproduction of the chevron shape), Alert's
+property, not a faithful reproduction of the chevron shape); Empty's real
+`EmptyMedia` icon slot (not modeled — the same declared NEEDS-ICON gap as
+every other icon-bearing component); Field's real `orientation` axis
+(vertical/horizontal/responsive — always its default vertical shape) and
+its `FieldSet`/`FieldLegend`/`FieldGroup`/`FieldContent`/`FieldTitle`
+sub-parts (not modeled at all); Separator's real vertical orientation
+(only the horizontal line is modeled — see `FigmaComponentLinePlanItem`'s
+own comment), FieldSeparator's real absolute-position + background-mask
+label technique (approximated here as three non-overlapping
+`[line, text, line]` segments instead), Alert's
 real destructive-tinted `AlertDescription` color (its description is
 modeled, but always in `text.secondary` — the real translucent-red tint on
 the destructive variant isn't bound, see `buildAlertPlan`'s own comment),
@@ -788,7 +894,7 @@ and RNR's React Native source both need their own real verification
 before this same mechanism can be trusted against them — don't assume the
 parser generalizes without checking). Most of shadcn/ui's own remaining
 real components either have no size-independent color "variant" axis at
-all (Checkbox, Switch, Separator, ...) or are compound/multi-part
+all (Checkbox, Switch, ...) or are compound/multi-part
 components needing MORE than Card's own two-section, text-only structure
 (Dialog, Sheet, Table, Sidebar — nested interactive sub-components, not
 just more text lines) — real, larger, separate work, checked and
@@ -808,29 +914,41 @@ guarantees a true circle by construction across every real preset, that
 Label's real bare-text shape (no fill/stroke/padding/radius at all) pushes
 and swaps cleanly with no frame styling to get wrong, and — new this
 round — that a genuinely text-less component (Skeleton) builds,
-screenshots, and instance-swaps cleanly through the newly-guarded step 2/4
+screenshots, and instance-swaps cleanly through the newly-guarded step 3/5
 code paths, with zero visible or structural regression on any of the
 eleven earlier components. This round also caught and fixed a real,
 live-only bug the plan JSON alone could never have revealed: a
 hug-contents frame with zero children doesn't self-size from its own
-padding (see step 2's own comment) — only found by actually screenshotting
+padding (see step 3's own comment) — only found by actually screenshotting
 the first text-less component ever pushed, confirming once again why this
 section's own bar requires a real screenshot pass per component, not just
 successful API calls.
 
+**Addendum, 2026-09-21 — Empty and Field added to the plan, live-Figma-push
+step deliberately deferred:** "Batch 4" of figma-remaining-components-plan.md
+added Empty (Header/Content sub-parts only) and Field (FieldLabel/
+FieldDescription/FieldError sub-parts only), both reusing the existing
+`sections` mechanism with no schema change. Plan JSON was regenerated and
+inspected against a real scaffolded test project, and a real `next build`
+plus a live Playwright `getComputedStyle` check confirmed every real value
+the plan claims (colors, padding, radius, gap) matches the actually-
+rendered components exactly. **Neither has yet gone through this step's own
+live-push bar** — built in an isolated worktree alongside two sibling
+batches (5, 6) touching the same live Figma file concurrently, per this
+round's own shared-file safety constraint.
+
 **Addendum, 2026-09-21 — Breadcrumb added to the plan, live-Figma-push
 step deliberately deferred:** "Batch 6" of
-figma-remaining-components-plan.md added a thirteenth component,
-Breadcrumb — the first `sections` consumer whose items lay out
-HORIZONTALLY. Its plan JSON was regenerated and inspected against a real
-scaffolded test project, and a real `next build` plus a live rendered-page
-check confirmed the real vendored `breadcrumb.tsx`'s own layout direction
-and separator markup match what the plan describes. **Unlike every
-component above, Breadcrumb has NOT yet gone through this step's own
-live-push bar** (build → `figma_capture_screenshot` → instance
+figma-remaining-components-plan.md added Breadcrumb — the first
+`sections` consumer whose items lay out HORIZONTALLY. Its plan JSON was
+regenerated and inspected against a real scaffolded test project, and a
+real `next build` plus a live rendered-page check confirmed the real
+vendored `breadcrumb.tsx`'s own layout direction and separator markup
+match what the plan describes. **Breadcrumb has NOT yet gone through this
+step's own live-push bar** (build → `figma_capture_screenshot` → instance
 `setProperties()` swap → screenshot → cleanup) — this batch ran in an
 isolated worktree specifically to avoid touching the same live Figma file
-two sibling batches (Empty/Field/Separator/Item's own `line` shape) were
+two sibling batches (4 — Empty/Field; 5 — Separator/FieldSeparator) were
 concurrently editing. Whoever merges all three batches in should run this
 step's full live-push bar against Breadcrumb, one batch at a time, same
 as every earlier component — including confirming live that the outer
@@ -839,6 +957,30 @@ frame actually lays out its three items in a row (not stacked), that the
 that all three text properties (`Item1`/`Item2`/`CurrentPage`) bind and
 swap independently on a real instance. Only then should this note be
 folded into the "all N components... proven live" statement above.
+
+**State after this round (2026-09-21, "Batch 5" of
+`figma-remaining-components-plan.md`):** Separator and FieldSeparator are
+added to the plan, the first genuinely non-box ("line") shape this file
+produces — see step 2's new branch, above, and
+`FigmaComponentLinePlanItem`'s own comment in `figma-components-plan.ts`
+for the full reasoning. FieldSeparator's real `centerLabel` capability
+(confirmed against real source, not assumed) is represented as a
+non-overlapping `[line, text, line]` row, a disclosed approximation of the
+real absolute-position + background-mask technique. **Plan-computed and
+verified against real rendered output (a real `next build` + Playwright
+`getComputedStyle` check — line thickness exactly 1px, line color an exact
+hex match to `border.default`, the label's real gap an exact 8px match to
+`spacing/2`, label color an exact hex match to `text.secondary`), but NOT
+yet proven through a live Figma push** — per this round's own scope
+constraint (a shared live test file with two other batches' agents
+working concurrently), the live build → screenshot → instance-swap →
+screenshot cycle for these two components is still outstanding. Whoever
+runs the next live push against this plan should give Separator and
+FieldSeparator that same full treatment, not skip it because the
+mechanism looks similar to an already-proven one — exactly the mistake
+this section's own history already warns against (Badge's own early
+"passing plan computation alone isn't sufficient proof" correction,
+above).
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
