@@ -680,19 +680,30 @@ override any of the four independently — they don't have to move together.
   *pushed to Figma* at all. Today, only one combination does — `nextjs` +
   `tailwind` + shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s
   own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card,
-  Kbd, NativeSelect, Avatar (its AvatarFallback sub-part only), Label, and
-  Skeleton**, one size each, all twelve proven with a real live push into a
-  real test file (Button 2026-09-15, Badge 2026-09-16, Toggle/Alert/Input/
-  Textarea/Card 2026-09-17, Kbd/NativeSelect/Avatar/Label/Skeleton
-  2026-09-18). Card is the first real compound component (a real
-  Header/Content structure with three independent text properties, not
-  just one label); Label is the first component with no box styling of its
-  own at all — a bare text node, no fill/stroke/padding/radius; Skeleton is
-  the first component with no text label at all (a plain animated box —
-  the real `animate-pulse` shimmer itself isn't reproduced, pushed as a
-  static gray box). See `figma-remaining-components-plan.md` for the full,
-  sequenced plan covering shadcn/ui's remaining components beyond these
-  twelve. Every other combination — the other seven "real theming" combinations from
+  Kbd, NativeSelect, Avatar (its AvatarFallback sub-part only), Label,
+  Skeleton, Separator, and `field.tsx`'s FieldSeparator** — fourteen real
+  components, one size each. The first twelve are proven with a real live
+  push into a real test file (Button 2026-09-15, Badge 2026-09-16,
+  Toggle/Alert/Input/Textarea/Card 2026-09-17, Kbd/NativeSelect/Avatar/
+  Label/Skeleton 2026-09-18); Separator/FieldSeparator (2026-09-21) are
+  plan-computed and verified against real rendered output (a real
+  `next build` + Playwright `getComputedStyle` check) but not yet proven
+  through a live Figma push — see `docs/layer2-layer3-plan.md`'s own
+  2026-09-21 follow-up entry and `SDSGT-figma-push/SKILL.md` step 7's own
+  "State after this round" note for that disclosure. Card is the first
+  real compound component (a real Header/Content structure with three
+  independent text properties, not just one label); Label is the first
+  component with no box styling of its own at all — a bare text node, no
+  fill/stroke/padding/radius; Skeleton is the first component with no text
+  label at all (a plain animated box — the real `animate-pulse` shimmer
+  itself isn't reproduced, pushed as a static gray box); Separator is the
+  first genuinely non-box shape (a fixed-size line, not a "hug contents"
+  frame at all), and FieldSeparator is the first to prove a real,
+  confirmed centered-label capability (`[line, text, line]`, a
+  non-overlapping approximation of its own real absolute-position +
+  background-mask technique). See `figma-remaining-components-plan.md` for
+  the full, sequenced plan covering shadcn/ui's remaining components
+  beyond these fourteen. Every other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when
   `figmaManaged` is true (see below), but no component ever shows up there,
