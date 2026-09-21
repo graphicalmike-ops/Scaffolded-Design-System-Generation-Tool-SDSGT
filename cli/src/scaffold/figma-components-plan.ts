@@ -63,6 +63,13 @@
 // `build<X>Plan` function reusing one of these mechanisms plus a row in
 // `COMPONENT_BUILDERS` below, not rewriting this file's own mechanism.
 //
+// Breadcrumb (2026-09-21, "Batch 6" of the remaining-components plan) is
+// the first `sections` consumer whose items lay out HORIZONTALLY instead
+// of Card's own vertical Header/Content stack — see
+// `FigmaComponentSectionPlanItem.textLineDirection`'s own comment, and
+// `buildBreadcrumbPlan`'s own comment for the real, disclosed decorative
+// text-glyph stand-in used for its real separator icon.
+//
 // The shadcn CSS-var -> SDSGT semantic path table below is the exact
 // mapping contracts-and-seeds.md's "shadcn/ui theming" section documents
 // for generate/shadcn.ts, applied in the OPPOSITE direction (there: SDSGT
@@ -107,6 +114,37 @@ export interface FigmaComponentVariantPlanItem {
 // themselves stack vertically inside the component's outer frame.
 export interface FigmaComponentSectionPlanItem {
   paddingHorizontalVariable: string;
+  // Both optional, added 2026-09-21 for Breadcrumb ("Batch 6" of
+  // figma-remaining-components-plan.md) — the first `sections` consumer
+  // whose items lay out side by side instead of Card's own vertical
+  // Header/Content stack. Purely additive: every section built before
+  // Breadcrumb (Card's own two) leaves both absent, and
+  // `SDSGT-figma-push`'s own replay defaults absent `textLineDirection` to
+  // today's vertical behavior — Card's existing replay is unchanged code,
+  // not just unchanged output.
+  //
+  // `textLineDirection`: "horizontal" flips how this component's own
+  // sections stack against each other (a row of items, Breadcrumb's real
+  // shape) instead of Card's vertical Header-then-Content stack. Set to
+  // the SAME value on every section within one component — it describes
+  // the component's own overall section-stacking axis, not a genuinely
+  // per-item choice, but lives here (rather than on
+  // `FigmaComponentPlanItem`) since it only ever has meaning alongside
+  // `sections` itself.
+  //
+  // `separatorGlyph`: a real, disclosed decorative stand-in for
+  // Breadcrumb's actual separator, which is an SVG `<ChevronRightIcon>`
+  // (lucide-react) — icons aren't drawn by this pipeline (see
+  // figma-remaining-components-plan.md's NEEDS-ICON bucket). When present,
+  // this glyph is rendered as its own plain text node immediately after
+  // this section in the replay, purely to show WHERE a separator sits.
+  // Explicitly NOT wired to any component property — editing an
+  // instance's item labels never touches it, and it is not a faithful
+  // reproduction of the real chevron shape. Left unset on a section with
+  // no following separator (e.g. a trail's last item), matching real
+  // markup, where a separator only ever sits BETWEEN items.
+  textLineDirection?: "vertical" | "horizontal";
+  separatorGlyph?: string;
   textLines: Array<{
     textVariable: string;
     fontSizeVariable: string;
@@ -1296,6 +1334,137 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
   };
 }
 
+// Thirteenth real component, added 2026-09-21 — "Batch 6" of
+// figma-remaining-components-plan.md, and the first real consumer of
+// `sections` whose items lay out HORIZONTALLY (a row) instead of Card's
+// own vertical Header-then-Content stack. Real current source (verified
+// against a real vendored `breadcrumb.tsx`, current registry, using
+// `@base-ui/react` not Radix — same library this registry already uses
+// for Badge): a 7-part API (`Breadcrumb`/
+// `BreadcrumbList`/`BreadcrumbItem`/`BreadcrumbLink`/`BreadcrumbPage`/
+// `BreadcrumbSeparator`/`BreadcrumbEllipsis`).
+//
+// Real, disclosed, narrower scope than the actual component: this models
+// a FIXED three-item trail (two links + one current page) — the real
+// component supports any number of items, and its real
+// `BreadcrumbEllipsis` (a collapsed-items affordance, its own icon) isn't
+// modeled at all, the same "not attempted" treatment `chart.tsx`'s own
+// per-series content gets.
+//
+// Real, load-bearing finding this batch exists to prove: the real
+// separator between items (`BreadcrumbSeparator`'s own default child,
+// confirmed by reading the real source) is `<ChevronRightIcon />` from
+// `lucide-react` — a real SVG icon, NOT a text character. Icons aren't
+// drawn by this pipeline (figma-remaining-components-plan.md's own
+// NEEDS-ICON bucket) — but unlike Checkbox/Switch/etc. (where the icon
+// IS the entire component, so skipping it would mean skipping the whole
+// component), Breadcrumb's own primary content is real, bindable text;
+// only the separator between items is an icon. Rather than decline the
+// whole component over one decorative glyph, this represents the
+// separator as a plain "›" text character — explicitly disclosed (see
+// `notes` below and `FigmaComponentSectionPlanItem.separatorGlyph`'s own
+// comment) as decorative only, wired to NO component property, not a
+// faithful reproduction of the real chevron's shape.
+//
+// Real color sourcing: `BreadcrumbList`'s own `text-muted-foreground`
+// (text.secondary) is the REST color for every item by default —
+// `BreadcrumbLink` itself sets no color of its own (only a
+// `hover:text-foreground` pseudo-state, out of this pipeline's own
+// documented "rest states only" scope, same as every other component).
+// `BreadcrumbPage` (the real current/active item) explicitly overrides to
+// `text-foreground` (text.primary) with `font-normal` — a real, confirmed
+// second color within the same component, not assumed. Real shared font
+// size: `BreadcrumbList`'s own `text-sm` (14px) — no item overrides its
+// own size.
+//
+// Real, disclosed, deliberate zero: `BreadcrumbItem` itself
+// (`inline-flex items-center gap-1`) and the root `<nav>`
+// (`className={cn(className)}`, no default classes AT ALL) have no
+// padding/radius/fill/border class of their own anywhere in real source —
+// represented with real 0px padding and radius/none, not approximated
+// into styling that doesn't exist, the same treatment Label's own bare-
+// text shape already established. The one real spacing value that DOES
+// exist is `BreadcrumbList`'s own `gap-1.5` (6px, the real gap between
+// items) — reused as `sectionGapVariable`, the same field Card's own
+// itemSpacing-between-sections already binds, applied here as the real
+// gap BETWEEN horizontally-laid-out items instead.
+function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function BreadcrumbList", "function BreadcrumbItem", "function BreadcrumbLink", "function BreadcrumbPage", "function BreadcrumbSeparator", "ChevronRightIcon"]) {
+    if (!breadcrumbSource.includes(marker)) {
+      throw new Error(`Breadcrumb's real source no longer contains "${marker}" — shadcn/ui's real Breadcrumb has likely changed shape since buildBreadcrumbPlan was written. Re-verify against the current vendored breadcrumb.tsx before trusting this plan.`);
+    }
+  }
+
+  const listMatch = breadcrumbSource.match(/function BreadcrumbList[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!listMatch) throw new Error("Could not find BreadcrumbList's own className string — real vendored source may have changed shape since this parser was written.");
+  const listColors = scanClassesForColors(listMatch[1]); // text-muted-foreground -> text.secondary, the real rest color for every item by default
+
+  const pageMatch = breadcrumbSource.match(/function BreadcrumbPage[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!pageMatch) throw new Error("Could not find BreadcrumbPage's own className string — real vendored source may have changed shape since this parser was written.");
+  const pageColors = scanClassesForColors(pageMatch[1]); // text-foreground -> text.primary, the real CURRENT-page override
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = nearestToken(0, radius, "radius"); // real <nav> has no radius class of its own at all
+  const itemGapMatch = nearestToken(6, spacing, "spacing"); // BreadcrumbList's real gap-1.5
+  const itemPaddingMatch = nearestToken(0, spacing, "spacing"); // BreadcrumbItem has no horizontal padding of its own (inline-flex items-center gap-1 — a gap, not a padding)
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // BreadcrumbList's real text-sm, shared by every item — no item overrides its own font size
+
+  for (const [label, match] of [
+    ["radius", radiusMatch],
+    ["item gap", itemGapMatch],
+    ["item padding", itemPaddingMatch],
+  ] as const) {
+    if (match.deltaPx > 0) {
+      notes.push(`Breadcrumb ${label}: nearest real token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push('Breadcrumb: its real separator between items is a <ChevronRightIcon> SVG (lucide-react), not a text character — icons aren\'t drawn by this pipeline (see figma-remaining-components-plan.md\'s NEEDS-ICON bucket). Represented as a decorative "›" text glyph baked directly into the design instead, purely to show WHERE a separator sits — it is explicitly NOT wired to any component property, so editing an instance\'s item labels never moves or changes it, and it is not a faithful reproduction of the real chevron icon\'s shape.');
+  notes.push("Breadcrumb: represented as a fixed three-item trail (two links + one current page) — its real BreadcrumbEllipsis (a collapsed-items affordance, with its own icon) isn't modeled, and the real component supports any number of items, not a fixed three.");
+  notes.push("Breadcrumb: its real <nav> root and BreadcrumbItem have no fill/stroke/radius/padding class of their own at all — represented with none of its own (radius/none, no fill, no stroke, 0px item padding), not approximated into styling that doesn't exist, the same treatment Label's own bare-text shape already established.");
+
+  return {
+    name: "Breadcrumb",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    sectionGapVariable: itemGapMatch.figmaName,
+    sections: [
+      {
+        paddingHorizontalVariable: itemPaddingMatch.figmaName,
+        textLineDirection: "horizontal",
+        separatorGlyph: "›",
+        textLines: [
+          { textVariable: listColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Item1", defaultLabel: "Home" },
+        ],
+      },
+      {
+        paddingHorizontalVariable: itemPaddingMatch.figmaName,
+        textLineDirection: "horizontal",
+        separatorGlyph: "›",
+        textLines: [
+          { textVariable: listColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Item2", defaultLabel: "Category" },
+        ],
+      },
+      {
+        paddingHorizontalVariable: itemPaddingMatch.figmaName,
+        textLineDirection: "horizontal",
+        // Last item — the real current BreadcrumbPage — has no trailing
+        // separator: no `separatorGlyph` set, matching real markup, where
+        // a separator only ever sits BETWEEN items, never after the last.
+        textLines: [
+          { textVariable: pageColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "CurrentPage", defaultLabel: "Current Page" },
+        ],
+      },
+    ],
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -1320,6 +1489,7 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "avatar.tsx", name: "Avatar", build: buildAvatarPlan },
   { filename: "label.tsx", name: "Label", build: buildLabelPlan },
   { filename: "skeleton.tsx", name: "Skeleton", build: buildSkeletonPlan },
+  { filename: "breadcrumb.tsx", name: "Breadcrumb", build: buildBreadcrumbPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for
