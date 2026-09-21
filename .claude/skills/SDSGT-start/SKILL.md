@@ -687,14 +687,23 @@ override any of the four independently — they don't have to move together.
   ItemTitle/ItemDescription only), Marker, and Bubble** — twenty real
   components in scope as of 2026-09-21 (Batches 4-10 of
   `figma-remaining-components-plan.md`, Batch 9 being pure parser
-  infrastructure with no new component of its own). Nineteen of twenty are
-  proven with a real live push into a real test file (Button 2026-09-15,
-  Badge 2026-09-16, Toggle/Alert/Input/Textarea/Card 2026-09-17,
+  infrastructure with no new component of its own). All twenty are now
+  proven with a real live push (Button 2026-09-15, Badge 2026-09-16,
+  Toggle/Alert/Input/Textarea/Card 2026-09-17,
   Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18,
-  Breadcrumb/Empty/Field/Separator/FieldSeparator/Item/Marker 2026-09-21);
-  Bubble is plan-verified and live-rendered-page-verified only as of this
-  writing (a real `next build` + Playwright `getComputedStyle` check) —
-  not yet pushed into a real Figma file, see
+  Breadcrumb/Empty/Field/Separator/FieldSeparator/Item/Marker/Bubble
+  2026-09-21) — though not all twenty live in the SAME test file:
+  Button/Badge/Toggle/Alert/Input/Textarea/Card were each first proven
+  live in an earlier session (a different file), then Button/Badge/
+  Toggle/Alert were built fresh a second time directly in "SDSGT test
+  file" specifically to re-validate Batch 9's own selector-prefix-
+  stripping/arbitrary-value-skip changes against real `cva()`-based
+  components — Input/Textarea/Card remain unpushed to this particular
+  file (their own mechanism, `scanClassesForColors`/`sections`, is
+  already independently proven live in this file via
+  Kbd/NativeSelect/Avatar/Label/Marker and Breadcrumb/Empty/Field/Item
+  respectively, so this is a real, disclosed gap in WHERE things were
+  pushed, not an unproven mechanism). See
   `docs/layer2-layer3-plan.md`'s own dated entries and
   `SDSGT-figma-push/SKILL.md` step 7's own "proven live" statement for the
   full verification detail. Card is the first real compound component (a

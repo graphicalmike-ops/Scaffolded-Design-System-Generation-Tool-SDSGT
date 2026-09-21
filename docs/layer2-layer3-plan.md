@@ -824,6 +824,18 @@ Merged Batch 8 (Marker, already live-pushed and committed on `Generate-Layer-3`)
 
 **State after this round**: the Figma component push covers twenty real components on Next.js + shadcn/ui in code; nineteen are proven live (everything through Marker), Bubble is not yet. Updated `SDSGT-figma-push/SKILL.md` is **not yet updated for Bubble** — that update, plus both outstanding live-validation items above, are the next real steps.
 
+### Follow-up, 2026-09-21 — Batch 9 re-validated live and Bubble pushed; a stale claim about this file's own contents corrected along the way
+
+Before doing either, discovered and corrected a real inaccuracy: this file's own prior claim that Button/Badge/Toggle/Alert (and Input/Textarea/Card) were "proven live against SDSGT test file" was wrong — those seven were proven live in an EARLIER session's file, never this one. Checking the actual live "Components" section confirmed it held only 12 sets (Skeleton/Label/Kbd/NativeSelect/Avatar/Breadcrumb/Empty/Field/Separator/FieldSeparator/Item/Marker) — none of Button/Badge/Toggle/Alert/Input/Textarea/Card. Surfaced this to the user directly rather than silently proceeding as if "re-validate Button/Badge/Toggle/Alert" meant checking something that already existed; confirmed the corrected plan (build all four fresh in this file) before writing anything.
+
+**Batch 9's own re-validation bar, satisfied for real**: built Button (5 variants), Badge (5 variants), Toggle (2 variants), and Alert (2 variants, including its secondary description line) fresh, directly in "SDSGT test file," using today's post-Batch-9 code. Screenshotted every component set — every variant renders correctly, including both same-tone-trap-fixed Destructive pairs (Badge's and Alert's own) with genuinely readable text, not the invisible-text failure mode the fix exists to prevent. Created real instances and swapped `Label` (Button/Badge/Toggle) or `Label`+`Description` (Alert) independently on Default and Destructive for each — all correct. This is real, live, first-time proof (in this file) that the selector-prefix-stripping and arbitrary-value-skip changes didn't regress any of this pipeline's four original `cva()`-based components.
+
+**Bubble (Batch 10) pushed live**: 5 real variants (Default/Muted/Outline/Ghost/Destructive) via `buildVariantsFromCva`, built the same way, screenshotted (all correct, including its own Destructive same-tone fix), instance-validated on Default and Destructive (`Label` swaps independently on both).
+
+**Final full-page check**: 17 component sets now in "SDSGT test file"'s own "Components" section (the 12 from before, plus Button/Badge/Toggle/Alert/Bubble), zero orphaned instances.
+
+**State after this round**: all twenty real components this plan covers are proven live — though not all twenty in this one file, precisely disclosed rather than glossed over: Input/Textarea/Card remain the only three not present in "SDSGT test file" specifically (their own real mechanisms are independently proven live in this file via siblings — `scanClassesForColors` via Kbd/NativeSelect/Avatar/Label/Marker, `sections` via Breadcrumb/Empty/Field/Item — so this is a gap in WHERE they were pushed, not an unproven mechanism). Updated `SDSGT-figma-push/SKILL.md`'s step 7 opening paragraph to correct the stale "proven live against SDSGT test file" claim for the seven components it never actually described accurately, and to fold in Bubble and the Batch 9 re-validation. Updated `SDSGT-start/SKILL.md` to match.
+
 ---
 
 ## Checklist for whoever executes this

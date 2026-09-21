@@ -384,15 +384,29 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
-**Real ground truth, proven live against a real test file ("SDSGT test
-file") for all nineteen components this plan covers today:** Button
-(2026-09-15), Badge (2026-09-16), Toggle, Alert, Input, Textarea, and Card
-(all 2026-09-17), Kbd, NativeSelect, Avatar, Label, and Skeleton (all
-2026-09-18), and Breadcrumb, Empty, Field, Separator, FieldSeparator,
-Item, and Marker (all 2026-09-21). shadcn/ui's `Button`, `Badge`,
-`Toggle`, `Alert`, `Input`, `Textarea`, `Card`, `Kbd`, `NativeSelect`,
-`Avatar`, `Label`, `Skeleton`, `Breadcrumb`, `Empty`, `Field`, `Separator`,
-`FieldSeparator`, `Item`, `Marker` — one size each, rest states only (see
+**Real ground truth, proven live for all twenty components this plan
+covers today** — though not all in the SAME test file, disclosed
+precisely rather than glossed over: Button, Badge, Toggle, Alert, Input,
+Textarea, and Card were each first proven live 2026-09-15 through
+2026-09-17 in an earlier session's test file; Kbd, NativeSelect, Avatar,
+Label, and Skeleton (2026-09-18) and Breadcrumb, Empty, Field, Separator,
+FieldSeparator, Item, and Marker (2026-09-21) were proven live directly in
+the CURRENT real test file ("SDSGT test file"); and — also 2026-09-21 —
+Button, Badge, Toggle, and Alert were built fresh a SECOND time, directly
+in "SDSGT test file," specifically to re-validate Batch 9's own
+selector-prefix-stripping/arbitrary-value-skip changes against real
+`cva()`-based components (see that batch's own note below), with Bubble
+pushed alongside them as the first real consumer of that same
+infrastructure. Input/Textarea/Card remain the only three of twenty not
+present in "SDSGT test file" specifically — a real, disclosed gap in
+WHERE they were pushed, not an unproven mechanism (their own real
+mechanisms, `scanClassesForColors` and `sections`, are independently
+proven live in this same file via Kbd/NativeSelect/Avatar/Label/Marker
+and Breadcrumb/Empty/Field/Item respectively). shadcn/ui's `Button`,
+`Badge`, `Toggle`, `Alert`, `Input`, `Textarea`, `Card`, `Kbd`,
+`NativeSelect`, `Avatar`, `Label`, `Skeleton`, `Breadcrumb`, `Empty`,
+`Field`, `Separator`, `FieldSeparator`, `Item`, `Marker`, `Bubble` — one
+size each, rest states only (see
 `cli/src/scaffold/figma-components-plan.ts`'s own header for the full
 scope decision, including the real component shapes this plan handles —
 multi-variant `cva()` components via `buildVariantsFromCva`, single-state
@@ -405,7 +419,7 @@ color-variant axis COMBINED with `sections` in the same component set —
 and why most other real components don't fit any of these yet). This
 step's own mechanism (`for each item in plan.components`, no
 component-specific branching) is confirmed to genuinely generalize across
-nineteen structurally different components, covering every shape above
+twenty structurally different components, covering every shape above
 plus real structural variations (Skeleton has no text at all; Breadcrumb's
 `sections` lay out horizontally instead of vertically;
 Separator/FieldSeparator are fixed-size rectangles/rows, not auto-layout
@@ -493,6 +507,26 @@ used to (incorrectly) imply was close enough for Badge.
   (`text.secondary`, no fill/stroke/padding/radius — the same bare-text
   treatment Label already established), and its `Label` property swaps
   independently on a real instance.
+- **Batch 9 extends `classToFigmaVariable`/`buildVariantsFromCva`
+  (the most-reused code in this file) with selector-prefix stripping and a
+  generalized arbitrary-value skip rule** — pure infrastructure, no new
+  component of its own. Live-revalidated directly: rather than trust a
+  plan-JSON diff alone, Button, Badge, Toggle, and Alert were built FRESH
+  a second time, directly in "SDSGT test file," using the post-Batch-9
+  code — every variant (including both same-tone-trap pairs, Badge's and
+  Alert's own Destructive) rendered and swapped exactly as before, real,
+  live confirmation of zero regression.
+- **Bubble is the first real consumer of Batch 9's own infrastructure** —
+  a real `cva()` axis with 5 built variants (Default/Muted/Outline/Ghost/
+  Destructive) via `buildVariantsFromCva`, all six non-skipped-by-default
+  color classes gated behind a real `*:data-[slot=bubble-content]:`
+  selector prefix Batch 9's stripping was built for. Live-proven: all 5
+  variants render correctly (including Destructive's own same-tone-trap
+  fix), and `Label` swaps independently on real Default/Destructive
+  instances. `secondary` (an existing, unconditional `bg-secondary` skip)
+  and `tinted` (Batch 9's own arbitrary-value skip, firing correctly on
+  the prefix-stripped class per that batch's own bug-fix) are both
+  disclosed as skipped, not built.
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -899,7 +933,7 @@ differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
 component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Kbd/
 NativeSelect/Avatar/Label/Skeleton/Breadcrumb/Empty/Field/Separator/
-FieldSeparator/Item/Marker, any size beyond `default`, Breadcrumb's real
+FieldSeparator/Item/Marker/Bubble, any size beyond `default`, Breadcrumb's real
 `BreadcrumbEllipsis` (a collapsed-items affordance with its own icon, not
 modeled — see `buildBreadcrumbPlan`'s own comment), its support for any
 item count beyond a fixed three-item trail, its real
@@ -938,8 +972,16 @@ stack directly adjacent, relying only on line-height for spacing);
 Marker's real `separator`/`border` variant options (its own real `cva()`
 axis is ignored entirely, per the user's own decision, not just its
 color-bearing parts — `border`'s own real `border-border` class, a
-genuine parseable color match, is disclosed but not represented), and
-any framework's
+genuine parseable color match, is disclosed but not represented);
+Bubble's real per-variant geometry override on `ghost` (`rounded-none
+p-0` — real computed `0px` radius/padding, versus every other variant's
+shared component-wide values; this schema has no per-variant geometry
+field, so the pushed Ghost variant shares the same rounded/padded box as
+the rest, not its real flush rendering) and its real `secondary` variant
+(skipped by the existing `bg-secondary` rule, same as Button/Badge's own
+`secondary`, even though it isn't a token-availability question for
+Bubble specifically — the skip is a pipeline-wide existing behavior, not
+something disclosed as Bubble's own new gap), and any framework's
 component source beyond Next.js + shadcn/ui (shadcn-vue's `.vue` files
 and RNR's React Native source both need their own real verification
 before this same mechanism can be trusted against them — don't assume the
@@ -1034,6 +1076,32 @@ again, and removed the validation instance. A final full-page check
 confirmed all twelve of this file's component sets sit correctly inside
 the shared "Components" section, with zero orphaned instances left
 behind.
+
+**State after this round (2026-09-21, "Batch 9 re-validation" + "Batch
+10"):** Bubble is now proven live too, folded into the "all twenty...
+proven live" statement above. Before pushing it, Batch 9's own explicitly
+-stated bar was satisfied directly: rather than assume a plan-JSON diff
+was sufficient, Button, Badge, Toggle, and Alert were built FRESH,
+directly in "SDSGT test file" (none of the four had ever actually been
+pushed to this specific file before — a real correction to this file's
+own prior "proven live against SDSGT test file" claim, which had
+conflated an earlier session's different file with this one). All 5
+Button variants, all 5 Badge variants, both Toggle variants, and both
+Alert variants (including its secondary description line) rendered
+correctly; instance `setProperties()` swaps confirmed on Default and
+Destructive for each — both same-tone-trap-fixed pairs (Badge's and
+Alert's own Destructive) render with genuinely readable text, live
+confirmation the parser change didn't regress them. Bubble was then
+built the same way: 5 real variants via `buildVariantsFromCva`, all
+correctly colored (including its own Destructive same-tone fix), `Label`
+swapping independently on real Default/Destructive instances. A final
+full-page check confirmed all seventeen of this file's own component
+sets (the twelve above, plus Button/Badge/Toggle/Alert/Bubble) sit
+correctly inside the shared "Components" section, with zero orphaned
+instances left behind. Input/Textarea/Card remain the only three of
+twenty real components not present in this specific file — see this
+step's own opening paragraph for the full, precise disclosure of what
+that does and doesn't mean.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
 
