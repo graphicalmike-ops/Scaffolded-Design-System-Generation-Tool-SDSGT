@@ -384,29 +384,90 @@ thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
 
-**Real ground truth, proven live for all twenty components this plan
-covers today** — though not all in the SAME test file, disclosed
-precisely rather than glossed over: Button, Badge, Toggle, Alert, Input,
-Textarea, and Card were each first proven live 2026-09-15 through
-2026-09-17 in an earlier session's test file; Kbd, NativeSelect, Avatar,
-Label, and Skeleton (2026-09-18) and Breadcrumb, Empty, Field, Separator,
-FieldSeparator, Item, and Marker (2026-09-21) were proven live directly in
-the CURRENT real test file ("SDSGT test file"); and — also 2026-09-21 —
+**Real ground truth, proven live for all twenty-nine components this plan
+covers today — the figure-out-shadcn/ui effort is now fully closed, per
+`figma-remaining-components-plan.md`'s own "Definition of done"** —
+twenty-four are the FULL, closed `figma-remaining-components-plan.md`
+12-batch scope; Checkbox, Spinner, Switch, RadioGroup, and Attachment are
+separate, same-day follow-on work (real icon-drawing capability, plus two
+components needing none at all once re-read — see that plan's own
+NEEDS-ICON bucket entry for the full detail) — though not all in the SAME
+test file,
+disclosed precisely rather than glossed over: Button, Badge, Toggle,
+Alert, Input, Textarea, and Card were each first proven live 2026-09-15
+through 2026-09-17 in an earlier session's test file; Kbd, NativeSelect,
+Avatar, Label, and Skeleton (2026-09-18) and Breadcrumb, Empty, Field,
+Separator, FieldSeparator, Item, and Marker (2026-09-21) were proven live
+directly in the CURRENT real test file ("SDSGT test file"); and — also
+2026-09-21 —
 Button, Badge, Toggle, and Alert were built fresh a SECOND time, directly
 in "SDSGT test file," specifically to re-validate Batch 9's own
 selector-prefix-stripping/arbitrary-value-skip changes against real
 `cva()`-based components (see that batch's own note below), with Bubble
 pushed alongside them as the first real consumer of that same
-infrastructure. Input/Textarea/Card remain the only three of twenty not
-present in "SDSGT test file" specifically — a real, disclosed gap in
+infrastructure. Input/Textarea/Card remain the only three of twenty-nine
+not present in "SDSGT test file" specifically — a real, disclosed gap in
 WHERE they were pushed, not an unproven mechanism (their own real
 mechanisms, `scanClassesForColors` and `sections`, are independently
 proven live in this same file via Kbd/NativeSelect/Avatar/Label/Marker
-and Breadcrumb/Empty/Field/Item respectively). shadcn/ui's `Button`,
-`Badge`, `Toggle`, `Alert`, `Input`, `Textarea`, `Card`, `Kbd`,
-`NativeSelect`, `Avatar`, `Label`, `Skeleton`, `Breadcrumb`, `Empty`,
-`Field`, `Separator`, `FieldSeparator`, `Item`, `Marker`, `Bubble` — one
-size each, rest states only (see
+and Breadcrumb/Empty/Field/Item respectively). **Progress (added
+2026-09-22, "Batch 11") was pushed live directly in "SDSGT test file"
+the same day** — the new `bar` replay branch (step 2b) built a real
+Track+Indicator component set with exact 240×4px/144×4px real dimensions
+(confirmed via `preConvertInfo`, captured BEFORE `createComponentFromNode`
+per this step's own documented node-invalidation gotcha), a real instance
+created from it and screenshotted matching the component exactly, then
+removed cleanly. One real, new finding from this specific push, not
+previously documented for `line`: `combineAsVariants` throwing partway
+through a script (here, from a now-removed manual
+`addComponentProperty("Variant", ...)` call — variant properties are
+already auto-derived from variant names, the same precedent Skeleton/
+Avatar/Label/Separator already established, so this call was always
+redundant) does NOT roll back the `createComponentFromNode`/
+`combineAsVariants` mutations that already ran earlier in that same
+script — contrary to this skill's own general "atomic, all-or-nothing"
+framing for `figma_execute`. A real orphaned "Progress" component set was
+left behind by the failed attempt and had to be found and deleted
+manually before the retry. **Take this as the operating assumption for
+every future push, not a one-off**: after ANY `figma_execute` error during
+component creation, explicitly check for and remove partial nodes it may
+have already created — don't assume the failed call left the file
+untouched just because it returned an error. **Tabs, Accordion, and
+Tooltip (added 2026-09-22, "Batch 12" — the last batch in the plan) were
+all three pushed live the same day, directly in "SDSGT test file"**:
+Tabs as a real, manual two-variant Active/Inactive set (no `cva()` to
+route through `buildVariantsFromCva`) — screenshotted (a filled white
+pill for Active beside plain gray text for Inactive), instance-validated
+swapping BOTH `Variant` and `Label` together in one `setProperties()`
+call; Accordion as a flat label-only box, screenshotted (plain text, no
+visible frame, matching its real zero-padding/transparent-fill source),
+`Label` swap confirmed; Tooltip as a flat box, screenshotted (a dark
+filled box with light text — the real, disclosed fg/bg inversion
+rendering exactly as expected), `Label` swap confirmed. All three cleaned
+up correctly, final section check: 21 component sets, zero orphans, no
+regressions to any of the 18 prior components visible in the full-section
+screenshot. One real, repeatable mistake caught and fixed here, worth
+flagging for every future manual (non-generic-loop) component build:
+`combineAsVariants` leaves its result stacked at `(0,0)` with every
+variant fully overlapping — Tabs' own component set initially
+screenshotted as a single "Tab" because BOTH variants sat at the exact
+same position. Step 4's own documented pattern
+(`componentSet.layoutMode = "HORIZONTAL"; componentSet.itemSpacing = 24;`,
+immediately after `combineAsVariants`) already covers this — the miss was
+skipping it in a one-off script, not a gap in the documented procedure
+itself. Real, disclosed simplification confirmed by a live
+`getComputedStyle` check (not just the plan JSON) before pushing: Tabs'
+own Active and Inactive variants render with the exact SAME computed text
+color in the real browser (`rgb(29, 32, 29)` vs. the real
+`oklab(...alpha 0.6)`, confirming the 60%-opacity difference this plan
+drops, per `buildTabsPlan`'s own comment) — live proof the disclosed gap
+is real and not overstated.
+shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`, `Input`, `Textarea`,
+`Card`, `Kbd`, `NativeSelect`, `Avatar`, `Label`, `Skeleton`, `Breadcrumb`,
+`Empty`, `Field`, `Separator`, `FieldSeparator`, `Item`, `Marker`,
+`Bubble`, `Progress`, `Tabs`, `Accordion`, `Tooltip`, `Checkbox`,
+`Spinner`, `Switch`, `RadioGroup`, `Attachment` — one size each, rest
+states only (see
 `cli/src/scaffold/figma-components-plan.ts`'s own header for the full
 scope decision, including the real component shapes this plan handles —
 multi-variant `cva()` components via `buildVariantsFromCva`, single-state
@@ -414,13 +475,23 @@ no-`cva()` components via `scanClassesForColors`
 (Input/Textarea/Kbd/NativeSelect/Avatar/Label/Marker), Card's own real
 compound-component support via `sections` (vertical, and — since
 Breadcrumb — horizontal too), a genuinely non-box fixed-size `line` shape
-(Separator/FieldSeparator), and — since Item — a real `cva()`
-color-variant axis COMBINED with `sections` in the same component set —
-and why most other real components don't fit any of these yet). This
-step's own mechanism (`for each item in plan.components`, no
-component-specific branching) is confirmed to genuinely generalize across
-twenty structurally different components, covering every shape above
-plus real structural variations (Skeleton has no text at all; Breadcrumb's
+(Separator/FieldSeparator), a real `cva()` color-variant axis COMBINED
+with `sections` in the same component set (Item), a genuinely NESTED
+fixed-size `bar` shape (Progress — a track containing a narrower,
+same-height indicator), a real MANUAL multi-variant axis with no `cva()`
+behind it at all (Tabs), a real IMPORTED VECTOR icon bound via a Lucide
+SVG path table (Checkbox's own per-variant `icon`, Spinner's own
+whole-component `icon`), a literal FIXED-pixel box size instead of a
+hug-content-plus-padding approximation (Checkbox's own `fixedSizePx`), a
+genuinely NESTED fixed-size shape with a DISCRETELY-POSITIONED thumb
+rather than a continuously-growing fill (Switch's own per-variant
+`thumb`), and a plain solid dot needing no vector import at all
+(RadioGroup's own `centerDot`) — and why most other real components don't
+fit any of these yet). This step's own mechanism (`for each item in
+plan.components`, no component-specific branching) is confirmed to
+genuinely generalize across twenty-nine structurally different
+components, covering every shape above plus
+real structural variations (Skeleton has no text at all; Breadcrumb's
 `sections` lay out horizontally instead of vertically;
 Separator/FieldSeparator are fixed-size rectangles/rows, not auto-layout
 frames at all; Item's `sections` render correctly across three real
@@ -527,6 +598,126 @@ used to (incorrectly) imply was close enough for Badge.
   and `tinted` (Batch 9's own arbitrary-value skip, firing correctly on
   the prefix-stripped class per that batch's own bug-fix) are both
   disclosed as skipped, not built.
+- **Progress introduces a genuinely NESTED fixed-size shape** (`bar` — a
+  track containing a narrower, same-height indicator; see
+  `FigmaComponentBarPlanItem`'s own comment in `figma-components-plan.ts`
+  for the full reasoning). Step 2b below is the new branch: a fixed-size
+  track frame with `clipsContent = true`, containing a fixed-size,
+  perfectly SQUARE indicator rectangle docked at its left edge — the
+  indicator's own rounded look in a real browser comes entirely from the
+  track's clip, not a radius binding on the indicator itself, which would
+  incorrectly round its right edge too whenever the fill is under 100%.
+  Plan computation is confirmed (real `bg-muted`/`bg-primary` classes,
+  `rounded-full`, and `h-1` all resolving correctly with zero deltas), and
+  live-proven (2026-09-22): a real 240×4px track and 144×4px indicator
+  (exactly 60% of 240, per `representativeFillFraction`) were built,
+  confirmed via `preConvertInfo` captured before `createComponentFromNode`,
+  screenshotted (a green pill-shaped fill over a light gray track, rounded
+  ends), instantiated, screenshotted again matching the component exactly,
+  then cleanly removed. See this section's own opening ledger for the real
+  orphaned-node finding this specific push surfaced (a failed
+  `figma_execute` call does NOT necessarily roll back mutations it already
+  made earlier in the same script).
+- **Tabs is the first real MANUAL multi-variant axis with no `cva()`
+  behind it at all** — `TabsTrigger`'s own real active/inactive state
+  lives on a single className string gated by a bare `data-active:`
+  pseudo-class prefix (no `key=value` brackets, a different shape from
+  Batch 9's own stripping), built by hand into two variants ("Inactive"/
+  "Active") rather than routed through `buildVariantsFromCva`. Live-proven
+  (2026-09-22): a real white filled pill for Active beside plain
+  (transparent, gray) text for Inactive, matching a live
+  `getComputedStyle` check taken before pushing. A real, repeatable
+  mistake caught here on the first attempt: `combineAsVariants` leaves
+  its variants stacked at `(0,0)`, fully overlapping, until
+  `componentSet.layoutMode = "HORIZONTAL"` is set explicitly (step 4's own
+  documented pattern) — skipped in the first build script, causing both
+  variants to render on top of each other; fixed by setting it on the
+  already-created component set rather than rebuilding from scratch.
+  Instance validation swapped `Variant` and `Label` together in one
+  `setProperties()` call, confirmed correct.
+- **Accordion is a flat label-only box**, per a real, disclosed deviation
+  from this batch's own "(chevron + label)" framing — see
+  `buildAccordionPlan`'s own comment in `figma-components-plan.ts` for why
+  (the `sections`/horizontal mechanism that could place a trailing
+  chevron glyph beside a label has no field for this component's own real
+  vertical padding). Live-proven: renders as plain text with no visible
+  frame at all (confirmed transparent fill, zero horizontal padding,
+  matching real source), `Label` swap confirmed on a real instance.
+- **Tooltip confirms a real, load-bearing fg/bg role inversion live, not
+  just in the plan JSON** — its real `bg-foreground`/`text-background`
+  classes resolve through the existing token table into a dark filled box
+  with light text, screenshotted exactly as expected (a real, confirmed
+  correct-value-confusing-name finding, same disclosure treatment as
+  `buildAlertPlan`'s own destructive-gate comment). `Label` swap confirmed
+  on a real instance.
+- **Checkbox and Spinner are the first components using a real IMPORTED
+  VECTOR icon** — separate, same-day follow-on work after this plan's own
+  12 batches closed, unlocking part of `figma-remaining-components-plan.md`'s
+  own NEEDS-ICON bucket (that bucket's own closing note named this exact
+  capability as pending). Both use `figma.createNodeFromSvg()` against a
+  small, curated, hardcoded 2-icon table (`LUCIDE_ICONS` in
+  `figma-components-plan.ts`, real path data extracted directly from an
+  installed `lucide-react` package's own bundled source, not typed from
+  memory) — no new CLI dependency, no new MCP tool, the same
+  `figma_execute` mechanism as everything else in this step. **Real,
+  live-confirmed finding, smoke-tested before any component was built**:
+  `node.rescale()` must be used to resize an imported icon, never
+  `resize()` — `resize()` scales the vector's geometry but leaves
+  `strokeWeight` a literal, UNSCALED `2`, which renders disproportionately
+  thick at any target size smaller than the icon's native 24px; `rescale()`
+  correctly scales both together (confirmed live: `2 → 1.167` for a
+  24→14px scale, exactly `2 × 14/24`). `setBoundVariableForPaint` on the
+  imported vector's own `.strokes` works identically to every other
+  fill/stroke binding in this file — the first time it's been exercised on
+  a VECTOR node specifically, not just a FRAME/RECTANGLE. Checkbox also
+  introduces `fixedSizePx` — a literal FIXED 16×16px square (real,
+  unconditional `size-4`), the first box-shaped component in this file NOT
+  using the hug-content-plus-padding approximation every earlier one uses
+  (Avatar's own comment had already named this exact missing shape).
+  Live-proven 2026-09-22: Checkbox screenshotted correctly (an outlined
+  empty square for Unchecked, a filled green square with a proportional
+  white checkmark for Checked), `Variant` swap confirmed on a real
+  instance; Spinner screenshotted correctly (a dark, real loader-arc
+  shape, its real `animate-spin` rotation disclosed as not reproduced,
+  same treatment as Skeleton's own `animate-pulse`), instantiated and
+  confirmed matching. Both cleaned up correctly, final section check: 23
+  component sets, zero orphans, no regressions to any of the 21 prior
+  components.
+- **Switch, RadioGroup, and Attachment close out the NEEDS-ICON bucket for
+  good — and with it, `figma-remaining-components-plan.md`'s entire
+  "Definition of done"** (see that plan's own closing statement). Switch
+  introduces the per-variant `thumb` shape — a fixed track (real
+  32×18.4px, confirmed arbitrary-bracket values) containing a fixed,
+  DISCRETELY-POSITIONED circular thumb (16px, `figma.createEllipse()`,
+  positioned via a computed geometric equivalent of the real CSS
+  `translate-x` transform, not a literal replication of it) — genuinely
+  different from `bar`'s own continuously-growing fill, hence living on
+  the VARIANT (Switch's own two real states each need a different track
+  color and thumb position) rather than the top level. Screenshotted
+  correctly (thumb left on a gray track when Unchecked, thumb right on a
+  green track when Checked), `Variant` swap confirmed on a real instance.
+  RadioGroup reuses Checkbox's exact fixed-square/`data-checked:`-split
+  shape but swaps the icon for a `centerDot` — a plain solid circle, no
+  `createNodeFromSvg`/`rescale` at all — screenshotted correctly (an
+  outlined ring, and a filled ring with a centered white dot), `Variant`
+  swap confirmed. Attachment reuses Item's own outer-frame-plus-`sections`
+  shape exactly (Media/Actions excluded, same reasons as Item's own
+  Media/Actions) — screenshotted correctly (a bordered card with
+  Title/Description stacked), both `Title` and `Description` swap
+  independently on a real instance. **A real bug was caught and fixed
+  BEFORE any live push, not after**: `buildAttachmentPlan`'s first draft
+  passed its base class string straight to `scanClassesForColors` without
+  filtering out two inline `data-[state=error]:`/`data-[state=idle]:`
+  classes first — Batch 9's own selector-prefix stripping silently
+  stripped the bracket prefix and matched the REMAINING `border-
+  destructive` as if unconditional, producing a wrong `status.error`
+  stroke instead of the real `border.default`. Caught by inspecting the
+  generated plan JSON before touching Figma at all (this project's own
+  "verify plan computation, not just that it doesn't crash" discipline),
+  fixed by filtering colon-prefixed tokens first — the same technique
+  Tabs/Checkbox/RadioGroup already use for their own bare-prefix axes.
+  Final full-page check: 26 component sets, zero orphans, no regressions
+  to any of the 23 prior components.
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -557,7 +748,37 @@ For each item in `plan.components`, in order:
    (e.g. "skipping the Secondary variant — this project's tokens don't
    have a secondary brand color"). Don't build a fallback/approximation for
    a skipped variant — the plan already decided it shouldn't exist.
-2. **Check `component.line` FIRST, before doing anything else in this
+1b. **Check `component.icon` FIRST, before `line`/`bar`/`sections`/the
+   normal box procedure** (Spinner — added 2026-09-22, icon-support work;
+   see `FigmaComponentIconPlanItem`'s own comment in
+   `figma-components-plan.ts`). This is the most extreme bypass this file
+   has — not even a frame gets created, only the icon itself, which IS the
+   whole component:
+   ```js
+   function buildLucideIcon(icon) { // icon: { viewBox, pathData, sizePx, colorVariable }
+     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon.pathData}"/></svg>`;
+     const iconNode = figma.createNodeFromSvg(svg); // returns a FRAME wrapping one VECTOR child — confirmed live 2026-09-22 via a real smoke test, not assumed
+     const nativeSize = iconNode.width; // real lucide icons always import at their native square viewBox size (24 for every icon this file uses so far)
+     iconNode.rescale(icon.sizePx / nativeSize); // NEVER resize() here — resize() scales the vector's geometry but leaves strokeWeight a literal, UNSCALED value (confirmed live: stayed exactly 2 after a resize() from 24px down to 14px, rendering disproportionately thick); rescale() correctly scales both together (confirmed live: 2 → 1.167 for a 24→14px scale, exactly `2 × 14/24`)
+     const vector = iconNode.findOne(n => n.type === "VECTOR");
+     vector.strokes = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(icon.colorVariable))]; // real, confirmed: setBoundVariableForPaint works identically on a VECTOR's own .strokes as it does on a FRAME's fills/strokes
+     return iconNode;
+   }
+
+   if (component.icon) {
+     const iconNode = buildLucideIcon(component.icon);
+     const comp = figma.createComponentFromNode(iconNode);
+     comp.name = `${plan.variantPropertyName}=${variant.name}`; // "Variant=Default" — same single-"Default"-variant precedent as Separator/Skeleton
+     // ...append `comp` to this component's own `components` array, then go
+     // straight to step 4's combineAsVariants. Skip everything else below —
+     // no frame, no fill/stroke/radius binding, no text-child step, none of
+     // it applies to a bare icon.
+   }
+   ```
+   In step 5, an icon-only component never has `component.labelPropertyName`
+   set, so the whole TEXT-property block is skipped automatically — same as
+   bare Separator and Progress.
+2. **Check `component.line` next, before doing anything else in this
    step** (Separator/`field.tsx`'s FieldSeparator — added 2026-09-21, the
    first genuinely non-box shape this plan produces; see
    `FigmaComponentLinePlanItem`'s own comment in `figma-components-plan.ts`
@@ -636,9 +857,129 @@ For each item in `plan.components`, in order:
    Separator itself (no `centerLabel`) gets no TEXT property at all — same
    as Skeleton, the automatically-derived `Variant` property (`"Default"`)
    is the only real property to swap during step 6's validation.
+2b. **Check `component.bar` next** (Progress — added 2026-09-22, "Batch 11"
+   of figma-remaining-components-plan.md, the first genuinely NESTED
+   fixed-size shape this plan produces; see `FigmaComponentBarPlanItem`'s
+   own comment in `figma-components-plan.ts` for the full reasoning). If
+   present, this REPLACES the entire auto-layout-frame procedure below for
+   this component, same as `component.line` above — build the track+
+   indicator pair, then jump straight to step 4 (`combineAsVariants`)/step
+   5 (label properties, though Progress sets no `labelPropertyName` at the
+   top level, so that whole TEXT-property block is skipped automatically,
+   same as bare Separator):
+   ```js
+   if (component.bar) {
+     const trackColor = getVar(component.bar.trackColorVariable);
+     const indicatorColor = getVar(component.bar.indicatorColorVariable);
+     const heightVar = getVar(component.bar.heightVariable);
+     const radiusVar = getVar(component.bar.radiusVariable);
+
+     const track = figma.createFrame(); // FIXED-size, not auto-layout — a real fixed h-1 track, not something hugging content
+     track.resize(component.bar.widthPx, 1); // real height set via setBoundVariable below; 1 is a placeholder pre-bind
+     track.setBoundVariable("topLeftRadius", radiusVar);
+     track.setBoundVariable("topRightRadius", radiusVar);
+     track.setBoundVariable("bottomLeftRadius", radiusVar);
+     track.setBoundVariable("bottomRightRadius", radiusVar);
+     track.fills = [bindPaint({ r: 0, g: 0, b: 0 }, trackColor)];
+     track.clipsContent = true; // reproduces the real overflow-x-hidden clip — this, not a radius on the indicator, is what gives the indicator its real rounded-left/square-right look
+
+     const indicator = figma.createRectangle(); // deliberately NO radius binding — see this branch's own comment above for why
+     indicator.resize(Math.max(1, component.bar.widthPx * component.bar.representativeFillFraction), 1); // real height bound below, matching the track's
+     indicator.x = 0;
+     indicator.y = 0;
+     indicator.fills = [bindPaint({ r: 0, g: 0, b: 0 }, indicatorColor)];
+     track.appendChild(indicator);
+
+     // Real Plugin API constraint (confirmed live for Separator/
+     // FieldSeparator's own fixed-size nodes): a variable-bound height
+     // must be set via setBoundVariable, which requires the node support
+     // it — bind track and indicator to the SAME heightVariable so they
+     // stay in lockstep if it's ever edited in Figma, matching the real
+     // indicator's own h-full (100% of track height).
+     track.setBoundVariable("height", heightVar);
+     indicator.setBoundVariable("height", heightVar);
+
+     const comp = figma.createComponentFromNode(track);
+     comp.name = `${plan.variantPropertyName}=${variant.name}`; // same naming convention as every other component
+     // ...append `comp` to this component's own `components` array exactly
+     // like every other variant below, then go straight to step 4's
+     // combineAsVariants. Skip the ENTIRE auto-layout frame procedure
+     // below (fills/strokes/padding/radius binding, the text-child step,
+     // the secondaryTextVariable/sections branches) for this component —
+     // none of it applies to a bar.
+   }
+   ```
+   **Live-proven (2026-09-22)** — `setBoundVariable("height", ...)` works
+   directly on both a FRAME (track) and a RECTANGLE (indicator), no
+   fallback needed; the real resulting sizes (240×4px track, 144×4px
+   indicator) were confirmed via a `preConvertInfo` object captured BEFORE
+   `createComponentFromNode` (see this step's own general node-
+   invalidation gotcha, further down) — reading `track.height`/
+   `indicator.height` AFTER conversion throws `"The node with id ... does
+   not exist"`, the exact same failure mode already documented there for
+   reading `frame.name` post-conversion, just hitting a numeric property
+   instead of a string one this time. Also: do NOT call
+   `componentSet.addComponentProperty(plan.variantPropertyName, "VARIANT",
+   ...)` for a bar (or any) component — `combineAsVariants` already
+   auto-derives the variant property from each component's own
+   `Variant=<name>` prefix (the same precedent Skeleton/Avatar/Label/
+   Separator's own bare "Default" variant already established); calling it
+   again throws `"Node already has a variant property with name Variant"`.
+   That failed call surfaced a real, separate finding worth generalizing:
+   the `createComponentFromNode`/`combineAsVariants` mutations earlier in
+   that SAME script were NOT rolled back by the later throw, leaving a real
+   orphaned component set in the file — despite this skill's own general
+   framing of `figma_execute` as atomic. Treat every future
+   component-creation error the same way: after fixing and retrying,
+   explicitly check for and delete any partial node the failed attempt may
+   have already created, rather than assuming a thrown error means nothing
+   happened.
+2c. **Check `variant.thumb` FIRST, before anything else in the per-variant
+   step below** (Switch — added 2026-09-22, final NEEDS-ICON batch; see
+   `FigmaComponentVariantPlanItem.thumb`'s own comment in
+   `figma-components-plan.ts`). Unlike `icon`/`centerDot` below (content
+   INSIDE an otherwise-normal frame), a `thumb`-bearing variant REPLACES
+   its own entire frame-building procedure — the track itself plays the
+   role every other variant's padded/fixed-size frame plays, with a
+   discretely-positioned circular thumb inside it, never a color/radius
+   binding on an outer box the usual way:
+   ```js
+   if (variant.thumb) {
+     const t = variant.thumb;
+     const track = figma.createFrame();
+     track.resize(t.trackWidthPx, t.trackHeightPx);
+     track.setBoundVariable("topLeftRadius", getVar(t.radiusVariable));
+     track.setBoundVariable("topRightRadius", getVar(t.radiusVariable));
+     track.setBoundVariable("bottomLeftRadius", getVar(t.radiusVariable));
+     track.setBoundVariable("bottomRightRadius", getVar(t.radiusVariable));
+     track.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(t.trackColorVariable))];
+
+     const thumb = figma.createEllipse(); // a real circle — Switch's own thumb is always perfectly round (rounded-full, equal width/height), not just a rounded rectangle
+     thumb.resize(t.thumbSizePx, t.thumbSizePx);
+     thumb.x = t.thumbOffsetXPx;
+     thumb.y = (t.trackHeightPx - t.thumbSizePx) / 2; // vertically centered, matching the real items-center flex behavior
+     thumb.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(t.thumbColorVariable))];
+     track.appendChild(thumb);
+
+     const variantName = variant.name;
+     const comp = figma.createComponentFromNode(track);
+     comp.name = `${plan.variantPropertyName}=${variantName}`;
+     // ...append `comp` to this component's own `components` array exactly
+     // like every other variant, then continue the loop to the NEXT
+     // variant — skip the entire auto-layout frame procedure below for
+     // THIS variant only (another `thumb`-less variant in the same
+     // component would still go through it normally, though Switch's own
+     // two real variants both set `thumb`).
+   }
+   ```
+   If `variant.thumb` was present, that fully replaces this variant's own
+   build — continue the loop to the next variant, skipping step 3 below
+   entirely for this one.
 3. **Build each real variant as its own auto-layout frame** (skip this
-   entire step for a `component.line` component — handled above instead),
-   via
+   entire step for a `component.icon`, `component.line`, `component.bar`
+   component, or a variant that already went through the `variant.thumb`
+   branch above —
+   handled above instead), via
    `figma_execute` (no dedicated component-creation tool exists — same
    "raw Plugin API through `figma_execute`" treatment as text/effect
    styles in step 5). Real, verified pattern:
@@ -654,14 +995,28 @@ For each item in `plan.components`, in order:
    }
    const frame = figma.createFrame();
    frame.layoutMode = "HORIZONTAL";
-   frame.primaryAxisSizingMode = "AUTO";   // hug contents
-   frame.counterAxisSizingMode = "AUTO";
    frame.primaryAxisAlignItems = "CENTER";
    frame.counterAxisAlignItems = "CENTER";
-   frame.setBoundVariable("paddingLeft", getVar(item.paddingHorizontalVariable));
-   frame.setBoundVariable("paddingRight", getVar(item.paddingHorizontalVariable));
-   frame.setBoundVariable("paddingTop", getVar(item.paddingVerticalVariable));
-   frame.setBoundVariable("paddingBottom", getVar(item.paddingVerticalVariable));
+   if (component.fixedSizePx) {
+     // Real, genuinely new sizing shape, added 2026-09-22 for Checkbox
+     // (icon-support work) — a literal FIXED square (real size-4, exactly
+     // 16×16px unconditionally), not the hug-content-plus-padding
+     // approximation every earlier box-shaped component in this file
+     // uses. `resize()` flips both sizing modes to `"FIXED"` as a side
+     // effect (the same real finding already documented below for
+     // Skeleton's own text-less case) — no separate sizing-mode calls
+     // needed. Padding fields are UNUSED here (real, honest
+     // incompatibility — see `FigmaComponentPlanItem.fixedSizePx`'s own
+     // comment in `figma-components-plan.ts`).
+     frame.resize(component.fixedSizePx, component.fixedSizePx);
+   } else {
+     frame.primaryAxisSizingMode = "AUTO";   // hug contents
+     frame.counterAxisSizingMode = "AUTO";
+     frame.setBoundVariable("paddingLeft", getVar(item.paddingHorizontalVariable));
+     frame.setBoundVariable("paddingRight", getVar(item.paddingHorizontalVariable));
+     frame.setBoundVariable("paddingTop", getVar(item.paddingVerticalVariable));
+     frame.setBoundVariable("paddingBottom", getVar(item.paddingVerticalVariable));
+   }
    frame.setBoundVariable("topLeftRadius", getVar(item.radiusVariable));
    frame.setBoundVariable("topRightRadius", getVar(item.radiusVariable));
    frame.setBoundVariable("bottomLeftRadius", getVar(item.radiusVariable));
@@ -676,12 +1031,37 @@ For each item in `plan.components`, in order:
      frame.strokeWeight = 1; // or bind to a real border-width/* variable if the plan names one
    }
    ```
-   **Text child — only when `variant.textVariable` is present.** Skeleton
-   (added 2026-09-18) is the first component with NO text at all — its
-   variant sets no `textVariable`, and the whole text-child step is
-   skipped for it, not run with an empty string:
+   **Icon child — only when `variant.icon` is present** (Checkbox's own
+   Checked variant — added 2026-09-22, icon-support work; see
+   `FigmaComponentVariantPlanItem.icon`'s own comment). Takes priority over
+   the text-child step below — no component built so far needs both on one
+   variant. Reuses the exact same `buildLucideIcon` helper step 1b defines:
    ```js
-   if (variant.textVariable) {
+   if (variant.icon) {
+     const iconNode = buildLucideIcon(variant.icon); // same helper as step 1b's top-level icon bypass — see its own comment for the real rescale()-vs-resize() and stroke-binding findings
+     frame.appendChild(iconNode);
+   } else if (variant.centerDot) {
+   ```
+   **Center dot child — only when `variant.centerDot` is present**
+   (RadioGroup's own Checked variant — added 2026-09-22, final NEEDS-ICON
+   batch; see `FigmaComponentVariantPlanItem.centerDot`'s own comment).
+   Genuinely cheaper than the icon branch above — a plain solid circle,
+   no `createNodeFromSvg`/`rescale` involved at all:
+   ```js
+     const dot = figma.createEllipse();
+     dot.resize(variant.centerDot.sizePx, variant.centerDot.sizePx);
+     dot.x = (frame.width - variant.centerDot.sizePx) / 2;
+     dot.y = (frame.height - variant.centerDot.sizePx) / 2;
+     dot.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.centerDot.colorVariable))];
+     frame.appendChild(dot);
+   } else if (variant.textVariable) {
+   ```
+   **Text child — only when `variant.textVariable` is present** (continues
+   the `if`/`else if` above). Skeleton (added 2026-09-18) is the first
+   component with NO text at all — its variant sets no `textVariable`, and
+   the whole text-child step is skipped for it, not run with an empty
+   string:
+   ```js
      await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
      const text = figma.createText();
      text.name = "PrimaryText"; // lets step 5 find this specific node once a variant can have two
@@ -692,7 +1072,7 @@ For each item in `plan.components`, in order:
      try { text.setBoundVariable("fontFamily", getVar(component.fontFamilyVariable)); } catch (e) {} // real Figma versions support this; wrap anyway
      if (variant.underline) text.textDecoration = "UNDERLINE";
      frame.appendChild(text);
-   } else {
+   } else if (!component.fixedSizePx) {
      // Real, live-only finding (Skeleton, 2026-09-18) — don't skip this
      // else-branch even though it looks like it should be a no-op. A
      // hug-contents (`primaryAxisSizingMode`/`counterAxisSizingMode` both
@@ -710,6 +1090,12 @@ For each item in `plan.components`, in order:
      const h = frame.paddingTop + frame.paddingBottom;
      frame.resize(Math.max(w, 1), Math.max(h, 1));
    }
+   // else: component.fixedSizePx already gave the frame its correct real
+   // size (Checkbox's own Unchecked variant — no icon, no text, but
+   // already the right 16×16px via the fixedSizePx resize() above) — no
+   // further fix needed, and re-running the padding-sum computation here
+   // would read undefined paddingLeft/Right/Top/Bottom (fixedSizePx
+   // components never set them) and produce a wrong or NaN size.
    ```
    **After combining into a `componentSet`** (step 4, below), re-check its
    own `counterAxisSizingMode` for a text-less component — confirmed live,

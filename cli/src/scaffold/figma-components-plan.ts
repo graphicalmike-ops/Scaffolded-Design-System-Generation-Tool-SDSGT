@@ -108,6 +108,33 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+// A real, LUCIDE-specific icon shape, added 2026-09-22 (icon-support work,
+// following on from `figma-remaining-components-plan.md`'s own NEEDS-ICON
+// bucket). `pathData`/`viewBox` are raw, real SVG path strings — extracted
+// directly from a real installed `lucide-react` package's own bundled
+// source (its internal `__iconData$xx` object literals), NOT typed from
+// memory or convention — see `LUCIDE_ICONS` below for the exact two
+// entries this batch needs and their own provenance comment. `sizePx` is
+// the real target render size (Checkbox's own real `[&>svg]:size-3.5`,
+// 14px) — the SVG import always arrives at its native 24×24 lucide
+// viewBox and must be uniformly RESCALED (via the Plugin API's own
+// `node.rescale()`, never `resize()` — see `SKILL.md` step 7's own
+// comment for the real, confirmed-live reason: `resize()` scales a
+// vector's geometry but leaves `strokeWeight` a literal, unscaled 2,
+// rendering disproportionately thick at any target smaller than 24px;
+// `rescale()` correctly scales both together, confirmed live 2026-09-22
+// via a real smoke test before this schema was written). `colorVariable`
+// binds the imported vector's own `.strokes` (lucide icons are
+// stroke-based line icons, `fill: none` — the same "bind strokes, not
+// fills" pattern this file's `border`/`stroke` fields already use for
+// frames, just applied to a VECTOR node's own stroke for the first time).
+export interface FigmaComponentIconPlanItem {
+  viewBox: string; // e.g. "0 0 24 24" — real, from lucide's own source
+  pathData: string; // e.g. "M20 6 9 17l-5-5" — real, from lucide's own source
+  sizePx: number;
+  colorVariable: string;
+}
+
 export interface FigmaComponentVariantPlanItem {
   name: string; // Figma-safe variant value, e.g. "Default", "Outline"
   fillVariable?: string; // Figma variable name, e.g. "color/semantic/action/primary" — absent means transparent
@@ -124,6 +151,50 @@ export interface FigmaComponentVariantPlanItem {
   textVariable?: string;
   strokeVariable?: string;
   underline?: boolean;
+  // Real, added 2026-09-22 for Checkbox — an icon shown ONLY on this
+  // specific variant (Checkbox's own real Indicator is conditionally
+  // rendered only when checked; Unchecked has no icon at all, the same
+  // "text-less variant" shape Skeleton already established, just for an
+  // icon instead of text). Mutually exclusive with `textVariable` on the
+  // SAME variant in every real case built so far (no component yet needs
+  // both an icon AND a text label on one variant) but not schema-enforced
+  // as such, since a future component legitimately combining both isn't
+  // ruled out.
+  icon?: FigmaComponentIconPlanItem;
+  // Real, added 2026-09-22 for RadioGroup — a plain, small SOLID circle
+  // shown ONLY on this specific variant (RadioGroupItem's own real
+  // Indicator is conditionally rendered only when checked; Unchecked has
+  // none). Deliberately NOT `icon` — RadioGroup's own real checked marker
+  // is a plain `<span className="size-2 rounded-full bg-primary-foreground">`,
+  // not an SVG (confirmed against real source, not assumed from
+  // Checkbox's own shape) — genuinely cheaper to represent than an
+  // imported vector, no `createNodeFromSvg`/`rescale` involved at all.
+  centerDot?: { sizePx: number; colorVariable: string };
+  // Real, added 2026-09-22 for Switch — a fixed TRACK containing a fixed,
+  // DISCRETELY-POSITIONED thumb (unlike the top-level `bar`'s own
+  // continuously-growing indicator, Progress's shape). Lives on the
+  // VARIANT, not the top level, because Switch's own two real states
+  // (Checked/Unchecked) each need their own track color AND thumb
+  // position — `bar` only ever supports one shared shape across a
+  // single "Default" variant, which doesn't fit here. `thumbOffsetXPx`
+  // is a real, computed geometric equivalent of the real CSS
+  // `translate-x-[calc(100%-2px)]` transform (checked) vs `translate-x-0`
+  // (unchecked) — computed here as `trackWidthPx - thumbSizePx -
+  // borderInsetPx` (checked) / `borderInsetPx` (unchecked), assuming a
+  // symmetric inset from Tailwind's real bare `border` utility (1px) on
+  // both sides — a disclosed simplification of the real transform math,
+  // not a literal replication of it, since replicating Base UI's own
+  // flex-plus-transform layout exactly isn't necessary to reach the same
+  // visual result (thumb flush against whichever edge is active).
+  thumb?: {
+    trackColorVariable: string;
+    thumbColorVariable: string;
+    trackWidthPx: number;
+    trackHeightPx: number;
+    thumbSizePx: number;
+    thumbOffsetXPx: number;
+    radiusVariable: string; // real rounded-full, shared by both track and thumb
+  };
 }
 
 // One section of a real compound component's own layout — e.g. Card's
@@ -237,6 +308,50 @@ export interface FigmaComponentLinePlanItem {
     defaultLabel: string;
   };
 }
+// A second, genuinely new non-box shape, added 2026-09-22 ("Batch 11" of
+// figma-remaining-components-plan.md) — the first NESTED fixed-size frame
+// this file produces. `line` (above) is fixed-size too, but flat, a single
+// rectangle (or a row of three, for `centerLabel`); `bar` is a two-layer
+// TRACK containing a narrower, same-height INDICATOR, both fixed-size —
+// real shadcn `Progress` shape (`ProgressTrack`/`ProgressIndicator`, via
+// `@base-ui/react/progress` in the current registry), confirmed against a
+// real vendored `progress.tsx`: `ProgressTrack` is `relative flex h-1
+// w-full items-center overflow-x-hidden rounded-full bg-muted`;
+// `ProgressIndicator` is `h-full bg-primary transition-all`, its real
+// WIDTH set via an inline style keyed to `value`/`max` at runtime, not a
+// class — invisible to this parser, and genuinely not a static default the
+// way every other numeric target in this file is (compare `chart.tsx`'s
+// own permanently-out-of-scope ruling for the same underlying reason: a
+// runtime-computed visual with no fixed default state). `widthPx` and
+// `representativeFillFraction` are both real, disclosed stand-ins for
+// this, the same category as `line`'s own `representativeLengthPx` — a
+// literal, chosen footprint, not a claim that either is a real default.
+// `radiusVariable` here is the TRACK's own real `rounded-full` (bound via
+// `exactRadiusFull`, the same real always-9999px alias Avatar's own case
+// already established) — the INDICATOR itself has no `rounded-*` class of
+// its own in real source at all; its rounded left edge in a real browser
+// comes entirely from the track's own `overflow-x-hidden` clip, not a
+// class the indicator carries. `SKILL.md` step 7 reproduces this with the
+// track frame's own `clipsContent = true` plus a perfectly SQUARE
+// indicator rectangle docked at its left edge — not a second
+// `radiusVariable` on the indicator, which would visibly over-round its
+// right edge whenever the fill is less than 100%, a real, avoidable
+// mismatch a naive "just reuse the same radius everywhere" approach would
+// introduce. `heightVariable` binds the track's real fixed `h-1` (4px) —
+// a genuinely fixed, non-hug-content height (the indicator matches it via
+// real `h-full`, not a second independent measurement) — via the same
+// `spacing` scale every other pixel measurement in this file already
+// uses (no separate "sizing" scale exists), landing on a real exact
+// `spacing/1` match in the tailwind preset, per `buildProgressPlan`'s own
+// check.
+export interface FigmaComponentBarPlanItem {
+  trackColorVariable: string;
+  indicatorColorVariable: string;
+  widthPx: number;
+  representativeFillFraction: number; // 0..1, a disclosed stand-in — see this interface's own comment for why no real static default exists to read instead
+  radiusVariable: string;
+  heightVariable: string;
+}
 export interface FigmaComponentPlanItem {
   name: string; // "Button"
   variantPropertyName: string; // "Variant"
@@ -307,6 +422,62 @@ export interface FigmaComponentPlanItem {
   // through to `sections` or the normal box-building logic — a line
   // component never reaches either of those code paths.
   line?: FigmaComponentLinePlanItem;
+  // Real, genuinely new shape, added 2026-09-22 ("Batch 11" of
+  // figma-remaining-components-plan.md) — a fixed-size, nested TRACK+
+  // INDICATOR pair (Progress; see `FigmaComponentBarPlanItem`'s own
+  // comment). MUTUALLY EXCLUSIVE with `variants`'s own per-variant fill/
+  // text/stroke content, `sections`, AND `line` — a `bar`-based component's
+  // whole visible appearance lives on this field instead.
+  // `variantPropertyName`/`variants`/`skippedVariants`/`radiusVariable`
+  // themselves stay REQUIRED and still get set (a single "Default" entry,
+  // `radiusVariable` mirroring `bar.radiusVariable`'s own real value)
+  // purely for interface-shape parity with every other component — same
+  // precedent `line` already established for itself. `SKILL.md` step 7
+  // branches on `bar` immediately after `line`, before ever falling
+  // through to `sections` or the normal box-building logic — a bar
+  // component never reaches either of those code paths.
+  bar?: FigmaComponentBarPlanItem;
+  // Real, genuinely new shape, added 2026-09-22 (icon-support work) — a
+  // literal, FIXED pixel width/height for the outer box, real for
+  // Checkbox (`size-4`, exactly 16×16px, unconditionally, regardless of
+  // content) rather than the hug-content-plus-padding approximation every
+  // earlier box-shaped component uses (Avatar's own comment already names
+  // this exact gap — "this schema has no 'fixed size, no padding' shape
+  // yet" — this is that shape, finally added once a real, EXACTLY-known
+  // size existed to justify it, rather than Avatar's own approximated
+  // target). When present, `paddingHorizontalVariable`/
+  // `paddingVerticalVariable` are UNUSED (real, honest incompatibility —
+  // a literal fixed size and hug-content padding are two different ways
+  // of reaching a box's dimensions, never combined in real Tailwind
+  // markup either) — `SKILL.md` step 7 builds a `FIXED`-sizing-mode frame
+  // via `resize(fixedSizePx, fixedSizePx)` instead of the usual
+  // `AUTO`-sizing-mode padded frame, with content centered via
+  // `primaryAxisAlignItems`/`counterAxisAlignItems = "CENTER"` same as
+  // always. Unlike `line`/`bar`/`sections`, this does NOT bypass the
+  // normal per-variant fill/stroke/radius binding or the normal
+  // `combineAsVariants` flow — it only changes ONE thing (how the frame's
+  // own size is determined), so it composes normally with `variants` and
+  // with a per-variant `icon` (below).
+  fixedSizePx?: number;
+  // Real, genuinely new shape, added 2026-09-22 (icon-support work) — the
+  // WHOLE component IS a single icon, no frame/fill/stroke/padding/radius
+  // at all (Spinner; its entire real source is one `<Loader2Icon
+  // className="size-4 animate-spin" />`, nothing else). MUTUALLY
+  // EXCLUSIVE with `variants`'s own per-variant fill/text/stroke content,
+  // `sections`, `line`, AND `bar` — the same "whole visible appearance
+  // lives on this field instead" precedent those three already
+  // established. `variantPropertyName`/`variants`/`skippedVariants`/
+  // `radiusVariable` stay required/set for interface-shape parity only
+  // (a real 0px radius — a bare icon has no corners of its own), same
+  // precedent as `line`. The real `animate-spin` rotation isn't
+  // reproduced — a disclosed static icon, the same treatment Skeleton's
+  // own `animate-pulse` already receives. NOT the same field as a
+  // variant's own `icon` (`FigmaComponentVariantPlanItem.icon`, Checkbox's
+  // shape) — that one sits INSIDE an otherwise-normal box; this one
+  // REPLACES the box entirely. `SKILL.md` step 7 checks this field first,
+  // before `line`/`bar`/`sections`, since it is the most extreme bypass
+  // (not even a frame gets created).
+  icon?: FigmaComponentIconPlanItem;
 }
 
 export interface FigmaComponentsPushPlan {
@@ -339,6 +510,48 @@ const SHADCN_VAR_TO_SDSGT_PATH: Record<string, string> = {
 
 function sdsgtPathToFigmaName(path: string): string {
   return `color/semantic/${path.replace(/\./g, "/")}`;
+}
+
+// Real, curated icon path data, added 2026-09-22 (icon-support work,
+// following on from figma-remaining-components-plan.md's own NEEDS-ICON
+// bucket — a "real, separate icon-drawing-capability decision" that
+// bucket's own closing note said was still pending). Hardcoded here
+// rather than importing `lucide-react` into the CLI itself — this pipeline
+// never needs the installed package's full ~1500-icon runtime, only the
+// exact ~2 real icons these two components use, and hardcoding keeps plan
+// computation dependency-free and deterministic regardless of which
+// lucide-react version a given scaffolded project happens to have
+// installed. Both entries extracted directly from a real installed
+// `lucide-react` package's own bundled CJS source (its internal
+// `__iconData$xx` object literals — e.g. `{ name: "check", size: 24,
+// node: [["path", { d: "M20 6 9 17l-5-5" }]] }`), not typed from memory or
+// guessed from convention. `loaderCircle` is real current lucide's actual
+// internal name for what `lucide-react` still exports (and shadcn's own
+// `spinner.tsx` still imports) as `Loader2`/`Loader2Icon` — a real,
+// confirmed rename-with-alias found while extracting this, not assumed.
+// `viewBox`/`strokeWidth`/`fill`/linecap/linejoin all match lucide's own
+// real `defaultAttributes` (confirmed in the same bundled source): every
+// lucide icon is `viewBox="0 0 24 24" fill="none" stroke="currentColor"
+// stroke-width="2" stroke-linecap="round" stroke-linejoin="round"` — the
+// SAME wrapper for both icons below, only `pathData` differs.
+const LUCIDE_ICONS: Record<string, { viewBox: string; pathData: string }> = {
+  check: { viewBox: "0 0 24 24", pathData: "M20 6 9 17l-5-5" },
+  loaderCircle: { viewBox: "0 0 24 24", pathData: "M21 12a9 9 0 1 1-6.219-8.56" },
+};
+
+// Builds the real SVG string `figma.createNodeFromSvg` (called from
+// `SKILL.md` step 7) consumes — a pure string-assembly helper, no Figma
+// API access here (that stays in the skill, same "CLI computes, skill
+// replays" split as the rest of this file). `stroke="#000000"` is a
+// REQUIRED placeholder, not a real color choice — `currentColor` (lucide's
+// own real default) is a CSS keyword with no meaning in a static SVG
+// import, confirmed live during this batch's own smoke test (the import
+// succeeds either way, but a `currentColor` stroke resolves to nothing
+// visible); the placeholder gets fully overwritten by a real
+// `setBoundVariableForPaint` call on the imported vector's own `.strokes`
+// immediately after import, so its exact value is arbitrary.
+function buildLucideSvg(icon: { viewBox: string; pathData: string }): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${icon.viewBox}" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${icon.pathData}"/></svg>`;
 }
 
 // Only plain, unmodified Tailwind utility classes are recognized — no
@@ -2360,6 +2573,811 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
   };
 }
 
+// Twenty-first real component, added 2026-09-22 — "Batch 11" of
+// figma-remaining-components-plan.md, and the first component using the
+// new `bar` shape (see `FigmaComponentBarPlanItem`'s own comment for the
+// full real-source derivation and reasoning). Real current source
+// (`progress.tsx`, confirmed against a real vendored `shadcn add --all`
+// project, `@base-ui/react/progress`-based): only `ProgressTrack` and
+// `ProgressIndicator` are modeled — `ProgressLabel`/`ProgressValue` (a
+// real optional text pair, e.g. "Uploading…" / "60%") aren't, the same
+// "modeled subset of a real multi-part component" disclosure Card's own
+// CardFooter and Avatar's own AvatarImage already established.
+function buildProgressPlan(tokensCss: string, progressSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ['data-slot="progress-track"', 'data-slot="progress-indicator"', "rounded-full", "bg-muted", "bg-primary", "h-full"]) {
+    if (!progressSource.includes(marker)) {
+      throw new Error(`Progress's real source no longer contains "${marker}" — shadcn/ui's real Progress has likely changed shape since buildProgressPlan was written. Re-verify against the current vendored progress.tsx before trusting this plan.`);
+    }
+  }
+
+  const trackMatch = progressSource.match(/function ProgressTrack[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!trackMatch) throw new Error("Could not find ProgressTrack's own className string — real vendored source may have changed shape since this parser was written.");
+  const indicatorMatch = progressSource.match(/function ProgressIndicator[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!indicatorMatch) throw new Error("Could not find ProgressIndicator's own className string — real vendored source may have changed shape since this parser was written.");
+
+  const trackColors = scanClassesForColors(trackMatch[1]);
+  if (!trackColors.fillVariable) throw new Error("ProgressTrack's own bg-muted class didn't resolve to a fill variable — real vendored source may have changed shape since this parser was written.");
+  const indicatorColors = scanClassesForColors(indicatorMatch[1]);
+  if (!indicatorColors.fillVariable) throw new Error("ProgressIndicator's own bg-primary class didn't resolve to a fill variable — real vendored source may have changed shape since this parser was written.");
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+
+  const radiusMatch = exactRadiusFull(radius); // real rounded-lg -> a real EXACT alias to radius.full, same discipline as Avatar's own case
+  const heightMatch = nearestToken(4, spacing, "spacing"); // real h-1
+  if (heightMatch.deltaPx > 0) {
+    notes.push(`Progress height: nearest real spacing token is ${heightMatch.deltaPx}px off shadcn's own exact Tailwind value (h-1, 4px).`);
+  }
+
+  notes.push("Progress: only ProgressTrack/ProgressIndicator are modeled — ProgressLabel/ProgressValue (a real optional text pair, e.g. a percentage readout) aren't, the same disclosed scope cut as Card's own CardFooter.");
+  notes.push("Progress: its real indicator width is set via an inline style keyed to a runtime value/max prop, not a class — there is no real static default to read, so this plan uses a disclosed representative footprint (a 240px track, 60% filled) rather than a fabricated 'real' default. See FigmaComponentBarPlanItem's own comment for why this is a different category of gap than every other numeric target in this file.");
+  notes.push("Progress: the indicator's real rounded LEFT edge comes entirely from the track's own overflow-x-hidden clip in a real browser, not a rounded-* class on the indicator itself (which has none) — replayed as a square indicator rectangle inside a clipsContent track, not a second independent radius binding, which would incorrectly round the indicator's right edge too whenever the fill is under 100%.");
+
+  return {
+    name: "Progress",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own at this level — see `bar` instead
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName, // mirrors bar.radiusVariable — interface-shape parity only, same precedent `line` already established
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    bar: {
+      trackColorVariable: trackColors.fillVariable,
+      indicatorColorVariable: indicatorColors.fillVariable,
+      widthPx: 240,
+      representativeFillFraction: 0.6,
+      radiusVariable: radiusMatch.figmaName,
+      heightVariable: heightMatch.figmaName,
+    },
+  };
+}
+
+// Real, confirmed formula behind every `rounded-md` class in this
+// pipeline's own real vendored source, found while scoping Tabs/Tooltip
+// (2026-09-22, "Batch 12"): grepping a real generated `globals.css` shows
+// `--radius-md: calc(var(--radius) * 0.8)` — a MULTIPLIER off `--radius`
+// (this pipeline's own `radius.md`), the exact same category of formula
+// already established for Bubble's own `rounded-xl` (`* 1.4`, see
+// `buildBubblePlan`'s own comment) and Card's `rounded-xl` — never a
+// direct alias the way `rounded-lg` is (`exactRadiusMd`, `* 1.0`). Every
+// `rounded-md` class in this file before Batch 12 (Tabs' own
+// TabsTrigger, Tooltip's own TooltipContent) is new territory — no
+// earlier component used `rounded-md` specifically, only `rounded-lg`
+// (exact alias) and `rounded-xl` (a different multiplier, 1.4×). Kept as
+// an inline `nearestToken(radiusMdPx * 0.8, ...)` call at each of the two
+// real call sites rather than a third named `exactRadius*` helper — this
+// IS a `nearestToken` search (the multiplier only changes the TARGET fed
+// into it, unlike `exactRadiusMd`'s genuinely-exact, delta-always-0
+// alias) — extracting a one-line arithmetic expression into its own
+// function would add a name to track without saving anything real.
+
+// Twenty-second real component, added 2026-09-22 — "Batch 12" of
+// figma-remaining-components-plan.md, and the first of its three
+// components. Real current source (`tabs.tsx`, confirmed against a real
+// vendored `shadcn add --all` project, `@base-ui/react/tabs`-based) has
+// NO `cva()` at all for `TabsTrigger` (unlike Button/Badge/Toggle/Alert/
+// Item/Bubble) — its real active/inactive axis instead lives on a single
+// className string, gated by a bare `data-active:` PSEUDO-CLASS prefix
+// (Base UI's own boolean-attribute convention: `[data-active]`, no
+// bracketed `key=value` pair at all) — a genuinely different shape from
+// Batch 9's own `data-[key=value]:`/`*:data-[key=value]:` stripping
+// (`SELECTOR_PREFIX_PATTERN`), which requires brackets and would NOT
+// strip this. Rather than generalize the shared pattern for a single
+// caller, `buildTabsPlan` does its own narrow, local extraction (below) —
+// consistent with this file's own "one path only" scope discipline
+// (e.g. Breadcrumb's `separatorGlyph` is component-specific, not a table
+// change) — since nothing else in this file needs a bare, unbracketed
+// `data-<word>:` prefix stripped yet.
+//
+// A second genuinely new extraction shape, also confirmed by reading the
+// real source in full (this batch's own mandatory first step, since the
+// original survey never quoted these three files' real class strings):
+// `TabsTrigger`'s own `className={cn(...)}` call passes FOUR separate
+// string literals, not one (every earlier component's `cn()` call passed
+// exactly one class string plus the `className` prop) — `readTabsTriggerClassString`
+// below concatenates all of them before doing any parsing, a strict
+// generalization of "read the first quoted string" that still reads
+// exactly one string for every earlier single-literal caller.
+//
+// Modeled per the user's own decision (figma-remaining-components-plan.md,
+// Batch 12): only `TabsTrigger` itself, as a manual two-option "Active"/
+// "Inactive" variant axis (never routed through `buildVariantsFromCva`,
+// since there's no real `cva()` here to parse) — the same real shape
+// Toggle's own on/off state has, but built by hand since Tabs has no
+// `variants: { ... }` block to extract from. Real BASE (inactive) classes
+// (every unprefixed token in the combined string): `... rounded-md ...
+// px-1.5 py-0.5 text-sm font-medium ... text-foreground/60 ...` — no
+// `bg-*` class at all (transparent), `border-transparent` (no visible
+// stroke). Real ACTIVE-only classes (tokens with the bare `data-active:`
+// prefix stripped, ignoring `dark:data-active:`/`group-data-[variant=
+// line]/tabs-list:data-active:`-scoped overrides — the same "ignore dark:
+// and non-default-variant paths" scope cut this pipeline applies
+// everywhere, not something new to Tabs): `bg-background` /
+// `text-foreground` — a real filled-white-pill-on-gray-track look,
+// confirmed against source, not assumed from Base UI convention.
+// `text-foreground/60`'s own `/60` opacity modifier is dropped per this
+// file's existing, established simplification (same as Badge's
+// `bg-destructive/10`) — meaning Active and Inactive end up with the
+// SAME bound `text.primary`, not a genuinely lighter/darker pair the way
+// the real component shows; disclosed explicitly below, not silently
+// passed through. `TabsList`'s own wrapping pill container (its real
+// `p-[3px]` padding, `bg-muted` track) isn't modeled — only the trigger
+// itself, the same "model the meaningful sub-part, not the whole
+// compound wrapper" precedent Avatar's own AvatarFallback-only scope and
+// Marker's ignored-variant-axis reframing already established.
+function readTabsTriggerClassString(tabsSource: string): string {
+  const fnMatch = tabsSource.match(/function TabsTrigger[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/);
+  if (!fnMatch) throw new Error("Could not find TabsTrigger's own className={cn(...)} call — real vendored source may have changed shape since this parser was written.");
+  const literals = [...fnMatch[1].matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  if (literals.length === 0) throw new Error("TabsTrigger's own className={cn(...)} call contained no quoted string literals — real vendored source may have changed shape since this parser was written.");
+  return literals.join(" ");
+}
+function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function TabsTrigger", "data-active:bg-background", "data-active:text-foreground", "rounded-md", "text-foreground/60"]) {
+    if (!tabsSource.includes(marker)) {
+      throw new Error(`Tabs's real source no longer contains "${marker}" — shadcn/ui's real Tabs has likely changed shape since buildTabsPlan was written. Re-verify against the current vendored tabs.tsx before trusting this plan.`);
+    }
+  }
+
+  const fullClassString = readTabsTriggerClassString(tabsSource);
+  const tokens = fullClassString.split(/\s+/).filter(Boolean);
+  const baseClasses = tokens.filter((t) => !t.includes(":")).join(" ");
+  const activeClasses = tokens
+    .filter((t) => t.startsWith("data-active:"))
+    .map((t) => t.slice("data-active:".length))
+    .join(" ");
+
+  const inactiveColors = scanClassesForColors(baseClasses);
+  const activeColors = scanClassesForColors(activeClasses);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusMatch = nearestToken(radiusMdPx * 0.8, radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
+  const paddingHMatch = nearestToken(6, spacing, "spacing"); // real px-1.5
+  const paddingVMatch = nearestToken(2, spacing, "spacing"); // real py-0.5
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+
+  for (const [label, match] of [
+    ["radius", radiusMatch],
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0.01) {
+      notes.push(`Tabs ${label}: nearest real token is ${match.deltaPx.toFixed(1)}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push("Tabs: only TabsTrigger itself is modeled, as a manual Active/Inactive axis (there is no real cva() here to parse) — TabsList's own wrapping pill container (its real p-[3px] padding and bg-muted track) isn't modeled, the same 'meaningful sub-part only' scope Avatar's own AvatarFallback-only cut already established. The real 'line' TabsList variant and every dark:-scoped override are ignored entirely, not just their color-bearing parts — the same 'one path only' scope this file applies everywhere.");
+  notes.push("Tabs: Active and Inactive end up with the SAME bound text.primary, not a genuinely different pair — the real inactive state's own text-foreground/60 (60% opacity) is dropped per this file's existing opacity-modifier simplification (same as Badge's bg-destructive/10), so the one real visual difference this plan still carries is Active's own filled background.primary pill, not a text-color change.");
+
+  return {
+    name: "Tabs",
+    variantPropertyName: "Variant",
+    variants: [
+      { name: "Inactive", fillVariable: inactiveColors.fillVariable, textVariable: inactiveColors.textVariable, strokeVariable: inactiveColors.strokeVariable, underline: false },
+      { name: "Active", fillVariable: activeColors.fillVariable, textVariable: activeColors.textVariable, underline: false },
+    ],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Tab",
+  };
+}
+
+// Twenty-third real component, added 2026-09-22 — "Batch 12" of
+// figma-remaining-components-plan.md, second of three. Real current
+// source (`accordion.tsx`, confirmed against the same real vendored
+// project, `@base-ui/react/accordion`-based): `AccordionTrigger`'s own
+// real classes are a SINGLE plain string (no `cva()`, no multi-literal
+// `cn()` the way Tabs' own trigger has) — `group/accordion-trigger
+// relative flex flex-1 items-start justify-between rounded-lg border
+// border-transparent py-2.5 text-left text-sm font-medium ...` plus a
+// real trailing chevron icon (`ChevronDownIcon`/`ChevronUpIcon`, swapped
+// via a sibling `group-aria-expanded/accordion-trigger:hidden`/`:inline`
+// pair, not a color-bearing class this parser would touch either way).
+//
+// Real, disclosed finding: NO explicit `text-*` color class anywhere on
+// the trigger (falls back to `text.primary` via `scanClassesForColors`'s
+// own default, the same base-layer-inheritance finding already confirmed
+// for Label/Marker) and NO horizontal padding class at all — genuinely
+// zero, not a gap, the same "computed via nearestToken(0, ...), not a
+// hardcoded literal" discipline Label/Marker's own zero targets already
+// established. `rounded-lg` binds via `exactRadiusMd` (a real EXACT
+// alias, delta always 0) — the same, already-proven pattern Toggle/Badge/
+// Input/Textarea/Card/Item all share, not the NEW `rounded-md` multiplier
+// Tabs/Tooltip need.
+//
+// Real, disclosed scope cut, genuinely narrower than the plan's own
+// "(chevron + label)" framing: the chevron itself is NOT represented as a
+// second element in this component's own body. `sections`' own
+// `textLineDirection: "horizontal"` branch (the mechanism that would let
+// a trailing `separatorGlyph` sit beside a label on one row, the same way
+// Breadcrumb's own chevron stand-in does) hardcodes its outer frame's
+// horizontal padding to 0 — a real, correct choice for Breadcrumb's own
+// shape (no root padding at all, only an item gap), but WRONG for
+// Accordion's own real `py-2.5` vertical padding, which that branch has
+// no field for at all. Stretching that mechanism for this one caller
+// would either silently drop a real, confirmed padding value or require
+// reinterpreting `sectionGapVariable`'s own meaning (Breadcrumb: gap
+// between items; here: outer vertical padding) for a single-section,
+// single-glyph case it was never designed around. Per this project's own
+// disclosure policy (state real gaps precisely rather than force a
+// mechanism into an awkward, half-fitting shape), this trigger is
+// represented as a flat single-text box instead (Label/Marker's own
+// shape) — real py-2.5 correctly bound via the normal
+// `paddingVerticalVariable` path — with the chevron omitted entirely, the
+// same disclosed-omission treatment Tooltip's own Arrow and Avatar's own
+// AvatarImage already receive.
+function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function AccordionTrigger", "rounded-lg", "py-2.5", "ChevronDownIcon"]) {
+    if (!accordionSource.includes(marker)) {
+      throw new Error(`Accordion's real source no longer contains "${marker}" — shadcn/ui's real Accordion has likely changed shape since buildAccordionPlan was written. Re-verify against the current vendored accordion.tsx before trusting this plan.`);
+    }
+  }
+
+  const triggerMatch = accordionSource.match(/function AccordionTrigger[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!triggerMatch) throw new Error("Could not find AccordionTrigger's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(triggerMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMatch = exactRadiusMd(radius); // real rounded-lg -> a real EXACT alias to radius.md, same discipline as Item/Toggle/Badge/Card
+  const paddingHMatch = nearestToken(0, spacing, "spacing"); // genuinely no horizontal padding class of its own — see this function's own comment
+  const paddingVMatch = nearestToken(10, spacing, "spacing"); // real py-2.5
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+
+  if (paddingVMatch.deltaPx > 0) {
+    notes.push(`Accordion vertical padding: nearest real spacing token is ${paddingVMatch.deltaPx}px off shadcn's own exact Tailwind value (py-2.5, 10px).`);
+  }
+  notes.push("Accordion: only AccordionTrigger's own label is modeled, as a flat single-text box — its real trailing chevron icon (ChevronDownIcon/ChevronUpIcon) is NOT represented, a disclosed scope cut narrower than a literal 'chevron + label' reading, since the existing sections/textLineDirection mechanism that could place a trailing glyph beside a label has no field for this component's own real vertical padding (see this function's own comment for the full reasoning). AccordionContent (the expandable panel) isn't modeled at all — arbitrary caller-supplied children with no fixed shape, the same reason chart.tsx is permanently out of scope.");
+  notes.push("Accordion: has no horizontal padding class of its own in real source (confirmed: no px-* class anywhere on AccordionTrigger) — represented as a real, computed 0px via nearestToken, the same 'genuinely zero, not a gap' discipline already established for Label/Marker.");
+
+  return {
+    name: "Accordion",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Is it accessible?",
+  };
+}
+
+// Twenty-fourth real component, added 2026-09-22 — "Batch 12" of
+// figma-remaining-components-plan.md, third and last of three (and of
+// this whole plan). Real current source (`tooltip.tsx`, confirmed against
+// the same real vendored project, `@base-ui/react/tooltip`-based):
+// `TooltipContent`'s real box lives on `TooltipPrimitive.Popup`'s own
+// className, a single plain string — `... rounded-md bg-foreground px-3
+// py-1.5 text-xs text-background ...` (every other token is a real
+// `data-[side=...]:`/`has-data-[...]:`-prefixed animation/positioning
+// class, correctly ignored by this parser's plain-class regex either
+// way).
+//
+// Real, disclosed, load-bearing finding named directly in the plan
+// (figma-remaining-components-plan.md, Batch 12): `bg-foreground` /
+// `text-background` is a genuine, INTENTIONAL fg/bg role INVERSION (a
+// real dark tooltip with light text — `foreground` is normally a TEXT
+// color and `background` is normally a page fill, here used the other
+// way around). This resolves CORRECTLY through the existing
+// `SHADCN_VAR_TO_SDSGT_PATH` table with zero code change — `foreground`
+// still maps to `text.primary`, `background` still maps to
+// `background.primary`, and `classToFigmaVariable` determines FILL vs.
+// TEXT purely from the class's own `bg-`/`text-` prefix, not from the
+// shadcn variable name — so `bg-foreground` correctly becomes a FILL
+// bound to a variable literally NAMED `text/primary`, and `text-background`
+// correctly becomes a TEXT color bound to a variable literally named
+// `background/primary`. Right value, confusing name for anyone auditing
+// bound variable names later without this context — the same class of
+// non-obvious-but-correct finding `buildAlertPlan`'s own destructive-gate
+// comment already documents for itself, disclosed here the same way
+// rather than silently passed through.
+//
+// `rounded-md` uses the SAME real `* 0.8` multiplier as Tabs' own
+// TabsTrigger (see this file's own comment above `COMPONENT_BUILDERS`).
+// `text-xs` (12px) is a real, new-to-this-file target — every component
+// built before this used `text-sm` (14px) or larger. The real `Arrow`
+// element (a rotated, separately-colored connector triangle) is NOT
+// modeled — content box only, per the plan's own explicit scope, the
+// same disclosed-omission treatment already established for Avatar's own
+// AvatarImage and Card's own Footer. `TooltipTrigger`'s own real
+// hover/focus mechanics aren't modeled either — this pipeline's own
+// components have no hover/focus state axis at all (rest states only,
+// per this file's own header).
+function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ['data-slot="tooltip-content"', "bg-foreground", "text-background", "rounded-md"]) {
+    if (!tooltipSource.includes(marker)) {
+      throw new Error(`Tooltip's real source no longer contains "${marker}" — shadcn/ui's real Tooltip has likely changed shape since buildTooltipPlan was written. Re-verify against the current vendored tooltip.tsx before trusting this plan.`);
+    }
+  }
+
+  const classMatch = tooltipSource.match(/className=\{cn\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find TooltipContent's own className string — real vendored source may have changed shape since this parser was written.");
+  const colors = scanClassesForColors(classMatch[1]);
+  if (!colors.fillVariable) throw new Error("TooltipContent's own bg-foreground class didn't resolve to a fill variable — real vendored source may have changed shape since this parser was written.");
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusMatch = nearestToken(radiusMdPx * 0.8, radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
+  const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
+  const paddingVMatch = nearestToken(6, spacing, "spacing"); // real py-1.5
+  const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize"); // real text-xs
+
+  for (const [label, match] of [
+    ["radius", radiusMatch],
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+    ["font size", fontSizeMatch],
+  ] as const) {
+    if (match.deltaPx > 0.01) {
+      notes.push(`Tooltip ${label}: nearest real token is ${match.deltaPx.toFixed(1)}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push("Tooltip: its real bg-foreground/text-background classes are a genuine, intentional fg/bg role inversion (a dark tooltip with light text) — this resolves correctly (fill bound to the real text.primary color value, text bound to the real background.primary color value) but reads as backwards to anyone auditing bound VARIABLE NAMES later, since the fill is bound to a variable literally named text/primary and the text color to one named background/primary. Right value, confusing name — disclosed here, not silently passed through.");
+  notes.push("Tooltip: only TooltipContent's own box is modeled — the real Arrow connector (a separately-colored, rotated triangle) isn't, the same disclosed scope cut already established for Avatar's own AvatarImage and Card's own Footer. TooltipTrigger's own real hover/focus-driven show/hide mechanics aren't modeled either — this pipeline's components are rest-states only.");
+
+  return {
+    name: "Tooltip",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    paddingHorizontalVariable: paddingHMatch.figmaName,
+    paddingVerticalVariable: paddingVMatch.figmaName,
+    fontSizeVariable: fontSizeMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    labelPropertyName: "Label",
+    defaultLabel: "Add to library",
+  };
+}
+
+// Twenty-fifth real component, added 2026-09-22 — the first icon-support
+// component, unlocking part of figma-remaining-components-plan.md's own
+// NEEDS-ICON bucket (that bucket's own closing note named this exact
+// "real, separate icon-drawing-capability decision" as the pending
+// blocker). Real current source (`checkbox.tsx`, confirmed against the
+// same real vendored project, `@base-ui/react/checkbox`-based): a SINGLE
+// plain className string (not multi-literal the way Tabs' own trigger
+// is), no `cva()`. Real checked/unchecked axis lives behind the same bare
+// `data-checked:` pseudo-class shape already found and handled for Tabs'
+// own `data-active:` — extracted here with the identical, small, local
+// technique (not shared code — see this project's own "extract once a
+// SECOND consumer needs it" discipline; sharing it now would mean editing
+// Tabs' own already-proven-live extraction for no functional gain, real,
+// avoidable re-validation risk for zero benefit).
+//
+// Real BASE (unchecked) classes: `peer relative flex size-4 shrink-0
+// items-center justify-center rounded-[4px] border border-input
+// transition-colors outline-none` — no `bg-*` (transparent), `border-
+// input` (→ `border.default`, unconditional, no fallback needed). Real
+// CHECKED-only classes (bare `data-checked:` prefix stripped, ignoring
+// `group-has-[:focus-visible]/field-label:data-checked:.../`dark:data-
+// checked:...`-scoped overrides, the same "ignore dark: and non-default
+// paths" scope cut this file applies everywhere): `border-primary bg-
+// primary text-primary-foreground` → `action.primary` fill AND stroke
+// (a real, confirmed SAME-color fill+stroke, not a mismatch), `text.on-
+// primary` for the icon (see below).
+//
+// Real, genuinely new radius finding: `rounded-[4px]` is an ARBITRARY
+// bracket-value class with a literal pixel number — not a named Tailwind
+// radius utility (`rounded-md`/`rounded-lg`/etc.), so none of this file's
+// existing radius helpers (`exactRadiusMd`, the `* 0.8`/`* 1.4`
+// multiplier pattern) apply. Extracted via a new, local, one-off regex
+// (`/rounded-\[(\d+(?:\.\d+)?)px\]/`) feeding the literal `4` straight
+// into the existing `nearestToken` — real, confirmed to land EXACTLY on
+// `radius/sm` (4px in the tailwind preset, the same value Tabs/Tooltip's
+// own `* 0.8` multiplier landed on by a completely different real
+// formula — a coincidence confirmed by checking the actual resolved
+// number, not assumed).
+//
+// Real, genuinely new size finding: `size-4` sets BOTH width and height
+// to a literal, unconditional 16px — a real FIXED square, never a
+// hug-content-plus-padding approximation the way every earlier box-shaped
+// component in this file is (Avatar's own comment already named this
+// exact missing shape — "this schema has no 'fixed size, no padding'
+// shape yet" — see `FigmaComponentPlanItem.fixedSizePx`'s own comment for
+// why it's finally added here, now that a real, EXACTLY-known size
+// justifies it instead of Avatar's own computed approximation).
+//
+// Real, disclosed, non-obvious-but-correct finding, same category as
+// Tooltip's own fg/bg inversion: the Indicator's own real icon class is
+// `text-current`, not a direct color class — `text-current` inherits
+// whatever color the CHECKED BOX's own `text-primary-foreground` class
+// already set, so the icon's real color is bound to the exact SAME
+// `text.on-primary` variable as the box's own checked-state text color,
+// not a separately-derived value. `[&>svg]:size-3.5` (the Indicator's own
+// child-selector sizing the real `CheckIcon`) sets the icon's real target
+// render size to 14px.
+function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Checkbox", "data-checked:bg-primary", "data-checked:text-primary-foreground", "rounded-[4px]", "size-4", "CheckIcon", "[&>svg]:size-3.5"]) {
+    if (!checkboxSource.includes(marker)) {
+      throw new Error(`Checkbox's real source no longer contains "${marker}" — shadcn/ui's real Checkbox has likely changed shape since buildCheckboxPlan was written. Re-verify against the current vendored checkbox.tsx before trusting this plan.`);
+    }
+  }
+
+  const classMatch = checkboxSource.match(/className=\{cn\(\s*"([^"]+)"/);
+  if (!classMatch) throw new Error("Could not find Checkbox's own className string — real vendored source may have changed shape since this parser was written.");
+  const tokens = classMatch[1].split(/\s+/).filter(Boolean);
+  const baseClasses = tokens.filter((t) => !t.includes(":")).join(" ");
+  const checkedClasses = tokens
+    .filter((t) => t.startsWith("data-checked:"))
+    .map((t) => t.slice("data-checked:".length))
+    .join(" ");
+
+  const uncheckedColors = scanClassesForColors(baseClasses);
+  const checkedColors = scanClassesForColors(checkedClasses);
+
+  const radiusMatch_ = baseClasses.match(/rounded-\[(\d+(?:\.\d+)?)px\]/);
+  if (!radiusMatch_) throw new Error("Could not find Checkbox's own rounded-[Npx] arbitrary-value radius class — real vendored source may have changed shape since this parser was written.");
+  const radiusTargetPx = parseFloat(radiusMatch_[1]);
+
+  const radius = readCssScale(tokensCss, "radius");
+  const radiusMatch = nearestToken(radiusTargetPx, radius, "radius");
+  if (radiusMatch.deltaPx > 0) {
+    notes.push(`Checkbox radius: nearest real token is ${radiusMatch.deltaPx}px off shadcn's own exact literal value (rounded-[${radiusTargetPx}px]).`);
+  }
+
+  notes.push("Checkbox: fixed at a literal 16×16px square (real size-4, unconditional) — the first component in this file using fixedSizePx instead of a hug-content-plus-padding approximation, since its real size is exactly known rather than computed.");
+  notes.push("Checkbox: the checked icon's real class is text-current, not a direct color class — it inherits the checked box's own text-primary-foreground, so the icon is bound to the SAME text.on-primary variable as the box's own text color, not a separately-derived one. Disclosed for the same reason Tooltip's own fg/bg inversion is: a real, confirmed-correct binding that could otherwise read as a coincidence to someone auditing it later.");
+
+  return {
+    name: "Checkbox",
+    variantPropertyName: "Variant",
+    variants: [
+      { name: "Unchecked", fillVariable: uncheckedColors.fillVariable, strokeVariable: uncheckedColors.strokeVariable, underline: false },
+      {
+        name: "Checked",
+        fillVariable: checkedColors.fillVariable,
+        strokeVariable: checkedColors.fillVariable, // real, confirmed: border-primary and bg-primary resolve to the exact same action.primary value — not a mismatch
+        underline: false,
+        icon: { viewBox: LUCIDE_ICONS.check.viewBox, pathData: LUCIDE_ICONS.check.pathData, sizePx: 14, colorVariable: sdsgtPathToFigmaName("text.on-primary") },
+      },
+    ],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fixedSizePx: 16,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+  };
+}
+
+// Twenty-sixth real component, added 2026-09-22 — second and last of the
+// icon-support batch. Real current source (`spinner.tsx`): the ENTIRE
+// component is a single `<Loader2Icon data-slot="spinner" role="status"
+// aria-label="Loading" className={cn("size-4 animate-spin", className)}
+// {...props} />` — no wrapping box, no `cva()`, no other markup at all.
+// `size-4` sets the icon's own real render size to 16px. No color class
+// anywhere — the real rendered stroke inherits `currentColor` from
+// whatever text color context it's placed in, the same base-layer-
+// inheritance finding already established for Label/Marker/Accordion's
+// own text color (bound here to the same `text.primary` fallback path).
+// The real `animate-spin` rotation is NOT reproduced — a disclosed
+// static icon, the same treatment Skeleton's own `animate-pulse` already
+// receives. Uses the TOP-LEVEL `icon` field (the whole component IS the
+// icon), not the per-variant one Checkbox uses — see
+// `FigmaComponentPlanItem.icon`'s own comment for why these are two
+// different fields, not one.
+function buildSpinnerPlan(tokensCss: string, spinnerSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Spinner", "Loader2Icon", "size-4", "animate-spin"]) {
+    if (!spinnerSource.includes(marker)) {
+      throw new Error(`Spinner's real source no longer contains "${marker}" — shadcn/ui's real Spinner has likely changed shape since buildSpinnerPlan was written. Re-verify against the current vendored spinner.tsx before trusting this plan.`);
+    }
+  }
+
+  const radius = readCssScale(tokensCss, "radius");
+  const radiusMatch = nearestToken(0, radius, "radius"); // a bare icon has no corner radius of its own — see this file's own `line` precedent for the same "genuinely zero, interface-shape parity only" reasoning
+
+  notes.push("Spinner: its real animate-spin rotation isn't reproduced — a disclosed static icon, the same treatment Skeleton's own animate-pulse already receives.");
+  notes.push("Spinner: has no color class of its own anywhere in real source — bound to text.primary via the same base-layer-inheritance fallback already established for Label/Marker/Accordion, not a parse miss.");
+
+  return {
+    name: "Spinner",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own at this level — see top-level `icon` instead
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    icon: {
+      viewBox: LUCIDE_ICONS.loaderCircle.viewBox,
+      pathData: LUCIDE_ICONS.loaderCircle.pathData,
+      sizePx: 16,
+      colorVariable: sdsgtPathToFigmaName("text.primary"),
+    },
+  };
+}
+
+// Twenty-seventh real component, added 2026-09-22 — final batch closing
+// out figma-remaining-components-plan.md's own NEEDS-ICON bucket for
+// real: Switch needs NO icon capability at all (re-confirmed here, not
+// just asserted) — its real source has no icon anywhere. Real current
+// source (`switch.tsx`): the outer `SwitchPrimitive.Root` is a fixed
+// TRACK (`data-[size=default]:h-[18.4px] data-[size=default]:w-[32px]` —
+// real, confirmed ARBITRARY bracket values, "default" size only, per this
+// file's own "one size" precedent), `rounded-full`, two real track colors
+// via the same bare `data-checked:`/`data-unchecked:` pseudo-class shape
+// already found and handled for Tabs/Checkbox (`bg-primary`/`bg-input`).
+// The nested `SwitchPrimitive.Thumb` is a fixed circle
+// (`group-data-[size=default]/switch:size-4`, 16px, `rounded-full`,
+// `bg-background`, no color axis of its own) that TRANSLATES position via
+// `data-checked:translate-x-[calc(100%-2px)]` /
+// `data-unchecked:translate-x-0` — a discretely POSITIONED element, not a
+// continuously growing fill the way Progress's own `bar` is, hence the
+// new per-variant `thumb` field (see its own comment on
+// `FigmaComponentVariantPlanItem`) rather than reusing `bar` directly.
+//
+// Real, disclosed, non-obvious-but-correct finding, same category as
+// Tooltip's own fg/bg inversion: `bg-input` (the unchecked track's own
+// real fill class) resolves via the existing table to `border.default`
+// (`input` → `"border.default"`) — a FILL bound to a variable literally
+// named `border/default`, not a naming mismatch or a parser miss, just
+// this pipeline's own existing shadcn-var mapping table applied to a
+// background use of a variable whose SDSGT name assumes a border use.
+//
+// `border` (bare, no color suffix) on the track itself doesn't match
+// `classToFigmaVariable`'s own regex at all (no dash-suffix) — same real
+// gap already found for Attachment (below) and Alert before it — but here
+// the real border is `border-transparent` in effect (an invisible 1px
+// inset, not a visible stroke) since Switch's own track never sets an
+// explicit border color, so no `strokeVariable` fallback is applied here
+// (correctly none, not a missed case — confirmed by the real rendered
+// result having no visible track outline).
+function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Switch", "data-checked:bg-primary", "data-unchecked:bg-input", "data-[size=default]:h-[18.4px]", "data-[size=default]:w-[32px]", "group-data-[size=default]/switch:size-4", "translate-x-[calc(100%-2px)]"]) {
+    if (!switchSource.includes(marker)) {
+      throw new Error(`Switch's real source no longer contains "${marker}" — shadcn/ui's real Switch has likely changed shape since buildSwitchPlan was written. Re-verify against the current vendored switch.tsx before trusting this plan.`);
+    }
+  }
+
+  const radius = readCssScale(tokensCss, "radius");
+  const radiusMatch = exactRadiusFull(radius); // real rounded-full on both track and thumb
+
+  const trackWidthPx = 32; // real data-[size=default]:w-[32px] — a confirmed real, exact arbitrary value, no matching token scale to bind against (same "raw literal, not bound" treatment as Separator's own thicknessPx)
+  const trackHeightPx = 18.4; // real data-[size=default]:h-[18.4px]
+  const thumbSizePx = 16; // real group-data-[size=default]/switch:size-4
+  const borderInsetPx = 1; // real Tailwind bare `border` utility width — the same well-known 1px default this file already assumes for every other bare `border`-based strokeWeight
+
+  notes.push("Switch: needs no icon capability at all — confirmed by re-reading its real source in full, not assumed. Its track's own real bg-input (unchecked) resolves to a fill bound to a variable literally named border/default, via this file's existing shadcn-var table — a real, confirmed-correct binding, not a mismatch (see this function's own comment).");
+  notes.push("Switch: the thumb's own real position is set via a CSS transform (translate-x-[calc(100%-2px)] when checked, translate-x-0 when unchecked) — represented here as a computed geometric equivalent (trackWidthPx - thumbSizePx - borderInsetPx, and borderInsetPx respectively), not a literal replication of the real transform math.");
+
+  return {
+    name: "Switch",
+    variantPropertyName: "Variant",
+    variants: [
+      {
+        name: "Unchecked",
+        underline: false,
+        thumb: {
+          trackColorVariable: sdsgtPathToFigmaName("border.default"),
+          thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
+          trackWidthPx,
+          trackHeightPx,
+          thumbSizePx,
+          thumbOffsetXPx: borderInsetPx,
+          radiusVariable: radiusMatch.figmaName,
+        },
+      },
+      {
+        name: "Checked",
+        underline: false,
+        thumb: {
+          trackColorVariable: sdsgtPathToFigmaName("action.primary"),
+          thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
+          trackWidthPx,
+          trackHeightPx,
+          thumbSizePx,
+          thumbOffsetXPx: trackWidthPx - thumbSizePx - borderInsetPx,
+          radiusVariable: radiusMatch.figmaName,
+        },
+      },
+    ],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName, // interface-shape parity only, mirrors thumb.radiusVariable — same precedent line/bar already established
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+  };
+}
+
+// Twenty-eighth real component, added 2026-09-22, same batch as Switch.
+// Real current source (`radio-group.tsx`) confirms RadioGroup ALSO needs
+// no icon capability — its real checked indicator is a plain `<span
+// className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2
+// -translate-y-1/2 rounded-full bg-primary-foreground" />`, a solid
+// circle, not an SVG. Real shape is otherwise IDENTICAL to Checkbox's own
+// (fixed 16×16 square via `size-4`/`aspect-square`, bare
+// `data-checked:`-prefixed axis, same extraction technique) except
+// `rounded-full` (not Checkbox's own arbitrary `rounded-[4px]`) and a
+// `centerDot` instead of an `icon` on the Checked variant — genuinely
+// cheaper than Checkbox, no `createNodeFromSvg`/`rescale` involved at all.
+// Real base (unchecked) classes: `... rounded-full border border-input
+// ...` — `border-input` is explicit, no fallback needed (unlike
+// Switch/Attachment's own bare `border` gaps). Real checked-only classes
+// (bare `data-checked:` stripped): `border-primary bg-primary
+// text-primary-foreground` — the SAME same-color fill+stroke finding
+// already confirmed for Checkbox. The dot's own real `bg-primary-
+// foreground` → `text.on-primary`, the exact SAME variable Checkbox's own
+// icon binds to, for the same real reason (both represent "the color that
+// contrasts against a primary-filled background").
+function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function RadioGroupItem", "data-checked:bg-primary", "data-checked:text-primary-foreground", "rounded-full", "size-4", "bg-primary-foreground"]) {
+    if (!radioSource.includes(marker)) {
+      throw new Error(`RadioGroup's real source no longer contains "${marker}" — shadcn/ui's real RadioGroup has likely changed shape since buildRadioGroupPlan was written. Re-verify against the current vendored radio-group.tsx before trusting this plan.`);
+    }
+  }
+
+  const itemMatch = radioSource.match(/function RadioGroupItem[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!itemMatch) throw new Error("Could not find RadioGroupItem's own className string — real vendored source may have changed shape since this parser was written.");
+  const tokens = itemMatch[1].split(/\s+/).filter(Boolean);
+  const baseClasses = tokens.filter((t) => !t.includes(":")).join(" ");
+  const checkedClasses = tokens
+    .filter((t) => t.startsWith("data-checked:"))
+    .map((t) => t.slice("data-checked:".length))
+    .join(" ");
+
+  const uncheckedColors = scanClassesForColors(baseClasses);
+  const checkedColors = scanClassesForColors(checkedClasses);
+
+  const radius = readCssScale(tokensCss, "radius");
+  const radiusMatch = exactRadiusFull(radius);
+
+  notes.push("RadioGroup: needs no icon capability at all — its real checked indicator is a plain solid <span> circle, not an SVG (confirmed against real source, not assumed from Checkbox's own shape).");
+
+  return {
+    name: "RadioGroup",
+    variantPropertyName: "Variant",
+    variants: [
+      { name: "Unchecked", fillVariable: uncheckedColors.fillVariable, strokeVariable: uncheckedColors.strokeVariable, underline: false },
+      {
+        name: "Checked",
+        fillVariable: checkedColors.fillVariable,
+        strokeVariable: checkedColors.fillVariable, // real, confirmed same-color fill+stroke — same finding as Checkbox
+        underline: false,
+        centerDot: { sizePx: 8, colorVariable: sdsgtPathToFigmaName("text.on-primary") }, // real size-2 (8px), real bg-primary-foreground
+      },
+    ],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fixedSizePx: 16, // real size-4/aspect-square, same fixed-square treatment as Checkbox
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+  };
+}
+
+// Twenty-ninth real component, added 2026-09-22, same batch — the last of
+// figma-remaining-components-plan.md's own NEEDS-ICON bucket, and its real
+// blocker was never icon-drawing (confirmed by re-reading the real
+// source): `AttachmentMedia` (the real icon/image slot) is CALLER-
+// SUPPLIED, not a default the component ships with, and isn't modeled
+// here — the same declared exclusion Item's own ItemMedia already
+// established. Modeled the identical way: outer frame via its own real
+// base classes (no `cva()` color axis at all — `attachmentVariants`' two
+// real axes, `size`/`orientation`, only vary SPACING/LAYOUT, never color,
+// so this is a flat single-state box like Kbd/Marker, not a
+// `buildVariantsFromCva` consumer) plus Title/Description via `sections`,
+// mirroring Item's own Title/Description shape exactly. Only the
+// "default" size, "horizontal" orientation, "done" state (the component's
+// own real default) are modeled — `sm`/`xs`/`vertical` and the real
+// `idle`/`uploading`/`processing`/`error` states aren't, the same "one
+// size, rest states only" scope this whole file uses everywhere.
+//
+// Real base classes (merged: the shared base string plus "default" size's
+// own and "horizontal" orientation's own): `... rounded-xl border bg-card
+// text-card-foreground ... gap-2 text-sm ... items-center` (padding
+// extracted separately below — see that field's own comment).
+// `rounded-xl` uses the SAME real `* 1.4` multiplier already established
+// for Card/Bubble (`--radius-xl: calc(var(--radius) * 1.4)`), not the
+// newer `* 0.8` (`rounded-md`) formula Tabs/Tooltip/Checkbox use — a
+// different named utility, a different real multiplier, confirmed
+// separately, not assumed to match.
+//
+// Real, disclosed, non-obvious finding: bare `border` (no color suffix)
+// doesn't match `classToFigmaVariable`'s own regex at all (no dash-suffix
+// to parse) — the same real gap Alert's own border-fallback and Switch's
+// own bare-border case already found — hardcoded here to `border.default`
+// via the same post-process precedent `buildAlertPlan` established.
+//
+// Real, disclosed, GENUINELY NEW finding (not seen in any earlier
+// component): `AttachmentTitle` has no explicit color class of its own
+// (`font-medium` only) — inherits from its OWN ANCESTOR's `text-card-
+// foreground`, not the global body's `text-foreground` the way Label/
+// Marker/Accordion's own base-layer fallback already assumes. Using this
+// file's own SHARED "text.primary" fallback default here would be WRONG
+// — hardcoded directly to `text.on-surface` instead (the real value
+// `text-card-foreground` resolves to), not routed through
+// `scanClassesForColors`'s own generic fallback parameter.
+function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes: string[]): FigmaComponentPlanItem {
+  for (const marker of ["function Attachment(", "function AttachmentTitle", "function AttachmentDescription", "attachmentVariants = cva(", "rounded-xl", "bg-card", "text-card-foreground"]) {
+    if (!attachmentSource.includes(marker)) {
+      throw new Error(`Attachment's real source no longer contains "${marker}" — shadcn/ui's real Attachment has likely changed shape since buildAttachmentPlan was written. Re-verify against the current vendored attachment.tsx before trusting this plan.`);
+    }
+  }
+
+  const baseMatch = attachmentSource.match(/attachmentVariants = cva\(\s*"([^"]+)"/);
+  if (!baseMatch) throw new Error("Could not find attachmentVariants' own base class string — real vendored source may have changed shape since this parser was written.");
+  // Real bug caught before any live push, 2026-09-22: this base string
+  // contains two conditional `data-[state=error]:`/`data-[state=idle]:`
+  // classes inline (unlike every earlier single-string-literal component,
+  // whose own first cva() literal never mixed in a bracketed selector).
+  // Passing the raw string straight to `scanClassesForColors` let Batch
+  // 9's own selector-prefix stripping (inside `classToFigmaVariable`)
+  // silently strip the `data-[state=error]:` prefix and match the
+  // REMAINING `border-destructive` as if it were this component's own
+  // unconditional border color — producing a real, wrong `status.error`
+  // stroke for the "done"-state box this function is actually building.
+  // Fixed the same way Switch/RadioGroup/Checkbox/Tabs already handle a
+  // bare `data-<word>:`-prefixed axis: filter out every colon-prefixed
+  // token BEFORE scanning, so only this component's own real
+  // unconditional base classes reach `scanClassesForColors` at all.
+  const baseClasses = baseMatch[1]
+    .split(/\s+/)
+    .filter((t) => !t.includes(":"))
+    .join(" ");
+  const colors = scanClassesForColors(baseClasses);
+  if (!colors.strokeVariable) colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // bare `border`, no dash-suffix — see this function's own comment
+
+  const descMatch = attachmentSource.match(/function AttachmentDescription[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!descMatch) throw new Error("Could not find AttachmentDescription's own className string — real vendored source may have changed shape since this parser was written.");
+  const descColors = scanClassesForColors(descMatch[1]);
+
+  const spacing = readCssScale(tokensCss, "spacing");
+  const radius = readCssScale(tokensCss, "radius");
+  const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+
+  const radiusMdPx = radius["md"];
+  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
+  const radiusMatch = nearestToken(radiusMdPx * 1.4, radius, "radius"); // real rounded-xl, same * 1.4 multiplier already established for Card/Bubble
+  const paddingHMatch = nearestToken(10, spacing, "spacing"); // real has-data-[slot=attachment-content]:px-2.5 ("default" size)
+  const paddingVMatch = nearestToken(8, spacing, "spacing"); // real has-data-[slot=attachment-content]:py-2 ("default" size)
+  const titleFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm ("default" size)
+  const descFontSize = nearestToken(12, fontSize, "typography/primitive/fontSize"); // real text-xs (AttachmentDescription's own explicit class)
+
+  for (const [label, match] of [
+    ["radius", radiusMatch],
+    ["horizontal padding", paddingHMatch],
+    ["vertical padding", paddingVMatch],
+  ] as const) {
+    if (match.deltaPx > 0.01) {
+      notes.push(`Attachment ${label}: nearest real token is ${match.deltaPx.toFixed(1)}px off shadcn's own exact Tailwind value.`);
+    }
+  }
+
+  notes.push("Attachment: only the outer frame and AttachmentTitle/AttachmentDescription are modeled — AttachmentMedia (a real icon/image slot, always caller-supplied, never a default the component ships with) and AttachmentActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons already named in figma-remaining-components-plan.md and established by Item's own ItemMedia/ItemActions exclusion. Only its default size, horizontal orientation, and 'done' state (the component's own real default) are modeled — sm/xs/vertical and the real idle/uploading/processing/error states aren't.");
+  notes.push("Attachment: AttachmentTitle has no explicit color class of its own — it inherits from Attachment's own text-card-foreground, NOT the global body's text-foreground this file's usual fallback assumes, so it's hardcoded to text.on-surface directly rather than routed through scanClassesForColors's own generic fallback default, which would have been wrong here.");
+
+  return {
+    name: "Attachment",
+    variantPropertyName: "Variant",
+    variants: [{ name: "Default", ...colors, underline: false }],
+    skippedVariants: [],
+    radiusVariable: radiusMatch.figmaName,
+    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    sectionGapVariable: paddingVMatch.figmaName,
+    sections: [
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontSize.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
+          { textVariable: descColors.textVariable, fontSizeVariable: descFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "2.4 MB" },
+        ],
+      },
+    ],
+  };
+}
+
 // One entry per component this parser knows how to build a plan for —
 // filename it expects in the vendored components directory, and the
 // builder function for it. Extracted into a table (2026-09-17, once a
@@ -2392,6 +3410,15 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
   { filename: "item.tsx", name: "Item", build: buildItemPlan },
   { filename: "marker.tsx", name: "Marker", build: buildMarkerPlan },
   { filename: "bubble.tsx", name: "Bubble", build: buildBubblePlan },
+  { filename: "progress.tsx", name: "Progress", build: buildProgressPlan },
+  { filename: "tabs.tsx", name: "Tabs", build: buildTabsPlan },
+  { filename: "accordion.tsx", name: "Accordion", build: buildAccordionPlan },
+  { filename: "tooltip.tsx", name: "Tooltip", build: buildTooltipPlan },
+  { filename: "checkbox.tsx", name: "Checkbox", build: buildCheckboxPlan },
+  { filename: "spinner.tsx", name: "Spinner", build: buildSpinnerPlan },
+  { filename: "switch.tsx", name: "Switch", build: buildSwitchPlan },
+  { filename: "radio-group.tsx", name: "RadioGroup", build: buildRadioGroupPlan },
+  { filename: "attachment.tsx", name: "Attachment", build: buildAttachmentPlan },
 ];
 
 // codeDir: the matching `generate` run's --out directory (needed only for

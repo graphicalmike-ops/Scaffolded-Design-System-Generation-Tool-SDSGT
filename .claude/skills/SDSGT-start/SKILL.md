@@ -87,8 +87,8 @@ is that plan's implementation in the actual conversation.
 | 1 | Full new project, or just the design-system files? | Menu — `Scaffold` / `Design system files only` | Framework is still asked next either way — see row 2. `promote` never reads this either way. Real scaffolding exists for Next.js (its Tailwind path and its Bootstrap/React-Bootstrap path); for Vue.js (its Tailwind path, its Material Design/Vuetify path, and its Bootstrap/bootstrap-vue-next path); and for React Native/Expo (both its Tailwind/NativeWind path and its Material Design/React Native Paper path) — see step 10, "Running the flow," and "Known gaps." Kotlin and SwiftUI are both real exceptions, not "no effect" cases: neither has an official scaffolding CLI at all (Android/Compose and Xcode/SwiftUI, checked independently, same conclusion), so `generate` itself always writes a real setup guide (`md3/SCAFFOLD_GUIDE.md` or `swiftui/SCAFFOLD_GUIDE.md`) regardless of this answer — see step 9. Next.js with MD3/MD2 (MUI) still records this answer with genuinely no effect (React Native has no Bootstrap option at all — see "Suggestion logic"). | `scaffoldMode` (`"scaffold"` \| `"files-only"`) |
 | 2 | Which framework/platform? | Menu — `Next.js` (React, web) / `Vue.js` (web) / `React Native (Expo)` / `Kotlin` (Jetpack Compose, native Android) / `SwiftUI` (native iOS) | Fixed list. Selecting one marks a suggested Component library in row 4 (see "Suggestion logic," below). `promote` doesn't branch on this — every token preset it writes is platform-agnostic DTCG JSON. `generate` does read it, though, to pick between `--swiftui` and everything else, and to set `--framework` — see "Running the flow," step 8. | `targetFramework` |
 | 3 | Which design language? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Marks Type-scale (row 13), Spacing (row 14), Border-roundness (row 15), Shadows (row 18), and Component library (row 4) as "(Suggested)" further down — see "Suggestion logic." Not read by `promote` — each preset choice below is independent, this just seeds their defaults. `generate` does read it, to pick which platform flag to pass (`--tailwind`/`--bootstrap`/`--md2`/`--md3`) — see "Running the flow," step 8. | `targetDesignLanguage` |
-| 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries, and spans radius/padding/typography-size/shadow/opacity, not just geometry** — see "Known gaps," **"Geometry, shadow, and opacity fidelity, by library"** for the full exact per-library detail. The short version: React-Bootstrap/bootstrap-vue-next, MUI, Vuetify, and React Native Paper all have color/radius/padding/typography-size/opacity fully real-token-bound (as of 2026-09-16) — nothing left open on those five dimensions for any of those four. shadcn/ui and shadcn-vue have shadow bound for every preset, and spacing bound for every preset including `bootstrap` now (2026-09-16) — though `bootstrap`'s own fix only covers the exact keys it defines (0-5); any fractional class or key beyond 5 still falls back to Tailwind's raw default, disclosed same as RNR's own spacing gap. RNR has spacing (partial) and typography size (complete) bound, but its shadow classes are structurally unfixable — the underlying native CSS-to-RN translation library drops multi-layer shadows outright, independent of any token binding. MUI's and Vuetify's own SHADOW/elevation systems are a genuinely different, physically-modeled numeric depth scale (not a named size scale) with no real, non-arbitrary mapping from this pipeline's own 5-tier scale — disclosed, not fabricated. RN Paper's own elevation is already correct via a different, real MD3-appropriate mechanism (surface tinting, not box-shadow). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma today — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
-| 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. **Disclose here, not just at row 4 or step 10, since this is the question a "will my components show up in Figma too?" assumption actually attaches to**: `Figma-managed` today only ever pushes real component structure for one combination — `nextjs` + `tailwind` + shadcn/ui — everything else (every other framework/library, `files-only` mode) still gets tokens-as-variables in Figma, nothing more, regardless of this answer. See "Known gaps," "Figma component push — scope, not just fidelity" for the exact current wording. | `figmaManaged` (boolean) |
+| 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries, and spans radius/padding/typography-size/shadow/opacity, not just geometry** — see "Known gaps," **"Geometry, shadow, and opacity fidelity, by library"** for the full exact per-library detail. The short version: React-Bootstrap/bootstrap-vue-next, MUI, Vuetify, and React Native Paper all have color/radius/padding/typography-size/opacity fully real-token-bound (as of 2026-09-16) — nothing left open on those five dimensions for any of those four. shadcn/ui and shadcn-vue have shadow bound for every preset, and spacing bound for every preset including `bootstrap` now (2026-09-16) — though `bootstrap`'s own fix only covers the exact keys it defines (0-5); any fractional class or key beyond 5 still falls back to Tailwind's raw default, disclosed same as RNR's own spacing gap. RNR has spacing (partial) and typography size (complete) bound, but its shadow classes are structurally unfixable — the underlying native CSS-to-RN translation library drops multi-layer shadows outright, independent of any token binding. MUI's and Vuetify's own SHADOW/elevation systems are a genuinely different, physically-modeled numeric depth scale (not a named size scale) with no real, non-arbitrary mapping from this pipeline's own 5-tier scale — disclosed, not fabricated. RN Paper's own elevation is already correct via a different, real MD3-appropriate mechanism (surface tinting, not box-shadow). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma — a settled v1 scope decision (2026-09-22), not a "not yet built" gap — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
+| 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. **Disclose here, not just at row 4 or step 10, since this is the question a "will my components show up in Figma too?" assumption actually attaches to**: `Figma-managed` only ever pushes real component structure for one combination — `nextjs` + `tailwind` + shadcn/ui, a settled v1 scope decision (2026-09-22), not a "not yet built" gap — everything else (every other framework/library, `files-only` mode) still gets tokens-as-variables in Figma, nothing more, regardless of this answer. See "Known gaps," "Figma component push — scope, not just fidelity" for the exact current wording. | `figmaManaged` (boolean) |
 | 5a | *(only if row 5 = `Figma-managed`)* Paste the Figma file link to push tokens into | In chat — a Figma URL | Must actually look like a Figma URL (`figma.com/design/...` or `figma.com/file/...`) — if what's pasted doesn't parse as one, say so and ask again rather than guessing a file key out of it. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a, for when this actually gets used — pushing happens right after `promote`, using this link, not at seed-input time. | `figmaFileUrl` (string, optional — only set when row 5 is `Figma-managed`) |
 | 5b | *(only if row 5 = `Figma-managed`)* Which Figma MCP should the push use? | Menu — `Official Figma MCP` / `Southleft MCP` | A real choice, collected for real — but say plainly, right after they answer, that **during this internal-testing phase the push always runs through the Southleft MCP regardless of which one is picked.** Official Figma MCP is a real, confirmed integration (`mcp.figma.com`, OAuth-gated), it's just never been exercised from this project, so nothing runs against it yet — same "ask it anyway, disclose the gap" treatment as row 4's component library. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaMcp` (`"official"` \| `"southleft"`, optional — only set when row 5 is `Figma-managed`) |
 | 5c | *(only if row 5 = `Figma-managed`)* Is that Figma file on a free plan or a paid plan? | Menu — `Free plan` / `Paid plan` | Unlike row 5b, **this one actually changes what gets built**: on a free plan, Figma caps a variable collection at one mode with no error raised, so the push uses two separate collections (`Tokens - Light`/`Tokens - Dark`) instead of one collection with two real modes. Only matters if row 6 ends up being `Both Light and Dark mode` — say so if the user seems unsure why this is being asked before row 6. If they don't know which plan they're on, tell them to check figma.com/files → their workspace name → look for "Free"/"Professional"/"Organization"/"Enterprise" in the plan badge, rather than guessing for them. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaPlan` (`"free"` \| `"paid"`, optional — only set when row 5 is `Figma-managed`) |
@@ -674,25 +674,54 @@ override any of the four independently — they don't have to move together.
     design. Say this plainly if `targetFramework` is `kotlin` or `swiftui`:
     fidelity here is a property of how the guide gets followed, not
     something this pipeline can bind or fail to bind.
-- **Figma component push — scope, not just fidelity.** Everything above is
-  about whether an already-*applied* component's geometry matches its real
-  tokens. This is a separate question: which libraries get a component
-  *pushed to Figma* at all. Today, only one combination does — `nextjs` +
-  `tailwind` + shadcn/ui (see `cli/src/scaffold/figma-components-plan.ts`'s
+- **Figma component push — scope, not just fidelity. Decided 2026-09-22:
+  this is v1's permanent scope, not a "not yet built" gap.** Everything
+  above is about whether an already-*applied* component's geometry
+  matches its real tokens. This is a separate question: which libraries
+  get a component *pushed to Figma* at all. Only one combination does —
+  `nextjs` + `tailwind` + shadcn/ui — and no other combination is planned
+  for this tool's first release: closing shadcn/ui's own coverage (see
+  `figma-remaining-components-plan.md`'s "Definition of done") took
+  roughly two weeks of real engineering for ONE of the eight
+  library/framework combinations this pipeline supports, and none of that
+  parsing approach transfers to a fundamentally different theming
+  mechanism (Vuetify/RN Paper's JS theme objects, MUI's `sx`/`styled()`
+  API) — see `pipeline-plan.md`'s own "Pre-launch validation" entry, dated
+  2026-09-22, for the full reasoning and what a plausible post-v1
+  candidate would be. Say this as a settled scope decision, not an
+  open-ended "not yet" (see
+  `cli/src/scaffold/figma-components-plan.ts`'s
   own real scope: **Button, Badge, Toggle, Alert, Input, Textarea, Card,
   Kbd, NativeSelect, Avatar (its AvatarFallback sub-part only), Label,
   Skeleton, Breadcrumb, Empty (its Header/Content sub-parts only), Field
   (its FieldLabel/FieldDescription/FieldError sub-parts only), Separator,
   `field.tsx`'s FieldSeparator, Item (its outer frame plus
-  ItemTitle/ItemDescription only), Marker, and Bubble** — twenty real
-  components in scope as of 2026-09-21 (Batches 4-10 of
-  `figma-remaining-components-plan.md`, Batch 9 being pure parser
-  infrastructure with no new component of its own). All twenty are now
-  proven with a real live push (Button 2026-09-15, Badge 2026-09-16,
+  ItemTitle/ItemDescription only), Marker, Bubble, Progress (its
+  ProgressTrack/ProgressIndicator sub-parts only), Tabs (its TabsTrigger
+  sub-part only), Accordion (its AccordionTrigger's label only, no
+  chevron), Tooltip (its TooltipContent sub-part only), Checkbox, Spinner,
+  Switch, RadioGroup, and Attachment (its outer frame plus
+  AttachmentTitle/AttachmentDescription only)** — twenty-nine real
+  components as of 2026-09-22, and **the entire figure-out-shadcn/ui
+  effort is now closed for good** — see
+  `figma-remaining-components-plan.md`'s own "Definition of done": every
+  one of shadcn/ui's ~62 real components is now either built (29) or has
+  a disclosed, permanent, structural reason it isn't (33).
+  **`figma-remaining-components-plan.md`'s own 12 batches are fully
+  closed** (the first twenty-four); Checkbox, Spinner, Switch, RadioGroup,
+  and Attachment are separate, same-day follow-on work closing out that
+  plan's own NEEDS-ICON bucket entirely — a real icon-drawing capability
+  (`figma.createNodeFromSvg()` against a small, curated, hardcoded Lucide
+  path table, no new CLI dependency or MCP tool) for Checkbox/Spinner, and
+  a real finding that Switch/RadioGroup need no icon capability at all
+  once their real source was re-read. All twenty-nine are proven with a
+  real live push (Button 2026-09-15, Badge 2026-09-16,
   Toggle/Alert/Input/Textarea/Card 2026-09-17,
   Kbd/NativeSelect/Avatar/Label/Skeleton 2026-09-18,
   Breadcrumb/Empty/Field/Separator/FieldSeparator/Item/Marker/Bubble
-  2026-09-21) — though not all twenty live in the SAME test file:
+  2026-09-21, Progress/Tabs/Accordion/Tooltip/Checkbox/Spinner/Switch/
+  RadioGroup/Attachment 2026-09-22) — though not all twenty-nine live in
+  the SAME test file:
   Button/Badge/Toggle/Alert/Input/Textarea/Card were each first proven
   live in an earlier session (a different file), then Button/Badge/
   Toggle/Alert were built fresh a second time directly in "SDSGT test
@@ -741,9 +770,56 @@ override any of the four independently — they don't have to move together.
   that infrastructure — 5 real built variants (Default/Muted/Outline/
   Ghost/Destructive) via `buildVariantsFromCva`, with `secondary` and
   `tinted` both skipped for real, distinct, disclosed reasons (see
-  `buildBubblePlan`'s own comment). See `figma-remaining-components-plan.md`
-  for the full, sequenced plan covering shadcn/ui's remaining components
-  beyond these twenty. Every
+  `buildBubblePlan`'s own comment); Progress is the first genuinely NESTED
+  fixed-size shape (`bar` — a fixed-size track with `clipsContent`
+  containing a fixed-size, deliberately radius-less indicator docked at
+  its left edge, its rounded look coming entirely from the track's clip,
+  not its own radius), live-proven at real 240×4px/144×4px dimensions,
+  and the push that surfaced a real, generalizable finding: a failed
+  `figma_execute` script's earlier mutations aren't necessarily rolled
+  back by a later throw in that same script — see
+  `SDSGT-figma-push/SKILL.md` step 7's own ledger for the full trace; Tabs
+  is the first real MANUAL multi-variant axis with no `cva()` behind it at
+  all (its own real active/inactive state lives behind a bare
+  `data-active:` pseudo-class prefix, a different shape from Batch 9's own
+  bracketed stripping), live-confirmed via `getComputedStyle` that its
+  Active/Inactive text colors are genuinely identical in this plan (the
+  real 60%-opacity difference is a disclosed drop, not an oversight);
+  Accordion ships as a flat label-only box, a real, disclosed deviation
+  from the batch's own "chevron + label" framing (the `sections`/
+  horizontal mechanism that could place a trailing glyph has no field for
+  Accordion's own real vertical padding — see `buildAccordionPlan`'s own
+  comment); Tooltip confirms its real, intentional `bg-foreground`/
+  `text-background` fg/bg role inversion live, not just in the plan JSON
+  (a dark filled box with light text, exactly as the real source
+  predicts). Checkbox and Spinner (separate, same-day follow-on work after
+  the plan above closed) are the first components using a real IMPORTED
+  VECTOR icon — `figma.createNodeFromSvg()` against a small, curated,
+  hardcoded Lucide path table (real path data from an installed
+  `lucide-react` package's own bundled source), with `node.rescale()`
+  (never `resize()` — confirmed live to be the only way that scales an
+  icon's `strokeWeight` proportionally, not just its geometry) sizing it
+  and its `.strokes` bound to the real token variable. Checkbox also
+  introduces `fixedSizePx` — a literal FIXED 16×16px square, the first
+  box-shaped component NOT using the hug-content-plus-padding
+  approximation every earlier one uses. Switch and RadioGroup confirmed
+  the real correction that they need NO icon capability at all — Switch
+  introduces a per-variant `thumb` shape (a fixed track containing a
+  discretely-POSITIONED circular thumb, distinct from the top-level
+  `bar`'s own continuously-growing fill, since Switch's two real states
+  each need their own track color AND thumb position); RadioGroup reuses
+  Checkbox's exact shape but swaps the icon for a plain `centerDot`
+  circle, no vector import at all. Attachment confirmed its own real
+  blocker was never icon-drawing — built the same way Item already is
+  (outer frame plus `sections`, Media/Actions excluded) — and its own
+  build caught a real bug BEFORE any live push: its base class string had
+  two inline bracketed `data-[state=...]:` classes that Batch 9's own
+  selector-prefix stripping silently let through, producing a wrong
+  `status.error` stroke instead of `border.default`, fixed by filtering
+  colon-prefixed tokens first. See `figma-remaining-components-plan.md`
+  for the closed 12-batch plan's full history and its own NEEDS-ICON
+  bucket entry (now fully resolved) and closing "Definition of done"
+  statement. Every
   other combination — the other seven "real theming" combinations from
   row 4, `files-only` mode, Kotlin/SwiftUI — gets tokens pushed to Figma
   as variables when
