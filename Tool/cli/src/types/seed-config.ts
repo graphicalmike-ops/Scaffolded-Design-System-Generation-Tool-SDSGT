@@ -48,13 +48,12 @@ export interface SeedConfig {
   // seeds.md, "Figma push."
   figmaFileUrl?: string;
   // Only present when figmaManaged is true — which Figma MCP the user wants
-  // the push to go through. Collected for real (a genuine seed choice, not
-  // a placeholder), but during the internal-testing phase the push
-  // procedure always executes via "southleft" regardless of this value —
-  // "official" is a real, confirmed MCP (mcp.figma.com, OAuth-gated) but
-  // its post-auth tool surface has never been exercised from this project,
-  // so nothing is built against it yet. See contracts-and-seeds.md,
-  // "Which Figma MCP."
+  // the push to go through. A real seed choice that genuinely branches the
+  // push procedure (SDSGT-figma-push step 0, built 2026-09-23) — "official"
+  // (mcp.figma.com, OAuth-gated, one general use_figma write primitive) and
+  // "southleft" (Desktop Bridge plugin, dedicated variable/style tools) are
+  // both real, verified push paths. See contracts-and-seeds.md, "Which
+  // Figma MCP."
   figmaMcp?: "official" | "southleft";
   // Only present when figmaManaged is true — which Figma plan the target
   // file's workspace is on. Unlike figmaMcp above, this ACTUALLY drives

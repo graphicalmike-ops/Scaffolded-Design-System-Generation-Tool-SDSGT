@@ -18,12 +18,15 @@ verifying what actually landed rather than assuming success.
 
 **Why this has to be a skill, not CLI code:** Figma's variable-write
 surface is only reachable through an MCP tool running inside an agent
-session — the Southleft MCP requires the **Desktop Bridge plugin, running
+session. The Southleft MCP requires the **Desktop Bridge plugin, running
 in Figma Desktop, connected to that specific file** (confirmed in
 `docs/figma-mcp-capabilities.md` — "not the file URL, not the browser").
-There is no way for a plain Node process to do this without a live agent
-session and a human who has that file open. See contracts-and-seeds.md,
-"Figma push," for the full contract this skill implements.
+The official Figma MCP (built 2026-09-23, see step 0) has no such
+requirement — it's a remote, OAuth-gated server that connects straight to
+a file by its key, no desktop app or plugin needed — but it's still an MCP
+tool call inside an agent session either way, so the "not plain CLI code"
+reasoning holds for both paths. See contracts-and-seeds.md, "Figma push,"
+for the full contract this skill implements.
 
 **Pushing (steps 1-7) is still a first push, not a re-sync.** Re-running
 those steps against a file that already has a previous push's variables
@@ -65,8 +68,9 @@ token editing happens in Figma.
   input when `figmaManaged` was chosen (see `SDSGT-start`'s question table,
   row 5a).
 - `figmaMcp` — the seed's `figmaMcp` (`"official"` or `"southleft"`,
-  row 5b). See step 0 — this input is honored for disclosure purposes, not
-  for branching, during the internal-testing phase.
+  row 5b). **Drives real branching as of 2026-09-23** — see step 0 for
+  the capability differences and steps 1/3/4/5/7/8 for where the actual
+  tool calls diverge.
 - `figmaPlan` — the seed's `figmaPlan` (`"free"` or `"paid"`, row 5c).
   Unlike `figmaMcp`, this one DOES drive real branching — see step 3. Only
   actually matters if the token spec has both `color.semantic.light.json`
@@ -76,57 +80,81 @@ token editing happens in Figma.
 
 ## Procedure
 
-### 0. Which MCP — pinned to Southleft during internal testing, disclosed either way
+### 0. Which MCP — a real branch now, built and verified 2026-09-23
 
-Two Figma MCP integrations are real and available to this project:
+Two Figma MCP integrations are real and available to this project, and
+`figmaMcp`'s value genuinely picks between them — no more disclosed
+"always Southleft" shortcut.
 
-- **`mcp__figma-southleft__*`** — connects via the Desktop Bridge plugin in
-  Figma Desktop. This is the one every step below actually uses. Fully
-  confirmed working for variable/style writes (`docs/figma-mcp-
-  capabilities.md`).
-- **`mcp__plugin_figma_figma__*`** — Figma's own official remote MCP
-  (`https://mcp.figma.com/mcp`), gated behind OAuth. Confirmed *real*
-  (only `authenticate`/`complete_authentication` are visible pre-auth,
-  which is exactly what an OAuth-gated server looks like) — but its real
-  tool surface only appears *after* a user completes that OAuth flow in
-  their browser, and nobody has done that from this project yet. There is
-  currently no verified equivalent of `figma_create_variable_collection`/
-  `figma_batch_create_variables`/`figma_execute` on this server to build
-  against — guessing at tool names/shapes that have never been seen would
-  be worse than not building it.
+- **`mcp__figma-southleft__*`** (`figmaMcp === "southleft"`) — connects
+  via the Desktop Bridge plugin in Figma Desktop. Fully confirmed working
+  for variable/style/component writes (`docs/figma-mcp-capabilities.md`).
+- **`mcp__plugin_figma_figma__*`** (`figmaMcp === "official"`) — Figma's
+  own official remote MCP (`https://mcp.figma.com/mcp`), OAuth-gated.
+  **Built and verified live 2026-09-23** against a real Enterprise-plan
+  file (variables across 2 real modes, aliases, text styles, effect
+  styles — all created, read back fresh, and cleanly deleted). Its real
+  tool surface is much smaller than Southleft's: **one** general write
+  primitive, `use_figma` (raw Plugin API JS — the exact same execution
+  model as Southleft's `figma_execute`), plus a handful of read-only
+  tools (`get_metadata`, `get_variable_defs`, `search_design_system`,
+  `get_libraries`, `whoami`). There is no dedicated
+  `create_variable_collection`/`batch_create_variables`/bulk
+  `get_variables` tool the way Southleft has — every one of those
+  operations is written as raw JS via `use_figma` instead. See steps 3-4
+  below for the exact patterns; steps 5/7/8 already used raw JS via
+  `figma_execute` for Southleft, so those need no new logic at all — just
+  swap the wrapper tool.
 
-**Regardless of `figmaMcp`'s value, this skill always executes through
-Southleft right now.** If `figmaMcp === "official"`, say so plainly before
-starting step 1: something like "You picked the official Figma MCP, but
-this build only has a working push path through Southleft today — I'll
-use that instead." Don't call `mcp__plugin_figma_figma__authenticate` on
-the strength of this seed answer alone — starting an OAuth grant flow is
-a real, user-facing permission action, and the seed answer from earlier in
-the conversation isn't the same as the user asking for it *right now*. If
-a user explicitly asks, in the moment, to actually try the official MCP,
-that's a separate, deliberate request to take at face value — but nothing
-in this skill should assume that's what a `figmaMcp: "official"` seed
-value alone means.
+**Real differences worth knowing, not just a tool-name swap:**
 
-**🚩 Flagged in `pipeline-plan.md`'s "Pre-launch validation" as a must-fix
-before public release** — this whole step exists to make an internal-
-testing shortcut honest, not to be the tool's permanent behavior. Once the
-official MCP's post-auth tools have actually been inspected, either wire
-up a real official-MCP push path and remove this pin, or drop row 5b's
-question entirely if it still can't be honored. Don't let "always
-Southleft" quietly become the shipped behavior by default.
+- **No Desktop Bridge, no manual "open the file and run the plugin" step**
+  — the official MCP connects straight to a file by its key, from
+  anywhere. This removes Southleft's single biggest piece of human-in-
+  the-loop friction (see step 1).
+- **No read-after-write staleness.** Southleft's `figma_get_variables`
+  caches and needs `refreshCache: true` to see a fresh write (`docs/
+  figma-mcp-capabilities.md`, caveat 3). `use_figma` has no such cache —
+  every call reads live Plugin API state directly, confirmed by reading
+  back a just-created alias variable in a separate call and seeing the
+  correct resolved value immediately, no refresh flag needed.
+- **Rate limits are real and plan/seat-dependent** (`whoami`'s attached
+  `rate-limits-access.md` resource) — as low as 20 calls/month on a
+  Starter+View seat, up to 600/day on Enterprise Full/Dev. Figma's own
+  docs list `use_figma`-style write tools as *likely* exempt from this
+  (explicitly named exemptions are `create_new_file`/`add_code_connect_
+  map`/`whoami`, not `use_figma` by name) — treat this as probable, not
+  confirmed, and if a push hits a rate-limit error mid-way, that's the
+  first thing to check, not a bug in this skill's own logic.
+- **Free-plan mode-cap behavior is unverified for this MCP specifically.**
+  Southleft's free-plan cap (multi-mode collections silently capped to 1,
+  no error) was confirmed live against a real free-plan file. The official
+  MCP's only live test so far was against a real Enterprise-plan file,
+  where 2 real modes landed correctly — there's no reason to expect
+  different behavior (both go through the same underlying Figma variable-
+  write semantics, just a different transport), but it hasn't actually
+  been observed on a free-plan file through this specific MCP. Step 3's
+  existing `figmaPlan`-driven strategy (ask up front, verify-as-safety-net
+  on the paid branch) already covers this regardless of which MCP is
+  active — no new logic needed, just don't claim this specific
+  combination as "verified" when it hasn't been.
+
+Starting the OAuth flow (`mcp__plugin_figma_figma__authenticate`) is still
+a real, user-facing permission action — do it when `figmaMcp ===
+"official"` and a push is actually starting, not speculatively earlier in
+a conversation.
 
 ### 1. Verify the connection before touching anything
 
-Call `figma_get_status` with `probe: true`. If `setup.valid` is false or
-the probe fails:
+**If `figmaMcp === "southleft"`:** call `figma_get_status` with `probe:
+true`. If `setup.valid` is false or the probe fails:
 
 - Tell the user plainly what's needed: open Figma Desktop with their file,
   go to **Plugins → Development → Figma Desktop Bridge**, click Run, wait
   ~3 seconds. Don't retry silently in a loop — ask them to confirm they've
   done it, then check status again once.
 - Do not proceed to writing anything while disconnected. There's nothing
-  to fall back to here — no REST API path exists for this (see file
+  to fall back to here for this MCP — no REST API path exists (see file
   header) — so a failed connection means the push simply doesn't happen
   this turn, not a degraded alternative.
 
@@ -141,6 +169,23 @@ Compare it against the connected file(s):
   exposes a way to select it, do so; otherwise use `figma_navigate` with
   `figmaFileUrl` or ask the user to bring that file's window forward, then
   `figma_reconnect`.
+
+**If `figmaMcp === "official"`:** there's no bridge/desktop step at all.
+Extract the file key from `figmaFileUrl` the same way (the path segment
+after `/design/`, or after `/design/<key>/branch/<branchKey>/` for a
+branch URL — use the branch key as the file key in that case, confirmed
+live 2026-09-23 against a real branch URL). Confirm access with a cheap
+read call, `get_metadata` with no `nodeId` (lists top-level pages) or
+`whoami` (also useful if this errors — it reports exactly which plans/
+seats the authenticated user has, the fastest way to diagnose a
+permission or rate-limit problem per that tool's own description):
+
+- If it errors with a permission-shaped message, call `whoami` and relay
+  its plan/seat info to the user — the likely cause is the authenticated
+  Figma account not having access to that specific file's team/plan, not
+  a broken connection.
+- If it succeeds, proceed — no further connection setup needed. This is
+  genuinely simpler than the Southleft path, not just "different."
 
 ### 2. Read the plan
 
@@ -197,6 +242,37 @@ Either way, tell the user plainly which structure actually got built —
 it's genuinely informative (their Figma plan's real capability), not
 just a status update.
 
+**If `figmaMcp === "official"`:** same decision logic (`figmaPlan`,
+1-mode vs. 2-mode vs. fallback), but there's no dedicated collection tool
+— do it as raw JS via `use_figma`, verified live 2026-09-23:
+
+```js
+// 1-mode, or the free-plan 2-collection case (call twice, once per collection):
+const collection = figma.variables.createVariableCollection("Tokens"); // or "Tokens - Light" / "Tokens - Dark"
+collection.renameMode(collection.modes[0].modeId, "Light"); // or the plan's single mode name
+return { collectionId: collection.id, modeId: collection.modes[0].modeId };
+```
+
+```js
+// paid-plan single-collection, 2-mode case:
+const collection = figma.variables.createVariableCollection("Tokens");
+const lightModeId = collection.modes[0].modeId;
+collection.renameMode(lightModeId, "Light");
+const darkModeId = collection.addMode("Dark");
+return { collectionId: collection.id, lightModeId, darkModeId };
+```
+
+Verify the same way — a **separate, subsequent** `use_figma` call
+re-fetching by ID (`figma.variables.getVariableCollectionByIdAsync(id)`)
+and checking `collection.modes.length`. No `refreshCache` flag needed
+(see step 0) — a fresh call already sees live state. If only 1 mode
+persisted despite requesting 2, apply the exact same fallback as the
+Southleft branch above (rename to `Tokens - Light`, create a new
+`Tokens - Dark`) — this exact scenario (free-plan file, official MCP)
+hasn't been observed live yet, so treat a cap here as plausible, not
+surprising, and handle it the same way regardless of which MCP produced
+it.
+
 ### 4. Push variables (literals first, then aliases/alpha)
 
 Split `plan.variables` (plus `plan.elevationVariables`, same treatment as a
@@ -240,7 +316,86 @@ returnAsLinks: true })` (or similar) run once after the literal batch
 lands — remember caveat 3 from `docs/figma-mcp-capabilities.md`:
 **read-after-write is stale without `refreshCache: true`.**
 
+**If `figmaMcp === "official"`:** there's no `figma_batch_create_variables`
+or bulk `figma_get_variables` — do both the literal batch and the alias
+resolution as raw JS via `use_figma`, verified live 2026-09-23 against a
+real Enterprise-plan file (2 literal variables + 1 real alias, read back
+fresh and confirmed resolved):
+
+```js
+// Literal batch — embed the chunk's data directly in the script (no
+// separate "data" param exists for use_figma). Chunk into groups of
+// ~100 to mirror Southleft's own limit and stay comfortably under the
+// 50000-char code cap.
+const collection = await figma.variables.getVariableCollectionByIdAsync(COLLECTION_ID);
+const items = [
+  { name: "color/primitive/brand/600", type: "COLOR", valuesByMode: { LIGHT_MODE_ID: {r:0.2,g:0.4,b:0.9}, DARK_MODE_ID: {r:0.2,g:0.4,b:0.9} } },
+  // ...rest of this chunk's literal-only variables from plan.variables/plan.elevationVariables
+];
+const createdIds = {};
+for (const item of items) {
+  const v = figma.variables.createVariable(item.name, collection, item.type);
+  v.scopes = item.scopes; // set explicitly per variable-patterns.md — never leave ALL_SCOPES
+  for (const [modeId, value] of Object.entries(item.valuesByMode)) {
+    v.setValueForMode(modeId, value);
+  }
+  createdIds[item.name] = v.id;
+}
+return createdIds; // MUST return this — it's the name->ID map the alias step below needs
+```
+
+```js
+// Alias/alpha batch — runs AFTER the literal batch, using the name->ID
+// map that call returned (passed in as a literal object here, not
+// re-fetched — no bulk-read tool exists to re-fetch by name pattern, and
+// none is needed: the creation call already told us every ID).
+const primitiveIds = { "color/primitive/brand/600": "VariableID:...", /* ...from the previous call's return value */ };
+const collection = await figma.variables.getVariableCollectionByIdAsync(COLLECTION_ID);
+const aliasItems = [
+  { name: "color/semantic/action/primary", targetName: "color/primitive/brand/600", scopes: ["ALL_FILLS"] },
+];
+const createdAliasIds = {};
+for (const item of aliasItems) {
+  const v = figma.variables.createVariable(item.name, collection, "COLOR");
+  v.scopes = item.scopes;
+  const target = await figma.variables.getVariableByIdAsync(primitiveIds[item.targetName]);
+  for (const modeId of Object.keys(collection.modes.map(m => m.modeId).reduce((a,id)=>({...a,[id]:1}),{}))) {
+    v.setValueForMode(modeId, { type: "VARIABLE_ALIAS", id: target.id });
+  }
+  createdAliasIds[item.name] = v.id;
+}
+return createdAliasIds;
+```
+
+The alpha case (`overlay.scrim`) is identical to Southleft's — same
+`{r,g,b,a}` object, just inside a `use_figma` call instead of
+`figma_execute`. **A genuine simplification versus Southleft, not just a
+different tool**: because there's no bulk `figma_get_variables` to lean
+on, the natural pattern is to carry the name→ID map forward from each
+creation call's own `return` value into the next call's script (as a
+literal object, per the pre-flight checklist's "IDs from previous calls
+are passed as string literals" rule) — this sidesteps the entire
+read-after-write staleness question for THIS specific lookup, since
+nothing is being re-fetched by name at all.
+
 ### 5. Text styles and effect styles (via `figma_execute` — no dedicated tool exists for either)
+
+**If `figmaMcp === "official"`:** this step's own JS is already MCP-
+agnostic raw Plugin API code (`figma.createTextStyle()`/
+`figma.createEffectStyle()`) — verified live 2026-09-23 that both work
+identically through `use_figma` (create → read back fresh → delete, no
+divergence from what's documented below). The only change is the wrapper
+tool call (`use_figma` instead of `figma_execute`); every code sample and
+the whole sub-batching/duplicate-check procedure below applies unchanged.
+**One assumption still unverified, not confirmed either way**: whether
+`use_figma` has the same ~30000ms timeout ceiling that drives this step's
+own sub-batching discipline — that number is documented for
+`figma_execute` specifically (`docs/figma-mcp-capabilities.md`), and
+hasn't been separately measured for `use_figma`. Keep the same
+small-sub-batch, check-before-retry discipline regardless until that's
+actually observed one way or the other — the cost of doing so
+unnecessarily is low, the cost of assuming a bigger timeout and being
+wrong (duplicate styles, same as the 2026-09-09 finding below) isn't.
 
 **Font loading is the slow, timeout-prone part of this whole skill — treat
 it with more care than the rest.** `figma_execute` caps at 30000ms even at
@@ -383,6 +538,25 @@ the same session, right after `scaffold` completes — this isn't a separate
 thing the user has to remember to ask for, same as steps 1–6 aren't.
 
 ### 7. Push components (only when `figma-components-push-plan.json` exists)
+
+**If `figmaMcp === "official"`:** every code sample in this step is
+already raw Plugin API JS via `figma_execute` — same MCP-agnostic
+situation as step 5, ports to `use_figma` with no logic change, just the
+wrapper swap. **One real substitution, not just a swap**: this step's own
+validation calls `figma_capture_screenshot` (Southleft's dedicated
+export tool, chosen specifically over `figma_take_screenshot` for the
+REST-token-staleness reason documented at that call site below). The
+official MCP has no equivalent dedicated tool, but `use_figma` scripts can
+call `await node.screenshot()` inline and get the image back in the same
+response — actually more direct than either Southleft option (no second
+tool call at all). Not yet exercised against a real component build
+through this MCP (only variables/text styles/effect styles have been
+verified live so far, 2026-09-23) — treat the mechanism as sound (it's
+the same underlying Plugin API screenshot capability step 0 already
+confirmed works for arbitrary nodes) but confirm on the first real
+component pushed through this path rather than assuming zero surprises,
+same discipline this whole step already applies to every new component
+shape.
 
 **Real ground truth, proven live for all twenty-nine components this plan
 covers today — the figure-out-shadcn/ui effort is now fully closed, per
@@ -1490,6 +1664,19 @@ step's own opening paragraph for the full, precise disclosure of what
 that does and doesn't mean.
 
 ### 8. Pull token edits back from Figma (added 2026-09-17, extended to cover styles the same day)
+
+**If `figmaMcp === "official"`:** the three reads this step uses
+(`getLocalVariablesAsync()`/`getLocalTextStylesAsync()`/
+`getLocalEffectStylesAsync()`) are the exact same raw Plugin API calls
+step 5 already confirmed work identically through `use_figma` — the CLI
+diffing step downstream (`figma-pull.ts`) is already MCP-agnostic, since
+it only ever consumes the assembled `{ variables, textStyles,
+effectStyles }` JSON, never a Southleft-specific shape. Assemble that
+object the same way, via `use_figma` instead of `figma_execute`, and pass
+it to `figma-pull` unchanged. Not yet exercised live end-to-end through
+this MCP specifically (only the underlying reads were verified
+individually, 2026-09-23) — same "sound mechanism, confirm on first real
+use" caveat as step 7 above.
 
 Run this whenever the user asks to check for or pull Figma-side token
 edits into code — not automatically as part of every push, and not

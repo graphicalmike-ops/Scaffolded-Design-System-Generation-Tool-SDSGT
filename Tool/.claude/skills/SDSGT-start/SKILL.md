@@ -90,7 +90,7 @@ is that plan's implementation in the actual conversation.
 | 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries, and spans radius/padding/typography-size/shadow/opacity, not just geometry** — see "Known gaps," **"Geometry, shadow, and opacity fidelity, by library"** for the full exact per-library detail. The short version: React-Bootstrap/bootstrap-vue-next, MUI, Vuetify, and React Native Paper all have color/radius/padding/typography-size/opacity fully real-token-bound (as of 2026-09-16) — nothing left open on those five dimensions for any of those four. shadcn/ui and shadcn-vue have shadow bound for every preset, and spacing bound for every preset including `bootstrap` now (2026-09-16) — though `bootstrap`'s own fix only covers the exact keys it defines (0-5); any fractional class or key beyond 5 still falls back to Tailwind's raw default, disclosed same as RNR's own spacing gap. RNR has spacing (partial) and typography size (complete) bound, but its shadow classes are structurally unfixable — the underlying native CSS-to-RN translation library drops multi-layer shadows outright, independent of any token binding. MUI's and Vuetify's own SHADOW/elevation systems are a genuinely different, physically-modeled numeric depth scale (not a named size scale) with no real, non-arbitrary mapping from this pipeline's own 5-tier scale — disclosed, not fabricated. RN Paper's own elevation is already correct via a different, real MD3-appropriate mechanism (surface tinting, not box-shadow). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma — a settled v1 scope decision (2026-09-22), not a "not yet built" gap — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
 | 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. **Disclose here, not just at row 4 or step 10, since this is the question a "will my components show up in Figma too?" assumption actually attaches to**: `Figma-managed` only ever pushes real component structure for one combination — `nextjs` + `tailwind` + shadcn/ui, a settled v1 scope decision (2026-09-22), not a "not yet built" gap — everything else (every other framework/library, `files-only` mode) still gets tokens-as-variables in Figma, nothing more, regardless of this answer. See "Known gaps," "Figma component push — scope, not just fidelity" for the exact current wording. | `figmaManaged` (boolean) |
 | 5a | *(only if row 5 = `Figma-managed`)* Paste the Figma file link to push tokens into | In chat — a Figma URL | Must actually look like a Figma URL (`figma.com/design/...` or `figma.com/file/...`) — if what's pasted doesn't parse as one, say so and ask again rather than guessing a file key out of it. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a, for when this actually gets used — pushing happens right after `promote`, using this link, not at seed-input time. | `figmaFileUrl` (string, optional — only set when row 5 is `Figma-managed`) |
-| 5b | *(only if row 5 = `Figma-managed`)* Which Figma MCP should the push use? | Menu — `Official Figma MCP` / `Southleft MCP` | A real choice, collected for real — but say plainly, right after they answer, that **during this internal-testing phase the push always runs through the Southleft MCP regardless of which one is picked.** Official Figma MCP is a real, confirmed integration (`mcp.figma.com`, OAuth-gated), it's just never been exercised from this project, so nothing runs against it yet — same "ask it anyway, disclose the gap" treatment as row 4's component library. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaMcp` (`"official"` \| `"southleft"`, optional — only set when row 5 is `Figma-managed`) |
+| 5b | *(only if row 5 = `Figma-managed`)* Which Figma MCP should the push use? | Menu — `Official Figma MCP` / `Southleft MCP` | A real choice that genuinely branches the push (`SDSGT-figma-push` step 0, verified 2026-09-23) — **not asked it anyway, disclose the gap treatment.** Official Figma MCP connects straight to the file via OAuth, no Desktop Bridge/manual file-open step needed; Southleft needs Figma Desktop open with the bridge plugin running. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaMcp` (`"official"` \| `"southleft"`, optional — only set when row 5 is `Figma-managed`) |
 | 5c | *(only if row 5 = `Figma-managed`)* Is that Figma file on a free plan or a paid plan? | Menu — `Free plan` / `Paid plan` | Unlike row 5b, **this one actually changes what gets built**: on a free plan, Figma caps a variable collection at one mode with no error raised, so the push uses two separate collections (`Tokens - Light`/`Tokens - Dark`) instead of one collection with two real modes. Only matters if row 6 ends up being `Both Light and Dark mode` — say so if the user seems unsure why this is being asked before row 6. If they don't know which plan they're on, tell them to check figma.com/files → their workspace name → look for "Free"/"Professional"/"Organization"/"Enterprise" in the plan badge, rather than guessing for them. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaPlan` (`"free"` \| `"paid"`, optional — only set when row 5 is `Figma-managed`) |
 | 6 | Light mode, dark mode, or both? | Menu — `Light Mode only` / `Dark mode only` / `Both Light and Dark mode` | Decides which `color.semantic.*.json` file(s) get written. If Figma-managed and row 6 isn't `Both`, mention that row 5c's answer ends up not mattering — a single mode never reaches the collection-count question at all. | `lightDarkMode` (`"light"` \| `"dark"` \| `"both"`) |
 | 7 | Primary brand color? | `#hex` in chat, or a screenshot | If illegible, ambiguous (e.g. two colors given and it's unclear which is primary vs. secondary), or otherwise not directly readable — ask, don't assume. | `primaryColor` |
@@ -840,22 +840,20 @@ override any of the four independently — they don't have to move together.
   connection isn't live (see the push skill's own "Verify the connection"
   step). `targetFramework`/`targetDesignLanguage` are also wired up now,
   driving `generate`'s platform flag — see below.
-- **`figmaMcp` (row 5b) is collected but currently pinned, not branched
-  on.** Whatever the user picks, `SDSGT-figma-push` always executes via the
-  Southleft MCP during this internal-testing phase — say so plainly right
-  after they answer row 5b, don't wait until the push step to surface it.
-  This isn't a placeholder field like `componentLibrary`/`scaffoldMode`
-  above (the choice is real, and the official Figma MCP genuinely exists —
-  `mcp.figma.com`, OAuth-gated) — it's a deliberate, disclosed pin: nothing
-  has ever verified what that server's real tools look like post-auth from
-  this project, so nothing is built against it, and no OAuth flow gets
-  triggered on the strength of this seed answer alone (starting one
-  requires the user's own explicit go-ahead in the moment, separately —
-  see the push skill's own notes on this). **🚩 This pin is an
-  internal-testing-only shortcut, flagged in `pipeline-plan.md`'s
-  "Pre-launch validation" as a must-fix before public release** — asking a
-  real user to choose and then ignoring their answer isn't acceptable past
-  this phase. Don't quietly let this stay the permanent behavior.
+- **`figmaMcp` (row 5b) genuinely branches, as of 2026-09-23.** Whatever
+  the user picks, `SDSGT-figma-push` executes through that real MCP —
+  Southleft (Desktop Bridge plugin, dedicated variable/style tools) or the
+  official Figma MCP (`mcp.figma.com`, OAuth-gated, one general `use_figma`
+  write primitive — its real post-auth tool surface has been inspected and
+  verified live against a real Enterprise-plan file: variable collections
+  with real multi-mode support, aliases, text styles, and effect styles).
+  See `SDSGT-figma-push`'s step 0 for the full capability comparison,
+  including a real advantage (no Desktop Bridge/manual-file-open step for
+  the official MCP) and a real disclosed gap (the free-plan mode-cap
+  behavior hasn't been separately observed through the official MCP yet,
+  only Southleft). No OAuth flow gets triggered on the strength of this
+  seed answer alone — starting one happens only once a push actually
+  begins with `figmaMcp === "official"`.
 - **Which `generate` platform flag gets used is derived from `targetFramework`/
   `targetDesignLanguage` — see "Running the flow," step 8, for the exact
   rule.** All five Generate targets are built, each with its own decided,
@@ -947,17 +945,19 @@ override any of the four independently — they don't have to move together.
     invoke it with `tokensDir` (the same `--out` path from step 6),
     `figmaFileUrl` (row 5a's answer), `figmaMcp` (row 5b's answer), and
     `figmaPlan` (row 5c's answer). That skill is the one that actually
-    applies the "always Southleft during internal testing" pin (row 5b's
-    disclosure) and the free/paid collection-structure decision (row 5c) —
-    pass the real answers through rather than hardcoding either here, so
-    each decision lives in exactly one place. This happens now, right after
-    `promote`, not after `generate` — the pushed tokens are Promote's
-    output (the DTCG spec), independent of which code-token platform gets
-    generated later. That skill handles its own connection check and will
+    branches on `figmaMcp` (row 5b) and applies the free/paid
+    collection-structure decision (row 5c) — pass the real answers through
+    rather than hardcoding either here, so each decision lives in exactly
+    one place. This happens now, right after `promote`, not after
+    `generate` — the pushed tokens are Promote's output (the DTCG spec),
+    independent of which code-token platform gets generated later. That
+    skill handles its own connection check per MCP: for Southleft, it will
     ask the user to open Figma Desktop with the Desktop Bridge plugin
-    running if it isn't already connected — don't try to work around a
-    failed connection yourself (e.g. by guessing at a REST API call); there
-    isn't one available for this (see that skill's file header). Report
+    running if it isn't already connected; for the official MCP, no
+    desktop step is needed at all, just a live OAuth session — don't try to
+    work around a failed connection yourself (e.g. by guessing at a REST
+    API call); there isn't one available for this (see that skill's file
+    header). Report
     back what it reports back (variables/styles created, which collection
     structure Figma's plan allowed), then continue to step 8 regardless of
     whether the push succeeded — a failed or skipped Figma push doesn't

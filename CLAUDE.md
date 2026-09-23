@@ -42,7 +42,7 @@ There's also an ongoing editing/management layer: once a project is generated, i
 - **Tokens are stored in the W3C "DTCG" JSON format** (a standard, not something hand-rolled) and converted into each platform's real code — CSS, TypeScript, etc. — using a conversion tool called Style Dictionary.
 - **Figma push is optional.** Someone who doesn't want to touch Figma can manage every token directly in code.
 - **A generated project doesn't receive future tool updates** — if the SDSGT generator itself improves later, already-generated projects don't retroactively benefit (each one is frozen relative to the tool itself). But every generated project keeps a live **token sync** feature, so token *values* can keep being edited — in Figma or in code — and kept in sync with each other, going forward. This is different from re-running the whole generator, which is a deliberate, destructive "start over" action, not part of routine use.
-- **Corner-roundness ships as a small preset menu** (square / lowly-round / highly-round), chosen at generation time — the same mechanism used for spacing rhythm and type scale — rather than freeform input. A more exotic "squircle" shape (the smoothed corner style used on iOS app icons) is a deferred future addition, since it needs real extra drawing work on each platform, not just a bigger radius number.
+- **Corner-roundness ships as a small preset menu** (square / lowly-round / highly-round), chosen at generation time — the same mechanism used for spacing rhythm and type scale — rather than freeform input. A more exotic "squircle" shape (the smoothed corner style used on iOS app icons) was considered and **decided against** (2026-09-23) — not deferred, discarded — rather than build real per-platform drawing work for it.
 
 Full reasoning behind these, plus the rest of the settled decisions, live in `pipeline-plan.md`.
 
@@ -58,10 +58,15 @@ Concrete, non-obvious things worth not re-learning the hard way:
 
 ## Open questions
 
-- Which framework to scaffold first (Layer 3), and how to actually vendor real components (Layer 2's harder half) — see `docs/layer2-layer3-plan.md`.
-- Squircle support — deferred until there's time to build proper per-platform drawing logic.
+- Remaining pre-v1 gaps are tracked in `pipeline-plan.md`'s "Still open" and "Pre-launch validation" sections — as of 2026-09-23 these are mostly outside Layer 2/3 (both essentially complete; see `pipeline-plan.md`'s "Next step"). The `design.md` content contract (see `pipeline-plan.md`, "Deferred") is the only item intentionally left open within Layer 1/2 scope — squircle support was considered and discarded, not deferred (see `pipeline-plan.md`, "Deferred").
 
 Full list of remaining open and deferred items: see `pipeline-plan.md`.
+
+## Repo layout
+
+**The tool itself — the CLI and its two Claude Code skills — lives in `Tool/`, separate from this repo's planning docs (this file, `pipeline-plan.md`, `contracts-and-seeds.md`, etc.), decided 2026-09-23.** `Tool/` is a self-contained, distributable unit: `Tool/cli/` (the CLI core) and `Tool/.claude/skills/` (`SDSGT-start`, `SDSGT-figma-push`) as siblings, with nothing inside either one referencing this repo or "Tool" by name — someone can copy `Tool/` elsewhere and open it directly as its own workspace (VS Code, Claude Code, etc.) and it just works, `.claude/skills/` sitting right at its own root the normal way.
+
+Project root also has `cli` and `.claude/skills` — **these are symlinks into `Tool/`, not duplicates.** They exist so this repo's own day-to-day workflow (running `/SDSGT-start`, testing scaffolds, editing the CLI) keeps working exactly as before, with Project open as the workspace, without a second real copy of anything to drift out of sync. Every `cli/...`/`.claude/skills/...` path reference anywhere in this repo's planning docs resolves correctly from Project root through these symlinks — nothing needed rewriting. If you ever need the tool's actual, real location (e.g. to distribute it), that's `Tool/cli/` and `Tool/.claude/skills/`, not the symlinks.
 
 ## Project docs
 
