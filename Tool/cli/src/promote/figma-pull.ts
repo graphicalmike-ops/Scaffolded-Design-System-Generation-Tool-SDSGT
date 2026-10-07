@@ -265,6 +265,7 @@ export function computeFigmaPull(tokensDir: string, input: FigmaPullInput): Figm
       figmaName: e.figmaName,
       type: "FLOAT" as const,
       group: "foundation" as const,
+      scopes: e.scopes,
       valuesByMode: { value: e.value },
     })),
   ];

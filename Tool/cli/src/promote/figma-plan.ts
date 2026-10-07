@@ -34,6 +34,28 @@ import { LIGHT_FILE, DARK_FILE } from "../generate/index.ts";
 
 export type FigmaVariableType = "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
 
+// Only the Figma VariableScope values this pipeline actually assigns — not
+// Figma's full enum. An empty array on a plan item means "leave Figma's
+// default (unrestricted) untouched" — primitives deliberately get no scope
+// write at all rather than an explicit ALL_SCOPES (same effective result,
+// no no-op write — see contracts-and-seeds.md, "Figma push").
+export type FigmaVariableScope =
+  | "ALL_FILLS"
+  | "FRAME_FILL"
+  | "SHAPE_FILL"
+  | "TEXT_FILL"
+  | "STROKE_COLOR"
+  | "CORNER_RADIUS"
+  | "GAP"
+  | "WIDTH_HEIGHT"
+  | "STROKE_FLOAT"
+  | "OPACITY"
+  | "EFFECT_FLOAT"
+  | "FONT_FAMILY"
+  | "FONT_WEIGHT"
+  | "FONT_SIZE"
+  | "LINE_HEIGHT";
+
 export interface FigmaVariablePlanItem {
   // Full dotted DTCG path, e.g. "color.primitive.brand.600" — kept for
   // debugging/traceability, not used by the push procedure directly.
@@ -41,6 +63,9 @@ export interface FigmaVariablePlanItem {
   figmaName: string;
   type: FigmaVariableType;
   group: "primitive" | "semantic" | "foundation";
+  // Which Figma node properties this variable should be restricted to.
+  // Empty = leave Figma's default (unrestricted) untouched.
+  scopes: FigmaVariableScope[];
   // Keyed by logical mode: "value" for anything mode-independent (every
   // primitive and foundation token), or "light"/"dark" for semantic color.
   // The push procedure maps these onto whichever real Figma modes actually
@@ -86,6 +111,7 @@ export interface FigmaEffectStylePlanItem {
 export interface FigmaElevationVariablePlanItem {
   figmaName: string;
   value: number;
+  scopes: FigmaVariableScope[];
 }
 
 export interface FigmaPushPlan {
@@ -127,6 +153,9 @@ function rampVariables(
       figmaName: dtcgPathToFigmaName(path),
       type: "COLOR" as const,
       group: "primitive" as const,
+      // Primitives deliberately get no scope restriction — see
+      // FigmaVariableScope's own comment.
+      scopes: [],
       valuesByMode: { value: token.$value },
     };
   });
@@ -149,6 +178,33 @@ function flattenSemantic(tree: SemTree, path: string[] = []): Array<{ path: stri
     else out.push(...flattenSemantic(node, nextPath));
   }
   return out;
+}
+
+// Scope per semantic color category/role — see contracts-and-seeds.md,
+// "Figma push," for the reasoning behind each. `path` is the flattened
+// semantic path with "color"/"semantic" already stripped, e.g.
+// ["background", "primary"] or ["status", "error-bg"].
+function scopesForSemanticPath(path: string[]): FigmaVariableScope[] {
+  const [category, key] = path;
+  switch (category) {
+    case "background":
+      return ["FRAME_FILL", "SHAPE_FILL"];
+    case "text":
+      return ["TEXT_FILL"];
+    case "action":
+      return ["ALL_FILLS", "STROKE_COLOR"];
+    case "border":
+      return ["STROKE_COLOR"];
+    case "status":
+      if (key.endsWith("-bg")) return ["FRAME_FILL", "SHAPE_FILL"];
+      if (key.endsWith("-text")) return ["TEXT_FILL"];
+      if (key.endsWith("-border")) return ["STROKE_COLOR"];
+      return ["ALL_FILLS", "STROKE_COLOR"]; // base role (e.g. "error")
+    case "overlay":
+      return ["FRAME_FILL", "SHAPE_FILL"];
+    default:
+      return [];
+  }
 }
 
 // "{color.primitive.neutral.100}" -> "color/primitive/neutral/100" (the
@@ -175,6 +231,7 @@ function semanticVariables(mode: "light" | "dark", filePath: string): FigmaVaria
       figmaName: dtcgPathToFigmaName(fullPath),
       type: "COLOR",
       group: "semantic",
+      scopes: scopesForSemanticPath(path),
       valuesByMode: {},
     };
     if (raw.startsWith("{")) {
@@ -196,7 +253,11 @@ function semanticVariables(mode: "light" | "dark", filePath: string): FigmaVaria
   });
 }
 
-function foundationFloatVariables(groupName: string, file: Record<string, { $value: string | number }>): FigmaVariablePlanItem[] {
+function foundationFloatVariables(
+  groupName: string,
+  file: Record<string, { $value: string | number }>,
+  scopes: FigmaVariableScope[],
+): FigmaVariablePlanItem[] {
   return Object.entries(file).map(([key, token]) => {
     const path = [groupName, key];
     const raw = token.$value;
@@ -206,6 +267,7 @@ function foundationFloatVariables(groupName: string, file: Record<string, { $val
       figmaName: dtcgPathToFigmaName(path),
       type: "FLOAT",
       group: "foundation",
+      scopes,
       valuesByMode: { value },
     };
   });
@@ -260,19 +322,19 @@ export function buildFigmaPushPlan(tokensDir: string): FigmaPushPlan {
     const p = typographyPrimitive.typography.primitive;
     for (const [key, token] of Object.entries(p.fontFamily)) {
       const path = ["typography", "primitive", "fontFamily", key];
-      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "STRING", group: "primitive", valuesByMode: { value: token.$value } });
+      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "STRING", group: "primitive", scopes: ["FONT_FAMILY"], valuesByMode: { value: token.$value } });
     }
     for (const [key, token] of Object.entries(p.fontWeight)) {
       const path = ["typography", "primitive", "fontWeight", key];
-      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "FLOAT", group: "primitive", valuesByMode: { value: token.$value } });
+      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "FLOAT", group: "primitive", scopes: ["FONT_WEIGHT"], valuesByMode: { value: token.$value } });
     }
     for (const [key, token] of Object.entries(p.fontSize)) {
       const path = ["typography", "primitive", "fontSize", key];
-      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "FLOAT", group: "primitive", valuesByMode: { value: parseFloat(token.$value) } });
+      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "FLOAT", group: "primitive", scopes: ["FONT_SIZE"], valuesByMode: { value: parseFloat(token.$value) } });
     }
     for (const [key, token] of Object.entries(p.lineHeight)) {
       const path = ["typography", "primitive", "lineHeight", key];
-      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "FLOAT", group: "primitive", valuesByMode: { value: parseFloat(token.$value) } });
+      merged.set(dtcgPathToFigmaName(path), { path: path.join("."), figmaName: dtcgPathToFigmaName(path), type: "FLOAT", group: "primitive", scopes: ["LINE_HEIGHT"], valuesByMode: { value: parseFloat(token.$value) } });
     }
   }
 
@@ -320,19 +382,19 @@ export function buildFigmaPushPlan(tokensDir: string): FigmaPushPlan {
   }
 
   const spacing = tryReadJson<Record<string, Record<string, { $value: string }>>>(join(tokensDir, "spacing.json"));
-  if (spacing?.spacing) for (const item of foundationFloatVariables("spacing", spacing.spacing)) merged.set(item.figmaName, item);
+  if (spacing?.spacing) for (const item of foundationFloatVariables("spacing", spacing.spacing, ["GAP", "WIDTH_HEIGHT"])) merged.set(item.figmaName, item);
 
   const radius = tryReadJson<Record<string, Record<string, { $value: string }>>>(join(tokensDir, "radius.json"));
-  if (radius?.radius) for (const item of foundationFloatVariables("radius", radius.radius)) merged.set(item.figmaName, item);
+  if (radius?.radius) for (const item of foundationFloatVariables("radius", radius.radius, ["CORNER_RADIUS"])) merged.set(item.figmaName, item);
 
   const borderWidth = tryReadJson<Record<string, Record<string, { $value: string }>>>(join(tokensDir, "border-width.json"));
-  if (borderWidth?.["border-width"]) for (const item of foundationFloatVariables("border-width", borderWidth["border-width"])) merged.set(item.figmaName, item);
+  if (borderWidth?.["border-width"]) for (const item of foundationFloatVariables("border-width", borderWidth["border-width"], ["STROKE_FLOAT"])) merged.set(item.figmaName, item);
 
   const opacity = tryReadJson<Record<string, Record<string, { $value: number }>>>(join(tokensDir, "opacity.json"));
-  if (opacity?.opacity) for (const item of foundationFloatVariables("opacity", opacity.opacity)) merged.set(item.figmaName, item);
+  if (opacity?.opacity) for (const item of foundationFloatVariables("opacity", opacity.opacity, ["OPACITY"])) merged.set(item.figmaName, item);
 
   const breakpoint = tryReadJson<Record<string, Record<string, { $value: string }>>>(join(tokensDir, "breakpoint.json"));
-  if (breakpoint?.breakpoint) for (const item of foundationFloatVariables("breakpoint", breakpoint.breakpoint)) merged.set(item.figmaName, item);
+  if (breakpoint?.breakpoint) for (const item of foundationFloatVariables("breakpoint", breakpoint.breakpoint, ["WIDTH_HEIGHT"])) merged.set(item.figmaName, item);
 
   const effectStyles: FigmaEffectStylePlanItem[] = [];
   const elevationVariables: FigmaElevationVariablePlanItem[] = [];
@@ -341,7 +403,7 @@ export function buildFigmaPushPlan(tokensDir: string): FigmaPushPlan {
     for (const [key, token] of Object.entries(shadow.shadow)) {
       const figmaName = dtcgPathToFigmaName(["shadow", key]);
       if (token.$type === "dimension") {
-        elevationVariables.push({ figmaName, value: parseFloat(String(token.$value)) });
+        elevationVariables.push({ figmaName, value: parseFloat(String(token.$value)), scopes: ["EFFECT_FLOAT"] });
       } else {
         const layers = (Array.isArray(token.$value) ? token.$value : [token.$value]) as Array<{ offsetX: string; offsetY: string; blur: string; spread: string; color: string }>;
         effectStyles.push({
