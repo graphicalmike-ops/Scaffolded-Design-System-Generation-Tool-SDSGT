@@ -88,6 +88,74 @@
 // callout for this batch. Nothing consumes the new capability yet;
 // Batch 10 (`bubble.tsx`) is the first real consumer, next.
 //
+// Component-variations plan (figma-component-variations-plan.md), Batch 1
+// (2026-10-08): the "extra axis" mechanism (`FigmaComponentAxisPlanItem` /
+// `FigmaComponentLayoutOverrides` / `extraAxes`) plus the shared helpers
+// (`tailwindClassPx`, `resolveRadiusClass`, `describeIdenticalOptions`,
+// `parseDataSizeClasses`), first consumed by Button's `Size` axis
+// (default/xs/sm/lg, plus the four icon-only sizes added in Batch 2) via
+// `buildCvaSizeAxis`. So
+// "one size each" above is no longer true for Button (or, since Batch 3,
+// Toggle and Item) — other components still are, until their own batch. Proven so far: plan computation,
+// typecheck and a byte-identical plan-JSON diff for every other component.
+// Proven live in Figma the same day (2026-10-08, "SDSGT test file"): the
+// fixed `height` variable binding (reads back exactly the token value), the
+// 20-variant replay (all fit in one execute call, well under a second),
+// wrapped-grid layout, `componentSet.description`, and a `setProperties`
+// test instance — see SKILL.md step 2c.
+// Batch 2 (same day): Button's four icon-only sizes (`iconOnly`, a "plus"
+// placeholder icon, square frame bound on width AND height) are proven live
+// too: all 40 variants built in one execute call (~760ms), every frame read
+// back its token size, `Label` set/unset on icon-only instances works, and
+// the step 5 label binding needed a null guard for text-less variants.
+// Batch 3 (same day): Toggle's Size axis (via the shared `buildCvaSizeAxis`)
+// and Item's Size axis (`buildItemSizeAxis`, the first `sections` +
+// `extraAxes` combination) are proven live too: 15 variants in one call
+// (~390ms), every Toggle height read back 32/24/32, every Item size's
+// Title/Description rendered and variable-bound, test instances took
+// `setProperties` on every property, and SKILL.md's `sections` branch now
+// reads `item.sections` so a size's own sections replace the default.
+// Batch 4 (same day): Avatar's Size axis (`buildAvatarSizeAxis`, true fixed
+// squares via the new `square` override) and Switch's Size axis (per-size
+// `variantOverrides` carrying a complete `thumb` object, offsets recomputed by
+// one shared formula) are proven live too: 7 variants in one call (~240ms),
+// every Avatar frame read back 32/24/40 token-bound, Switch thumbs flush at
+// x=1/15 (Default) and 1/11 (Sm), test instances took `setProperties`.
+// Batch 5 (same day): Card's Size axis (`buildCardSizeAxis`: Sm swaps
+// `--card-spacing` 16px -> 12px, so `sectionGapVariable` and every section's
+// horizontal padding go spacing/4 -> spacing/3, Title 16 -> 14px) and
+// NativeSelect's Size axis (`buildNativeSelectSizeAxis`: fixed height for
+// every size, h-8 = spacing/8, Sm h-7 snaps to spacing/6) are proven live
+// too: 4 variants in one call, Card Default reads back 243x106 (same as the
+// old Card set), Sm 235x92 with 12px padding/gap, NativeSelect 32/24px high,
+// all text/fill/stroke/size/padding bound, test instances took `setProperties`.
+// Batch 6 (same day): Attachment's Size (default/sm/xs) and Orientation
+// (horizontal/vertical) axes (`buildAttachmentAxes`, the first component with
+// TWO extra axes; new `widthVariable` override and `combinationOverrides`)
+// are proven live too: 6 variants named `Variant=Default, Size=Sm,
+// Orientation=Vertical` in one call (~475ms), three VARIANT properties,
+// Default + Horizontal reads back 93x51 (same as the old set), Vertical a
+// fixed 96px with truncating text, all padding/radius/width/font-size
+// variable-bound, test instance took `setProperties` on every property.
+// Batch 7 (same day): Separator's Orientation axis (`buildSeparatorAxes`;
+// Vertical swaps `line` for a 1px-wide, representative-length-tall one via
+// the new `line.orientation: "vertical"`) and Field's Orientation axis
+// (`buildFieldOrientationAxis`; Horizontal = the same sections with
+// `textLineDirection: "horizontal"`, `responsive` skipped) are proven live
+// too: 4 variants in one call, Separator 200x1 / 1x200 bound to
+// `border.default`, Field Vertical 195x86 (same as the old set) and Horizontal
+// 449x18, all text bound in both orientations, test instances took
+// `setProperties` on every property.
+// Batch 8 (same day): Tabs' Style axis (`buildTabsStyleAxis`; Line = a
+// `variantOverrides` entry dropping Active's fill and adding a bottom-edge-only
+// 2px stroke via the new `strokeSides`/`strokeWeightPx`) and Marker's Separator
+// and Border variants (`buildMarkerStyleVariants`, on the existing `Variant`
+// list; new `flankLines`, `paddingBottomVariable`, and component-level
+// `disclosures`) are proven live too: 7 variants in two calls (~90ms each),
+// Active/Line reads back fill none, stroke text.primary, weights [0,0,2,0];
+// Marker Separator 234x18 with 12px gap, Border 50x27 with a bottom-only
+// border.default stroke; all text bound; test instances took `setProperties`.
+//
 // The shadcn CSS-var -> SDSGT semantic path table below is the exact
 // mapping contracts-and-seeds.md's "shadcn/ui theming" section documents
 // for generate/shadcn.ts, applied in the OPPOSITE direction (there: SDSGT
@@ -150,6 +218,29 @@ export interface FigmaComponentVariantPlanItem {
   // empty-string label.
   textVariable?: string;
   strokeVariable?: string;
+  // Batch 8 (component-variations plan, 2026-10-08), all optional and only set
+  // by Tabs' Line style and Marker's Border/Separator variants. In a
+  // `variantOverrides` entry (JSON can't carry `undefined`), an EMPTY STRING
+  // for `fillVariable`/`strokeVariable` means "remove the base value", which the
+  // replay already treats as transparent / no stroke (it tests truthiness).
+  // `strokeSides: "bottom"` draws the stroke on the BOTTOM edge only (Figma's
+  // per-side `strokeBottomWeight`; the other three sides get weight 0) instead of
+  // all four; absent = all four, exactly as before. `strokeWeightPx` is the
+  // stroke thickness as a raw literal (absent = 1, today's value).
+  strokeSides?: "bottom";
+  strokeWeightPx?: number;
+  // Bottom padding only, bound to a spacing token (Marker Border's real `pb-2`).
+  // Applied AFTER the component's own vertical padding, so it replaces just the
+  // bottom value for this variant.
+  paddingBottomVariable?: string;
+  // Marker Separator's two real hairlines (`before:`/`after:` pseudo-elements
+  // with `h-px bg-border flex-1`) flanking the label: the frame becomes
+  // [line, text, line] with `itemSpacing` bound to `gapVariable`. The real lines
+  // stretch (`flex-1`) to fill the Marker's full width, which has no fixed value,
+  // so `representativeLengthPx` is a disclosed stand-in (same idea as
+  // `FigmaComponentLinePlanItem.representativeLengthPx`); `thicknessPx` is a raw
+  // 1px literal for the same reason as there (no spacing token is that thin).
+  flankLines?: { colorVariable: string; thicknessPx: number; representativeLengthPx: number; gapVariable: string };
   underline?: boolean;
   // Real, added 2026-09-22 for Checkbox — an icon shown ONLY on this
   // specific variant (Checkbox's own real Indicator is conditionally
@@ -291,15 +382,16 @@ export interface FigmaComponentSectionPlanItem {
 // the same as the real masked version without needing a background-fill
 // patch behind the text. `gapVariable` is real and derived (`px-2` on the
 // real label span, the gap between each line segment and the text), not a
-// guess. Orientation is not modeled anywhere in this interface — every
-// `line` in this file is a horizontal (`representativeLengthPx` wide ×
-// `thicknessPx` tall) rule only, the same "one shape only" scope this
-// file's every other component already carries (e.g. Button's own "one
-// size" cut).
+// guess. Orientation: absent = horizontal (`representativeLengthPx` wide ×
+// `thicknessPx` tall), the only shape every `line` had until Batch 7
+// (component-variations plan, 2026-10-08). `orientation: "vertical"` swaps the
+// geometry (`thicknessPx` wide × `representativeLengthPx` tall); only
+// Separator's `Orientation` axis (a per-option `line` override) sets it.
 export interface FigmaComponentLinePlanItem {
   colorVariable: string;
   thicknessPx: number;
   representativeLengthPx: number;
+  orientation?: "vertical"; // absent = horizontal; see the comment above
   centerLabel?: {
     textVariable: string;
     fontSizeVariable: string;
@@ -352,6 +444,73 @@ export interface FigmaComponentBarPlanItem {
   radiusVariable: string;
   heightVariable: string;
 }
+// Component-variations plan (figma-component-variations-plan.md), Batch 1,
+// 2026-10-08 — the "extra axis" mechanism: a component can carry a second
+// (third, ...) Figma variant property beside `Variant` (Size, Orientation,
+// Style), each option of which is a bundle of OVERRIDES layered on top of
+// the component's own fields for that one axis option. Everything below is
+// optional and additive — a component that sets none of it produces
+// byte-identical plan JSON to before. `SKILL.md` step 7 replays it by
+// merging `{...component, ...overrides}` per variant x option combination
+// and running the existing, unchanged frame-building code on the merged
+// object.
+export interface FigmaComponentLayoutOverrides {
+  // A FIXED frame height bound to a spacing token (Tailwind `h-N`/`size-N`).
+  // When set, the frame is horizontal auto-layout with hugging width and a
+  // FIXED height (content centered), so `paddingVerticalVariable` is ignored.
+  heightVariable?: string;
+  // Replayed since Batch 6 (Attachment's Orientation): a FIXED frame WIDTH
+  // bound to a spacing token (Tailwind `w-N`), for a `sections`-based
+  // (vertical-stack) component. The sections then stretch to the frame's width
+  // and each text line fills it and truncates with an ellipsis, like the real
+  // `truncate`. Only `sections` components read it.
+  widthVariable?: string;
+  paddingHorizontalVariable?: string;
+  paddingVerticalVariable?: string; // ignored when heightVariable is set
+  fontSizeVariable?: string;
+  radiusVariable?: string;
+  fixedSizePx?: number;
+  // Replayed since Batch 2 (SKILL.md step 2c): iconOnly. The fields after it
+  // are declared now (plan section A) but NOT replayed yet: line in Batch 7,
+  // sections/sectionGapVariable in Batches 6-7, variantOverrides replayed since Batch 4 (Switch thumb dims; Batch 8's Tabs line style will reuse it).
+  // `iconOnly` replaces the text label with a centered icon in a SQUARE frame
+  // (heightVariable is used for both width and height). Its `colorVariable` is
+  // only the fallback: the replay colors the icon with each variant's own
+  // `textVariable` (Destructive/Ghost/Link/Outline/Default text colors differ).
+  iconOnly?: FigmaComponentIconPlanItem; // replace the text label with an icon (Button icon sizes)
+  // Replayed since Batch 4 (Avatar): with `heightVariable`, make the frame a
+  // true square — BOTH width and height bound to `heightVariable`, zero
+  // padding, content (the text label) centered — instead of the usual
+  // hug-content width. Unlike `iconOnly` the text label stays.
+  square?: boolean;
+  line?: FigmaComponentLinePlanItem; // Separator orientation
+  sections?: FigmaComponentSectionPlanItem[]; // Field/Attachment orientation
+  sectionGapVariable?: string;
+  variantOverrides?: Record<string, Partial<FigmaComponentVariantPlanItem>>; // per-variant tweaks (Switch thumb dims, Tabs line style)
+}
+
+export interface FigmaComponentAxisPlanItem {
+  propertyName: string; // "Size" | "Orientation" | "Style"
+  options: Array<{
+    name: string;
+    overrides: FigmaComponentLayoutOverrides;
+    // Batch 6 (Attachment): extra overrides applied ONLY when this option is
+    // combined with one specific option of ANOTHER axis, keyed
+    // `"<otherAxis.propertyName>=<otherOption.name>"` (e.g. `"Size=Sm"`), for
+    // real classes that depend on both axes at once (Attachment's vertical
+    // content `px-1` adds to each size's own padding). Replayed after every
+    // axis's own `overrides`, so it wins over them.
+    combinationOverrides?: Record<string, FigmaComponentLayoutOverrides>;
+  }>;
+  skippedOptions: Array<{ name: string; reason: string }>;
+  // Plain-language fidelity gaps for this axis (snapped sizes, options that
+  // render identically after snapping, ...). The same lines also go into the
+  // plan's top-level `notes`; SKILL.md step 7 writes THESE into the Figma
+  // component set's own `description`, so the gap is disclosed in both places
+  // (the project's "disclose twice" rule).
+  disclosures?: string[];
+}
+
 export interface FigmaComponentPlanItem {
   name: string; // "Button"
   variantPropertyName: string; // "Variant"
@@ -478,6 +637,19 @@ export interface FigmaComponentPlanItem {
   // before `line`/`bar`/`sections`, since it is the most extreme bypass
   // (not even a frame gets created).
   icon?: FigmaComponentIconPlanItem;
+  // Component-variations plan, Batch 1 (2026-10-08) — see
+  // `FigmaComponentLayoutOverrides`'s own comment. `heightVariable` here is
+  // the merge target for an option's `overrides.heightVariable` (the plan
+  // never sets it on the component itself yet); `extraAxes` lists the extra
+  // Figma variant properties, replayed in order after `Variant`.
+  heightVariable?: string;
+  widthVariable?: string; // merge target for an option's `overrides.widthVariable` (Batch 6)
+  extraAxes?: FigmaComponentAxisPlanItem[];
+  // Batch 8: plain-language fidelity gaps NOT tied to an extra axis (Marker's
+  // Separator/Border variants live on the existing `Variant` list, not an axis).
+  // SKILL.md writes these (plus every axis's `disclosures`) into the Figma
+  // component set's own `description` — the second half of "disclose twice".
+  disclosures?: string[];
 }
 
 export interface FigmaComponentsPushPlan {
@@ -537,6 +709,14 @@ function sdsgtPathToFigmaName(path: string): string {
 const LUCIDE_ICONS: Record<string, { viewBox: string; pathData: string }> = {
   check: { viewBox: "0 0 24 24", pathData: "M20 6 9 17l-5-5" },
   loaderCircle: { viewBox: "0 0 24 24", pathData: "M21 12a9 9 0 1 1-6.219-8.56" },
+  // Added 2026-10-08 (component-variations plan, Batch 2) for Button's icon-only
+  // sizes. Extracted the same way, from the installed lucide-react v1.53.0's own
+  // `dist/esm/icons/plus.mjs` (`__iconData`): `node: [["path", { d: "M5 12h14" }],
+  // ["path", { d: "M12 5v14" }]]`. Unlike the two icons above, plus is TWO
+  // <path> elements in lucide's source; this table holds a single path string, so
+  // the two real `d` values are joined into one path with two sub-paths
+  // ("M5 12h14" + "M12 5v14"), which strokes identically to two paths.
+  plus: { viewBox: "0 0 24 24", pathData: "M5 12h14M12 5v14" },
 };
 
 // Builds the real SVG string `figma.createNodeFromSvg` (called from
@@ -674,6 +854,77 @@ function exactRadiusMd(radius: Record<string, number>): { figmaName: string; del
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers for the "extra axis" mechanism (component-variations plan,
+// Batch 1, 2026-10-08 — see `FigmaComponentLayoutOverrides`). All pure and
+// deterministic; none of them throw on an unfamiliar class (they return null
+// so the caller can record a skipped option with a reason instead).
+// ---------------------------------------------------------------------------
+
+// Tailwind's spacing/size/type classes -> px. `h-N | size-N | px-N | py-N |
+// p-N | gap-N` -> N*4 (N may be fractional, e.g. 2.5); `text-xs/sm/base/lg`
+// -> 12/14/16/18; `text-[0.8rem]` -> 12.8 (rem = 16px). Anything else
+// (colors, `text-[#fff]`, prefixed classes like `has-data-[icon=...]:pr-2`)
+// returns null. Anchored on the whole token, so a prefixed class never
+// matches.
+function tailwindClassPx(cls: string): number | null {
+  const spacing = cls.match(/^(?:h|size|px|py|p|gap)-(\d+(?:\.\d+)?)$/);
+  if (spacing) return parseFloat(spacing[1]) * 4;
+  const textNamed: Record<string, number> = { "text-xs": 12, "text-sm": 14, "text-base": 16, "text-lg": 18 };
+  if (cls in textNamed) return textNamed[cls];
+  const textRem = cls.match(/^text-\[(\d*\.?\d+)rem\]$/);
+  if (textRem) return parseFloat(textRem[1]) * 16;
+  return null;
+}
+
+// A real Tailwind radius class -> the radius token it should bind to.
+// `rounded-lg` is an EXACT alias of `radius/md` (see `exactRadiusMd`'s own
+// comment). `rounded-[min(var(--radius-md),Npx)]` (Button xs/sm) is the
+// smaller of radius.md and N px, snapped with `nearestToken` — except when
+// that minimum IS radius.md, which stays the exact alias rather than
+// risking a different token that happens to share the value.
+function resolveRadiusClass(cls: string, radius: Record<string, number>): { figmaName: string; deltaPx: number } | null {
+  if (cls === "rounded-lg") return exactRadiusMd(radius);
+  const m = cls.match(/^rounded-\[min\(var\(--radius-md\),(\d+(?:\.\d+)?)px\)\]$/);
+  if (!m) return null;
+  const md = exactRadiusMd(radius);
+  const targetPx = Math.min(radius["md"], parseFloat(m[1]));
+  if (targetPx === radius["md"]) return md;
+  return nearestToken(targetPx, radius, "radius");
+}
+
+// Lists Size-style axis options whose resolved overrides came out IDENTICAL
+// to an earlier option (e.g. Button Sm == Xs and Lg == Default after
+// snapping to the token scale). All of them are still created so Figma's
+// property values match the code's `size=` values — this returns the plain
+// "renders identical to X" lines to disclose that.
+function describeIdenticalOptions(axisName: string, options: Array<{ name: string; overrides: FigmaComponentLayoutOverrides }>): string[] {
+  const lines: string[] = [];
+  const seen = new Map<string, string>(); // serialized overrides -> first option name that had them
+  for (const option of options) {
+    const key = JSON.stringify(option.overrides);
+    const first = seen.get(key);
+    if (first === undefined) seen.set(key, option.name);
+    else lines.push(`${axisName} ${option.name} renders identical to ${first} in Figma (both snap to the same tokens) — still created so the Figma property values match the code's own values.`);
+  }
+  return lines;
+}
+
+// `data-[size=X]:` / `group-data-[size=X]/name:` utility classes -> a map of
+// size name to the bare utility classes it applies (Avatar, Card,
+// NativeSelect, Switch use this instead of a `cva()` size axis). Not
+// consumed until Batch 4; implemented now since the plan lists it with the
+// other shared helpers. Classes without such a prefix are ignored.
+function parseDataSizeClasses(classString: string): Record<string, string[]> {
+  const bySize: Record<string, string[]> = {};
+  for (const token of classString.split(/\s+/).filter(Boolean)) {
+    const m = token.match(/^(?:group-)?data-\[size=([a-z0-9-]+)\](?:\/[a-z0-9-]+)?:(.+)$/);
+    if (!m) continue;
+    (bySize[m[1]] ??= []).push(m[2]);
+  }
+  return bySize;
 }
 
 // Shared CVA-variant → Figma-variant-plan logic — extracted 2026-09-16
@@ -842,6 +1093,8 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
     }
   }
 
+  const sizeAxis = buildCvaSizeAxis("Button", buttonSource, variants, spacing, radius, fontSize, notes);
+
   return {
     name: "Button",
     variantPropertyName: "Variant",
@@ -854,7 +1107,192 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "Primary button",
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+}
+
+// The shared `Size` axis builder (component-variations plan, Batch 1,
+// 2026-10-08; extracted from `buildButtonSizeAxis` in Batch 3 once Toggle
+// became its second consumer). Reads the REAL `size` cva axis of `source`
+// (for Button: default/xs/sm/lg are text sizes; the four `icon*` sizes,
+// added in Batch 2, are square icon-only frames) and turns each class string
+// into one option's overrides: h-N -> `heightVariable` (nearest spacing
+// token), px-N -> horizontal padding (nearest spacing token), text-* -> font
+// size (nearest type-scale token), rounded-* -> radius. A size's own class
+// wins; a field the size doesn't set falls back to the cva BASE string
+// (`text-sm`, `rounded-lg`). The Default option reproduces the component's
+// pre-Size-axis values exactly (same padding/font/radius variables) and
+// additionally gets the one intended new field, `heightVariable` (h-8 = 32px
+// = spacing/8, exact), so the component's Default now has a fixed 32px height
+// where it used to hug its content — disclosed below. Never throws on an
+// unfamiliar source shape: a missing size axis returns undefined (no extra
+// axis at all, plain pre-axis component), and an option whose height can't be
+// read is skipped with a reason instead of dropped silently.
+// `describeUnmodeled` (optional) lets a caller add plain-language
+// disclosure lines for real classes in a size's string that this shared
+// builder doesn't model (Toggle's `min-w-N`, icon-adjusted padding).
+function buildCvaSizeAxis(
+  componentName: string,
+  source: string,
+  variants: FigmaComponentVariantPlanItem[],
+  spacing: Record<string, number>,
+  radius: Record<string, number>,
+  fontSize: Record<string, number>,
+  notes: string[],
+  describeUnmodeled?: (label: string, classes: string[]) => string[],
+): FigmaComponentAxisPlanItem | undefined {
+  let sizeEntries: Array<[string, string]>;
+  try {
+    sizeEntries = parseCvaAxis(source, "size");
+  } catch {
+    notes.push(`${componentName}: could not find a \`size\` axis in the vendored source, so no Size property was built — ${componentName} stays one size (real vendored source may have changed shape).`);
+    return undefined;
+  }
+  if (sizeEntries.length === 0) return undefined;
+
+  const baseMatch = source.match(/cva\(\s*"([^"]*)"/);
+  const baseClasses = (baseMatch?.[1] ?? "").split(/\s+/).filter(Boolean);
+  const firstTextPx = (classes: string[]): number | undefined => {
+    for (const cls of classes) {
+      if (!cls.startsWith("text-")) continue;
+      const px = tailwindClassPx(cls);
+      if (px !== null) return px;
+    }
+    return undefined;
+  };
+  const firstRadius = (classes: string[]) => {
+    for (const cls of classes) {
+      const match = resolveRadiusClass(cls, radius);
+      if (match) return match;
+    }
+    return undefined;
+  };
+  const baseFontPx = firstTextPx(baseClasses);
+  const baseRadius = firstRadius(baseClasses);
+
+  // The icon px a size class string sets via `[&_svg:not([class*='size-'])]:size-N`
+  // (xs: 12), else the base string's own (size-4 = 16). icon-sm / icon-lg set
+  // none, so they inherit the base 16px (read from source, not assumed).
+  const firstSvgPx = (classes: string[]): number | undefined => {
+    for (const cls of classes) {
+      const m = cls.match(/^\[&_svg:not\(\[class\*='size-'\]\)\]:(size-\d+(?:\.\d+)?)$/);
+      if (m) return tailwindClassPx(m[1]) ?? undefined;
+    }
+    return undefined;
+  };
+  const baseSvgPx = firstSvgPx(baseClasses);
+  // Fallback icon color only; the replay colors each variant's icon with that
+  // variant's own text color (see FigmaComponentLayoutOverrides.iconOnly).
+  const fallbackIconColor = variants.find((v) => v.textVariable)?.textVariable;
+
+  const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
+
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+
+  for (const [sizeName, classString] of sizeEntries) {
+    const classes = classString.split(/\s+/).filter(Boolean);
+    const label = capitalize(sizeName);
+    if (/^icon(-|$)/.test(sizeName)) {
+      // Icon-only size (Batch 2): a square `size-N` frame with a centered icon.
+      const sizeClass = classes.find((cls) => /^size-\d/.test(cls));
+      const sizePx = sizeClass ? tailwindClassPx(sizeClass) : null;
+      if (!sizeClass || sizePx === null) {
+        skippedOptions.push({ name: sizeName, reason: "no readable `size-N` class in this size's real class string, so a square Figma frame can't be derived" });
+        continue;
+      }
+      if (!fallbackIconColor) {
+        skippedOptions.push({ name: sizeName, reason: "no Button variant has a text color variable, so the icon can't be colored" });
+        continue;
+      }
+      const iconPx = firstSvgPx(classes) ?? baseSvgPx;
+      if (iconPx === undefined) {
+        skippedOptions.push({ name: sizeName, reason: "no readable `[&_svg…]:size-N` icon size in this size's class string or the base string, so the icon size can't be derived" });
+        continue;
+      }
+      const sizeMatch = nearestToken(sizePx, spacing, "spacing");
+      const iconOverrides: FigmaComponentLayoutOverrides = { heightVariable: sizeMatch.figmaName };
+      if (sizeMatch.deltaPx > 0) {
+        disclosures.push(`Size ${label}: ${sizeClass} (${sizePx}px square) snapped to ${sizeMatch.figmaName} (${tokenPx(sizeMatch.figmaName, spacing)}px), ${sizeMatch.deltaPx}px off — no exact spacing token.`);
+      }
+      const iconRadius = firstRadius(classes) ?? baseRadius;
+      if (iconRadius) {
+        iconOverrides.radiusVariable = iconRadius.figmaName;
+        if (iconRadius.deltaPx > 0) {
+          disclosures.push(`Size ${label}: corner radius snapped to ${iconRadius.figmaName}, ${iconRadius.deltaPx}px off — no exact radius token.`);
+        }
+      }
+      iconOverrides.iconOnly = { viewBox: LUCIDE_ICONS.plus.viewBox, pathData: LUCIDE_ICONS.plus.pathData, sizePx: iconPx, colorVariable: fallbackIconColor };
+      options.push({ name: label, overrides: iconOverrides });
+      continue;
+    }
+    const heightClass = classes.find((cls) => /^h-\d/.test(cls));
+    const heightPx = heightClass ? tailwindClassPx(heightClass) : null;
+    if (!heightClass || heightPx === null) {
+      skippedOptions.push({ name: sizeName, reason: "no readable `h-N` height class in this size's real class string, so a fixed Figma height can't be derived" });
+      continue;
+    }
+
+    const overrides: FigmaComponentLayoutOverrides = {};
+    const heightMatch = nearestToken(heightPx, spacing, "spacing");
+    overrides.heightVariable = heightMatch.figmaName;
+    if (sizeName !== "default" && heightMatch.deltaPx > 0) {
+      disclosures.push(`Size ${label}: height ${heightClass} (${heightPx}px) snapped to ${heightMatch.figmaName} (${tokenPx(heightMatch.figmaName, spacing)}px), ${heightMatch.deltaPx}px off — no exact spacing token.`);
+    }
+
+    const padClass = classes.find((cls) => /^px-\d/.test(cls));
+    const padPx = padClass ? tailwindClassPx(padClass) : null;
+    if (padClass && padPx !== null) {
+      const padMatch = nearestToken(padPx, spacing, "spacing");
+      overrides.paddingHorizontalVariable = padMatch.figmaName;
+      // Default's px-2.5 snap is already disclosed by the pre-existing
+      // "Button horizontal padding" note, so it isn't repeated here.
+      if (sizeName !== "default" && padMatch.deltaPx > 0) {
+        disclosures.push(`Size ${label}: horizontal padding ${padClass} (${padPx}px) snapped to ${padMatch.figmaName} (${tokenPx(padMatch.figmaName, spacing)}px), ${padMatch.deltaPx}px off — no exact spacing token.`);
+      }
+    }
+
+    const fontPx = firstTextPx(classes) ?? baseFontPx;
+    if (fontPx !== undefined) {
+      const fontMatch = nearestToken(fontPx, fontSize, "typography/primitive/fontSize");
+      overrides.fontSizeVariable = fontMatch.figmaName;
+      if (sizeName !== "default" && fontMatch.deltaPx > 0) {
+        disclosures.push(`Size ${label}: text size ${fontPx}px snapped to ${fontMatch.figmaName} (${tokenPx(fontMatch.figmaName, fontSize)}px), ${Math.round(fontMatch.deltaPx * 100) / 100}px off — no exact type-scale token.`);
+      }
+    }
+
+    const radiusMatch = firstRadius(classes) ?? baseRadius;
+    if (radiusMatch) {
+      overrides.radiusVariable = radiusMatch.figmaName;
+      if (sizeName !== "default" && radiusMatch.deltaPx > 0) {
+        disclosures.push(`Size ${label}: corner radius snapped to ${radiusMatch.figmaName}, ${radiusMatch.deltaPx}px off — no exact radius token.`);
+      }
+    }
+
+    if (describeUnmodeled) disclosures.push(...describeUnmodeled(label, classes));
+    options.push({ name: label, overrides });
+  }
+
+  if (options.length === 0) {
+    notes.push(`${componentName}: no size in the vendored \`size\` axis had a readable height, so no Size property was built — ${componentName} stays one size.`);
+    return undefined;
+  }
+
+  disclosures.push(...describeIdenticalOptions("Size", options));
+  const defaultOption = options.find((o) => o.name === "Default");
+  if (defaultOption?.overrides.heightVariable) {
+    disclosures.push(`Size Default now has a fixed ${tokenPx(defaultOption.overrides.heightVariable, spacing)}px height, like every other Size; before the Size property existed, ${componentName} hugged its content instead.`);
+  }
+  if (options.some((o) => o.overrides.iconOnly)) {
+    disclosures.push("Icon-only sizes (Icon, Icon-xs, Icon-sm, Icon-lg) show a representative \"plus\" icon as a placeholder, colored with each variant's text color; in real code the icon is whatever you pass as children. They have no text, so the Label property does nothing for them.");
+  }
+  if (skippedOptions.length > 0) {
+    disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+  }
+  for (const line of disclosures) notes.push(`${componentName} ${line}`);
+
+  return { propertyName: "Size", options, skippedOptions, disclosures };
 }
 
 // Second real component, added 2026-09-16 — proves `buildVariantsFromCva`
@@ -945,6 +1383,23 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
     }
   }
 
+  // Real classes in a Toggle size string that the shared size builder doesn't
+  // model: `min-w-N` (a minimum width) and the `has-data-[icon=...]:` /
+  // `[&_svg...]:` classes that only matter when an icon child is present.
+  const describeUnmodeled = (label: string, classes: string[]): string[] => {
+    const lines: string[] = [];
+    const minW = classes.find((cls) => /^min-w-\d/.test(cls));
+    if (minW) {
+      lines.push(`Size ${label}: ${minW} (a minimum width) isn't modeled — the Figma frame is as wide as its label plus padding, so a very short label could be narrower than the real component's minimum.`);
+    }
+    const iconClasses = classes.filter((cls) => cls.startsWith("has-data-[icon=") || cls.startsWith("[&_svg"));
+    if (iconClasses.length > 0) {
+      lines.push(`Size ${label}: icon-related classes (${iconClasses.join(" ")}) aren't modeled — this Figma Toggle has no icon, only a text label.`);
+    }
+    return lines;
+  };
+  const sizeAxis = buildCvaSizeAxis("Toggle", toggleSource, variants, spacing, radius, fontSize, notes, describeUnmodeled);
+
   return {
     name: "Toggle",
     variantPropertyName: "Variant",
@@ -957,6 +1412,7 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "Toggle",
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
 }
 
@@ -1281,6 +1737,26 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   notes.push("Card: only its real Header (Title + Description) and Content sections are modeled — its real Footer (a separate background/border treatment) isn't, a real, narrower scope than the actual 6-part compound component.");
   notes.push("Card: its real `ring-1 ring-foreground/10` border is approximated as border.subtle, the nearest real semantic token — this parser can't bind a partially-transparent ring effect.");
 
+  // Component-variations plan, Batch 5 (2026-10-08): the `Size` axis. Default
+  // is exactly the values above; each other size comes from the real
+  // `data-[size=X]:` / `group-data-[size=X]/card:` classes.
+  const buildSections = (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string): FigmaComponentSectionPlanItem[] => [
+    {
+      paddingHorizontalVariable: spacingVar,
+      textLines: [
+        { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Card Title" },
+        { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Card description goes here." },
+      ],
+    },
+    {
+      paddingHorizontalVariable: spacingVar,
+      textLines: [
+        { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: contentFontVar, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the card's main content." },
+      ],
+    },
+  ];
+  const sizeAxis = buildCardSizeAxis(cardSource, buildSections, titleFontSize.figmaName, bodyFontSize.figmaName, readCssScale(tokensCss, "spacing"), fontSize, notes);
+
   return {
     name: "Card",
     variantPropertyName: "Variant",
@@ -1291,22 +1767,138 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: "spacing/4",
-    sections: [
-      {
-        paddingHorizontalVariable: "spacing/4",
-        textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontSize.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Card Title" },
-          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: bodyFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Card description goes here." },
-        ],
-      },
-      {
-        paddingHorizontalVariable: "spacing/4",
-        textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: bodyFontSize.figmaName, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the card's main content." },
-        ],
-      },
-    ],
+    sections: buildSections("spacing/4", titleFontSize.figmaName, bodyFontSize.figmaName, bodyFontSize.figmaName),
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+}
+
+// Card's `Size` axis (component-variations plan, Batch 5, 2026-10-08), read
+// from the real `data-[size=X]:` / `group-data-[size=X]/card:` classes via
+// `parseDataSizeClasses`. The one class that matters most is
+// `data-[size=sm]:[--card-spacing:--spacing(3)]`: `--card-spacing` is the
+// custom property the real Card uses for its root vertical padding, the gap
+// between its parts and every part's horizontal padding, so changing it
+// changes ALL of them at once — which in this plan are exactly
+// `sectionGapVariable` (root top/bottom padding AND the gap between sections)
+// and each section's `paddingHorizontalVariable`. `--spacing(N)` is N * 4px,
+// snapped with `nearestToken` against the project's own scale (3 -> 12px ->
+// spacing/3, exact here). `CardTitle` also carries a size-specific text class
+// (`group-data-[size=sm]/card:text-sm`); CardDescription and the Content text
+// (inherited from the root's `text-sm`) are checked the same way and fall back
+// to their default size when a size sets none. The Default option is the
+// plan's own pre-axis values, passed in, so Default is unchanged. Never
+// throws: a size whose `--card-spacing` can't be read is skipped with a
+// reason; missing root source returns no axis.
+function buildCardSizeAxis(
+  cardSource: string,
+  buildSections: (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string) => FigmaComponentSectionPlanItem[],
+  defaultTitleFontVar: string,
+  defaultBodyFontVar: string,
+  spacing: Record<string, number>,
+  fontSize: Record<string, number>,
+  notes: string[],
+): FigmaComponentAxisPlanItem | undefined {
+  const rootMatch = cardSource.match(/function Card\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!rootMatch) {
+    notes.push("Card: could not find the Card root's className string, so no Size property was built — Card stays one size (real vendored source may have changed shape).");
+    return undefined;
+  }
+  const slotClassString = (slot: string): string => cardSource.match(new RegExp(`data-slot="${slot}"[\\s\\S]*?cn\\(\\s*"([^"]*)"`))?.[1] ?? "";
+  const titleClasses = slotClassString("card-title");
+  const descriptionClasses = slotClassString("card-description");
+  const rootBySize = parseDataSizeClasses(rootMatch[1]);
+  const titleBySize = parseDataSizeClasses(titleClasses);
+  const descriptionBySize = parseDataSizeClasses(descriptionClasses);
+  const allBySize = parseDataSizeClasses(cardSource.replace(/["'`,]/g, " "));
+
+  const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
+  const spacingFn = (classes: string[]): number | null => {
+    for (const cls of classes) {
+      const m = cls.match(/^\[--card-spacing:--spacing\((\d+(?:\.\d+)?)\)\]$/);
+      if (m) return parseFloat(m[1]) * 4;
+    }
+    return null;
+  };
+  const textPx = (classes: string[]): number | null => {
+    for (const cls of classes) {
+      if (!cls.startsWith("text-")) continue;
+      const px = tailwindClassPx(cls);
+      if (px !== null) return px;
+    }
+    return null;
+  };
+
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+
+  options.push({
+    name: "Default",
+    overrides: { sectionGapVariable: "spacing/4", sections: buildSections("spacing/4", defaultTitleFontVar, defaultBodyFontVar, defaultBodyFontVar) },
+  });
+
+  const consumed = new Map<string, Set<string>>(); // size -> classes this builder turned into overrides
+  for (const sizeName of Object.keys(allBySize).filter((n) => n !== "default")) {
+    const label = capitalize(sizeName);
+    const spacingPx = spacingFn(rootBySize[sizeName] ?? []);
+    if (spacingPx === null) {
+      skippedOptions.push({ name: sizeName, reason: "no readable `[--card-spacing:--spacing(N)]` class on the Card root for this size, so its padding and gap can't be derived" });
+      continue;
+    }
+    const spacingMatch = nearestToken(spacingPx, spacing, "spacing");
+    if (spacingMatch.deltaPx > 0) {
+      disclosures.push(`Size ${label}: --card-spacing ${spacingPx}px snapped to ${spacingMatch.figmaName} (${tokenPx(spacingMatch.figmaName, spacing)}px), ${spacingMatch.deltaPx}px off — no exact spacing token.`);
+    }
+    const used = new Set<string>((rootBySize[sizeName] ?? []).filter((cls) => spacingFn([cls]) !== null));
+
+    const titlePx = textPx(titleBySize[sizeName] ?? []);
+    const descriptionPx = textPx(descriptionBySize[sizeName] ?? []);
+    const contentPx = textPx(rootBySize[sizeName] ?? []);
+    for (const cls of [...(titleBySize[sizeName] ?? []), ...(descriptionBySize[sizeName] ?? [])]) if (cls.startsWith("text-") && tailwindClassPx(cls) !== null) used.add(cls);
+    for (const cls of rootBySize[sizeName] ?? []) if (cls.startsWith("text-") && tailwindClassPx(cls) !== null) used.add(cls);
+    consumed.set(sizeName, used);
+
+    const fontVar = (px: number | null, fallback: string, what: string): string => {
+      if (px === null) return fallback;
+      const match = nearestToken(px, fontSize, "typography/primitive/fontSize");
+      if (match.deltaPx > 0) disclosures.push(`Size ${label}: ${what} text size ${px}px snapped to ${match.figmaName} (${tokenPx(match.figmaName, fontSize)}px), ${Math.round(match.deltaPx * 100) / 100}px off — no exact type-scale token.`);
+      return match.figmaName;
+    };
+    const titleVar = fontVar(titlePx, defaultTitleFontVar, "Title");
+    const descriptionVar = fontVar(descriptionPx, defaultBodyFontVar, "Description");
+    const contentVar = fontVar(contentPx, defaultBodyFontVar, "Content");
+
+    options.push({
+      name: label,
+      overrides: { sectionGapVariable: spacingMatch.figmaName, sections: buildSections(spacingMatch.figmaName, titleVar, descriptionVar, contentVar) },
+    });
+  }
+
+  if (options.length < 2) {
+    if (skippedOptions.length > 0) notes.push(`Card: no non-default size had a readable \`--card-spacing\`, so no Size property was built — Card stays one size (${skippedOptions.map((o) => `${o.name}: ${o.reason}`).join("; ")}).`);
+    return undefined;
+  }
+
+  for (const o of options) {
+    if (o.name === "Default") continue;
+    const sizeName = o.name.toLowerCase();
+    if (titleBySize[sizeName] && textPx(titleBySize[sizeName]) !== null) continue;
+    disclosures.push(`Size ${o.name}: the real Title has no ${sizeName}-specific text class, so its text stays at the default size.`);
+  }
+  disclosures.push(...describeIdenticalOptions("Size", options));
+  disclosures.push("Size: Description and Content text sizes only change if the real source sets a size-specific text class for them (it does not for Description, and Content inherits the Card root's text-sm), so they stay at the Default sizes.");
+  for (const [sizeName, used] of consumed) {
+    const leftover = (allBySize[sizeName] ?? []).filter((cls) => !used.has(cls));
+    if (leftover.length > 0) {
+      disclosures.push(`Size ${capitalize(sizeName)}: ${leftover.join(", ")} isn't modeled — it only applies when the Card has a CardFooter, which this Figma Card doesn't include (see the existing Card footer note).`);
+    }
+  }
+  if (skippedOptions.length > 0) {
+    disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+  }
+  for (const line of disclosures) notes.push(`Card ${line}`);
+
+  return { propertyName: "Size", options, skippedOptions, disclosures };
 }
 
 // Eighth real component, added 2026-09-18 — "Batch 1" of
@@ -1451,6 +2043,8 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
   notes.push("NativeSelect: real horizontal padding is asymmetric (pl-2.5 text-side, pr-8 reserved for its chevron icon, which isn't drawn) — this plan uses the text-side value (pl-2.5) for both sides, the same single-shared-padding shape every other box component in this file uses.");
   notes.push("NativeSelect: represented in color/semantic/text/primary, not text/secondary — unlike Input/Textarea's own placeholder representation, a native <select> always shows a real selected option's text (no placeholder state exists for this element), inheriting shadcn's own base `text-foreground` layer.");
 
+  const sizeAxis = buildNativeSelectSizeAxis(classMatch[1], spacing, radius, notes);
+
   return {
     name: "NativeSelect",
     variantPropertyName: "Variant",
@@ -1463,7 +2057,104 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "Select an option",
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+}
+
+// NativeSelect's `Size` axis (component-variations plan, Batch 5,
+// 2026-10-08), read from the real `<select>` class string: the base `h-8`
+// (Default) and the `data-[size=X]:` classes (`h-7`, `py-0.5`,
+// `rounded-[min(var(--radius-md),10px)]` for sm) via `parseDataSizeClasses`.
+// Like Button's Size, every option (Default included) gets a `heightVariable`
+// because the real select has a fixed height; that is the one intended change
+// to Default (it used to hug its text), disclosed below. With a fixed height
+// the content is centered, so the vertical padding classes (`py-1`, `py-0.5`)
+// have no separate effect and are not carried. Heights snap to the project's
+// own spacing scale with `nearestToken` (ties go to the smaller token).
+// Never throws: a size with no readable `h-N` is skipped with a reason.
+function buildNativeSelectSizeAxis(
+  selectClassString: string,
+  spacing: Record<string, number>,
+  radius: Record<string, number>,
+  notes: string[],
+): FigmaComponentAxisPlanItem | undefined {
+  const baseClasses = selectClassString.split(/\s+/).filter(Boolean);
+  const bySize = parseDataSizeClasses(selectClassString);
+  const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
+  const heightOf = (classes: string[]): { cls: string; px: number } | null => {
+    for (const cls of classes) {
+      if (!/^h-\d/.test(cls)) continue;
+      const px = tailwindClassPx(cls);
+      if (px !== null) return { cls, px };
+    }
+    return null;
+  };
+  const radiusOf = (classes: string[]) => {
+    for (const cls of classes) {
+      const match = resolveRadiusClass(cls, radius);
+      if (match) return match;
+    }
+    return undefined;
+  };
+  const baseRadius = radiusOf(baseClasses);
+  const baseHeight = heightOf(baseClasses);
+  if (!baseHeight) {
+    notes.push("NativeSelect: could not find a base `h-N` height class on the <select>, so no Size property was built — NativeSelect stays one size (real vendored source may have changed shape).");
+    return undefined;
+  }
+
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+  const sizeNames = ["default", ...Object.keys(bySize).filter((n) => n !== "default")];
+  for (const sizeName of sizeNames) {
+    const label = capitalize(sizeName);
+    const classes = sizeName === "default" ? baseClasses : bySize[sizeName];
+    const height = sizeName === "default" ? baseHeight : heightOf(classes);
+    if (!height) {
+      skippedOptions.push({ name: sizeName, reason: "no readable `h-N` height class for this size on the <select>, so a fixed Figma height can't be derived" });
+      continue;
+    }
+    const heightMatch = nearestToken(height.px, spacing, "spacing");
+    const overrides: FigmaComponentLayoutOverrides = { heightVariable: heightMatch.figmaName };
+    if (sizeName !== "default") {
+      if (heightMatch.deltaPx > 0) {
+        disclosures.push(`Size ${label}: height ${height.cls} (${height.px}px) snapped to ${heightMatch.figmaName} (${tokenPx(heightMatch.figmaName, spacing)}px), ${heightMatch.deltaPx}px off — no exact spacing token.`);
+      }
+      const ownRadius = radiusOf(classes) ?? baseRadius;
+      if (ownRadius) {
+        overrides.radiusVariable = ownRadius.figmaName;
+        if (ownRadius.deltaPx > 0) {
+          disclosures.push(`Size ${label}: corner radius snapped to ${ownRadius.figmaName}, ${ownRadius.deltaPx}px off — no exact radius token.`);
+        } else if (baseRadius && ownRadius.figmaName === baseRadius.figmaName && classes.some((cls) => cls.startsWith("rounded-"))) {
+          disclosures.push(`Size ${label}: its smaller corner radius (min of radius.md and the class's cap) resolves to ${ownRadius.figmaName} in this project, the same as Default.`);
+        }
+      }
+      const padY = classes.find((cls) => /^py-\d/.test(cls));
+      if (padY) {
+        disclosures.push(`Size ${label}: vertical padding ${padY} isn't applied separately — the frame has a fixed height with its text centered, so it has no visible effect.`);
+      }
+    }
+    options.push({ name: label, overrides });
+  }
+
+  if (options.length === 0) {
+    notes.push("NativeSelect: no size had a readable `h-N` height, so no Size property was built — NativeSelect stays one size.");
+    return undefined;
+  }
+
+  disclosures.push(...describeIdenticalOptions("Size", options));
+  const defaultOption = options.find((o) => o.name === "Default");
+  if (defaultOption?.overrides.heightVariable) {
+    disclosures.push(`Size Default now has a fixed ${tokenPx(defaultOption.overrides.heightVariable, spacing)}px height (${baseHeight.cls}), like every other Size; before the Size property existed, NativeSelect hugged its content instead.`);
+  }
+  disclosures.push("Not modeled for any size: the chevron icon (and the right padding reserved for it) — this Figma NativeSelect is the box with its selected text only.");
+  if (skippedOptions.length > 0) {
+    disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+  }
+  for (const line of disclosures) notes.push(`NativeSelect ${line}`);
+
+  return { propertyName: "Size", options, skippedOptions, disclosures };
 }
 
 // A real, always-exact alias — confirmed by reading every one of the four
@@ -1559,6 +2250,8 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
   notes.push("Avatar: only its real AvatarFallback is modeled, and represented as a hug-content box with symmetric padding approximating its real fixed 32×32px (\"default\" size) square — AvatarImage (a real photo) isn't modeled, the same disclosed scope cut as Card's own CardFooter.");
   notes.push("Avatar: its real visible ring comes from the outer Avatar root's own after:border-border pseudo-element, not a class on AvatarFallback itself — bound to border/default via a hardcoded post-process, the same treatment Alert's own border.default fallback already uses, since this parser's plain-class regex can't see an after:-prefixed selector.");
 
+  const sizeAxis = buildAvatarSizeAxis(avatarSource, fallbackMatch[1], spacing, fontSize, notes);
+
   return {
     name: "Avatar",
     variantPropertyName: "Variant",
@@ -1571,7 +2264,113 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "JD",
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+}
+
+// Avatar's `Size` axis (component-variations plan, Batch 4, 2026-10-08) — the
+// first consumer of `parseDataSizeClasses` for a component with no `cva()`
+// size axis. Real source: the Avatar ROOT sets `size-8` (default) and
+// overrides it per size with `data-[size=lg]:size-10` / `data-[size=sm]:size-6`;
+// `AvatarFallback` sets `text-sm` and `group-data-[size=sm]/avatar:text-xs`
+// (no lg-specific text class, so Lg keeps the base text-sm). Every size
+// becomes a TRUE fixed square: `heightVariable` (the `size-N` px snapped to
+// the project's own spacing scale with `nearestToken`) plus `square: true`
+// (width bound to the same token), which replaces the old hug-content box
+// with symmetric padding that only approximated the 32px default — an
+// intended, disclosed change to Default, like Button's fixed 32px height.
+// Options are ordered Default first, then ascending by size (Sm, Lg), not
+// source order. Never throws: a size with no readable `size-N` is skipped
+// with a reason, and a missing root/fallback class string returns no axis.
+function buildAvatarSizeAxis(
+  avatarSource: string,
+  fallbackClassString: string,
+  spacing: Record<string, number>,
+  fontSize: Record<string, number>,
+  notes: string[],
+): FigmaComponentAxisPlanItem | undefined {
+  const rootMatch = avatarSource.match(/function Avatar\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
+  if (!rootMatch) {
+    notes.push("Avatar: could not find the Avatar root's className string, so no Size property was built — Avatar stays one size (real vendored source may have changed shape).");
+    return undefined;
+  }
+  const rootClasses = rootMatch[1].split(/\s+/).filter(Boolean);
+  const rootBySize = parseDataSizeClasses(rootMatch[1]);
+  const fallbackClasses = fallbackClassString.split(/\s+/).filter(Boolean);
+  const fallbackBySize = parseDataSizeClasses(fallbackClassString);
+
+  const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
+  const baseSizeClass = rootClasses.find((cls) => /^size-\d/.test(cls));
+  const baseFontClass = fallbackClasses.find((cls) => cls.startsWith("text-") && tailwindClassPx(cls) !== null);
+
+  const specs: Array<{ sizeName: string; sizeClass: string | undefined; fontClass: string | undefined; fontInherited: boolean }> = [
+    { sizeName: "default", sizeClass: baseSizeClass, fontClass: baseFontClass, fontInherited: false },
+  ];
+  for (const sizeName of Object.keys(rootBySize)) {
+    if (sizeName === "default") continue;
+    const ownFontClass = (fallbackBySize[sizeName] ?? []).find((cls) => cls.startsWith("text-") && tailwindClassPx(cls) !== null);
+    specs.push({
+      sizeName,
+      sizeClass: rootBySize[sizeName].find((cls) => /^size-\d/.test(cls)),
+      fontClass: ownFontClass ?? baseFontClass,
+      fontInherited: ownFontClass === undefined,
+    });
+  }
+  const readable = (cls: string | undefined) => (cls ? tailwindClassPx(cls) : null);
+  specs.sort((a, b) => (a.sizeName === "default" ? -1 : b.sizeName === "default" ? 1 : (readable(a.sizeClass) ?? 0) - (readable(b.sizeClass) ?? 0)));
+
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+
+  for (const spec of specs) {
+    const label = capitalize(spec.sizeName);
+    const sizePx = readable(spec.sizeClass);
+    const fontPx = readable(spec.fontClass);
+    if (!spec.sizeClass || sizePx === null) {
+      skippedOptions.push({ name: spec.sizeName, reason: "no readable `size-N` class for this size on the Avatar root, so a fixed square can't be derived" });
+      continue;
+    }
+    if (!spec.fontClass || fontPx === null) {
+      skippedOptions.push({ name: spec.sizeName, reason: "no readable `text-*` class on AvatarFallback for this size, so the fallback text size can't be derived" });
+      continue;
+    }
+    const sizeMatch = nearestToken(sizePx, spacing, "spacing");
+    const fontMatch = nearestToken(fontPx, fontSize, "typography/primitive/fontSize");
+    if (sizeMatch.deltaPx > 0) {
+      disclosures.push(`Size ${label}: ${spec.sizeClass} (${sizePx}px square) snapped to ${sizeMatch.figmaName} (${tokenPx(sizeMatch.figmaName, spacing)}px), ${sizeMatch.deltaPx}px off — no exact spacing token.`);
+    }
+    if (fontMatch.deltaPx > 0) {
+      disclosures.push(`Size ${label}: fallback text size ${fontPx}px snapped to ${fontMatch.figmaName} (${tokenPx(fontMatch.figmaName, fontSize)}px), ${Math.round(fontMatch.deltaPx * 100) / 100}px off — no exact type-scale token.`);
+    }
+    options.push({
+      name: label,
+      overrides: { heightVariable: sizeMatch.figmaName, square: true, fontSizeVariable: fontMatch.figmaName },
+    });
+  }
+
+  if (options.length === 0) {
+    notes.push("Avatar: no size had a readable `size-N` and fallback text size, so no Size property was built — Avatar stays one size.");
+    return undefined;
+  }
+
+  disclosures.push(...describeIdenticalOptions("Size", options));
+  const defaultOption = options.find((o) => o.name === "Default");
+  if (defaultOption?.overrides.heightVariable) {
+    disclosures.push(`Size Default is now a true fixed ${tokenPx(defaultOption.overrides.heightVariable, spacing)}px circle, like every other Size; before the Size property existed, Avatar was a hug-content box with symmetric padding that only approximated the real 32px square.`);
+  }
+  for (const spec of specs) {
+    if (spec.fontInherited && options.some((o) => o.name === capitalize(spec.sizeName))) {
+      disclosures.push(`Size ${capitalize(spec.sizeName)}: the real AvatarFallback has no ${spec.sizeName}-specific text class, so its text stays at the default ${baseFontClass} size.`);
+    }
+  }
+  disclosures.push("Not modeled for any size: AvatarImage (a real photo), AvatarBadge's per-size dot (size-2 / size-2.5 / size-3, and its hidden or sized inner icon), and AvatarGroupCount's per-size circle and `[&>svg]` icon sizes — this Figma Avatar is only the fallback circle with initials.");
+  if (skippedOptions.length > 0) {
+    disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+  }
+  for (const line of disclosures) notes.push(`Avatar ${line}`);
+
+  return { propertyName: "Size", options, skippedOptions, disclosures };
 }
 
 // Eleventh real component, added 2026-09-18 — "Batch 2" of
@@ -2026,7 +2825,8 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
 // None of the three sub-parts, nor `Field` itself, carry any real padding
 // or radius class. `Field`'s own root (`group/field flex w-full gap-2
 // data-[invalid=true]:text-destructive`, via a real `cva()` `orientation`
-// axis this batch does NOT model — only the default "vertical" shape's
+// axis this ORIGINAL batch didn't model (modeled since component-variations
+// Batch 7, see `buildFieldOrientationAxis`) — the base plan is the default "vertical" shape, whose
 // base classes, which carry no color of their own, are represented, the
 // same "one shape only" disclosed scope every single-state component in
 // this file already uses) has no padding class either. Padding/radius are
@@ -2077,9 +2877,42 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
   const sectionGapMatch = nearestToken(8, spacing, "spacing"); // real gap-2 — see file header for its dual role
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // all three sub-parts are real text-sm
 
-  notes.push("Field: only its real FieldLabel/FieldDescription/FieldError are modeled — FieldSeparator isn't (a genuinely new shape, tracked as its own later batch), and Field's own real orientation axis (vertical/horizontal/responsive) isn't modeled — always its default vertical shape, whose base classes carry no color of their own.");
+  notes.push("Field: only its real FieldLabel/FieldDescription/FieldError are modeled — FieldSeparator isn't (a genuinely new shape, tracked as its own later batch). Field's own real orientation axis (vertical/horizontal; responsive is skipped) is modeled as an Orientation property — see the `Field Orientation ...` notes below for what it does and doesn't change.");
   notes.push("Field: FieldLabel/Field/FieldError/FieldDescription have no real padding or radius class of their own at all — represented as bare text rows (0px padding, radius/none, no fill, no stroke), the same 'bare text node' treatment buildLabelPlan already established, not approximated into boxes that don't exist.");
   notes.push("Field: its real gap-2 (8px) inter-row gap is the only real spacing value present — bound to sectionGapVariable, which this schema also applies to the outer frame's own top/bottom padding (Field's real root has none) — the same real, disclosed schema trade-off as Empty's own, in this same batch, just an 8px version.");
+
+  // The three sections, parameterized by the stacking direction an Orientation
+  // option can change; the base plan (vertical, `textLineDirection` absent) and
+  // every axis option build theirs through this function, so each text line's
+  // `labelPropertyName` is identical in every orientation (step 5 binds by it).
+  const buildSections = (direction?: "horizontal"): FigmaComponentSectionPlanItem[] => {
+    const dir = direction ? { textLineDirection: direction } : {};
+    return [
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        ...dir,
+        textLines: [
+          { textVariable: labelColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Label", defaultLabel: "Email address" },
+        ],
+      },
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        ...dir,
+        textLines: [
+          { textVariable: descriptionColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "We'll never share your email." },
+        ],
+      },
+      {
+        paddingHorizontalVariable: paddingHMatch.figmaName,
+        ...dir,
+        textLines: [
+          { textVariable: errorColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Error", defaultLabel: "This field is required." },
+        ],
+      },
+    ];
+  };
+
+  const extraAxes = buildFieldOrientationAxis(fieldSource, buildSections, notes);
 
   return {
     name: "Field",
@@ -2091,27 +2924,83 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: sectionGapMatch.figmaName,
-    sections: [
-      {
-        paddingHorizontalVariable: paddingHMatch.figmaName,
-        textLines: [
-          { textVariable: labelColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Label", defaultLabel: "Email address" },
-        ],
-      },
-      {
-        paddingHorizontalVariable: paddingHMatch.figmaName,
-        textLines: [
-          { textVariable: descriptionColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "We'll never share your email." },
-        ],
-      },
-      {
-        paddingHorizontalVariable: paddingHMatch.figmaName,
-        textLines: [
-          { textVariable: errorColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Error", defaultLabel: "This field is required." },
-        ],
-      },
-    ],
+    sections: buildSections(),
+    ...(extraAxes.length > 0 ? { extraAxes } : {}),
   };
+}
+
+// Field's `Orientation` axis (component-variations plan, Batch 7, 2026-10-08).
+// Reads the real `fieldVariants` cva `orientation` axis (vertical / horizontal
+// / responsive); never invents a value.
+//
+// What it changes for the modeled parts (Label, Description, Error): the
+// stacking direction of Field's own children. `flex-col` (vertical) keeps the
+// existing vertical stack, so Vertical's override is empty and Default +
+// Vertical reproduces the pre-axis plan exactly. `flex-row` (horizontal) lays
+// the same three sections out in a ROW (`textLineDirection: "horizontal"` on
+// every section, the Breadcrumb mechanism); the root's `gap-2` is the row's
+// item spacing, and `items-center` is how the replay already aligns them. The
+// replay's horizontal branch also zeroes the frame's padding, which is closer
+// to the real Field root (it has none) than the vertical stack's disclosed
+// top/bottom padding trade-off.
+//
+// A class string with a container-query prefix (`@md/field-group:`, i.e.
+// `responsive`) is a breakpoint-driven layout, which a Figma component
+// (no viewport) can't express: it goes to `skippedOptions`. Any other class in
+// an option's string the builder doesn't model is listed verbatim in that
+// option's disclosures (computed from the source, not hard-coded).
+function buildFieldOrientationAxis(
+  fieldSource: string,
+  buildSections: (direction?: "horizontal") => FigmaComponentSectionPlanItem[],
+  notes: string[],
+): FigmaComponentAxisPlanItem[] {
+  let entries: Array<[string, string]> = [];
+  try {
+    entries = parseCvaAxis(fieldSource, "orientation");
+  } catch {
+    notes.push("Field: could not find an `orientation` axis in the vendored source, so no Orientation property was built — Field stays one orientation (real vendored source may have changed shape).");
+    return [];
+  }
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+  for (const [name, classString] of entries) {
+    const label = capitalize(name);
+    const classes = classString.split(/\s+/).filter(Boolean);
+    if (classes.some((cls) => /(^|:)@[a-z0-9]+\//.test(cls))) {
+      skippedOptions.push({ name, reason: "breakpoint-driven layout (container query); Figma components have no viewport" });
+      continue;
+    }
+    const isRow = classes.includes("flex-row");
+    const isCol = classes.includes("flex-col");
+    if (!isRow && !isCol) {
+      skippedOptions.push({ name, reason: "no flex-col / flex-row class in this orientation's real class string, so its stacking direction can't be derived" });
+      continue;
+    }
+    options.push({ name: label, overrides: isRow ? { sections: buildSections("horizontal") } : {} });
+    const modeled = new Set(["flex-col", "flex-row", "items-center"]);
+    const unmodeled = classes.filter((cls) => !modeled.has(cls));
+    if (isRow) {
+      disclosures.push(`Orientation ${label}: flex-row lays Field's Label, Description and Error out side by side in one row (8px gap, vertically centered) instead of stacking them, with no top/bottom padding (the real Field root has none).`);
+    }
+    if (unmodeled.length > 0) {
+      const why = isRow
+        ? "they shape a label that grows to fill the row, top-aligned children and a nudged checkbox/radio when a FieldContent part is present"
+        : "they make every child full-width and size screen-reader-only text";
+      disclosures.push(`Orientation ${label}: these real classes aren't modeled: ${unmodeled.join(" ")} — ${why}, and this Figma Field has no control (checkbox/radio/input) or FieldContent part.`);
+    }
+  }
+  if (options.length === 0) {
+    notes.push("Field: no orientation in the vendored `orientation` axis was buildable, so no Orientation property was built — Field stays one orientation.");
+    return [];
+  }
+  for (const skipped of skippedOptions) {
+    disclosures.push(`Orientation ${capitalize(skipped.name)} was not built: ${skipped.reason}.`);
+  }
+  disclosures.push("Orientation: Vertical keeps the existing 8px top/bottom padding trade-off on Field's outer frame (Field's real root has none) so it renders exactly as before; Horizontal drops it.");
+  disclosures.push(...describeIdenticalOptions("Orientation", options));
+  for (const line of disclosures) notes.push(`Field ${line.startsWith("Orientation") ? "" : "Orientation "}${line}`.replace(/\s+/g, " "));
+  return [{ propertyName: "Orientation", options, skippedOptions, disclosures }];
 }
 
 // Sixteenth real component, added 2026-09-21 — "Batch 5" of
@@ -2131,9 +3020,9 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
 // orientation-conditional Tailwind data-attribute variants this parser's
 // plain-class regex was never built to parse — same class of gap as the
 // `placeholder:`/`*:data-[slot=...]:`/`after:` prefixes already documented
-// elsewhere in this file. Orientation itself isn't modeled (see
-// `FigmaComponentLinePlanItem`'s own comment) — only the real horizontal,
-// 1px-thick line.
+// elsewhere in this file. This base plan is the real horizontal,
+// 1px-thick line; Batch 7 added the vertical one as an `Orientation` axis
+// (see `buildSeparatorAxes`).
 function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: string[]): FigmaComponentPlanItem {
   for (const marker of ['data-slot="separator"', "bg-border", "data-horizontal:h-px"]) {
     if (!separatorSource.includes(marker)) {
@@ -2149,7 +3038,7 @@ function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: s
   const radiusMatch = nearestToken(0, radius, "radius"); // a bare line has no real corner radius of its own — lands on the real exact 0px token, same discipline as buildLabelPlan's own zero targets
 
   notes.push("Separator: represented as a fixed 1px-thick line at a representative 200px length — its real source has no intrinsic length of its own (shadcn's own w-full/self-stretch always fills whatever container the caller supplies, which this parser can't see), and its real thickness (a bare Tailwind h-px) has no matching spacing token to bind (the smallest real spacing token is 4px) — see FigmaComponentLinePlanItem's own comment for why thicknessPx is a raw, unbound pixel literal instead of a nearest-token approximation that would round it to either an invisible 0px or an oversized 4px line.");
-  notes.push("Separator: orientation (horizontal vs vertical) isn't modeled — only the real horizontal line is represented, the same 'one shape only' scope this file's every other component already carries.");
+  const extraAxes = buildSeparatorAxes(classMatch[1], colors.fillVariable, 1, 200, notes);
 
   return {
     name: "Separator",
@@ -2163,7 +3052,74 @@ function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: s
       thicknessPx: 1,
       representativeLengthPx: 200,
     },
+    ...(extraAxes.length > 0 ? { extraAxes } : {}),
   };
+}
+
+// Separator's `Orientation` axis (component-variations plan, Batch 7,
+// 2026-10-08). Separator has no `cva()`; its orientation lives in
+// `data-horizontal:` / `data-vertical:` prefixed utility classes on one string
+// (`data-horizontal:h-px data-horizontal:w-full data-vertical:w-px
+// data-vertical:self-stretch`), so each option's classes are those with its
+// own `data-<orientation>:` prefix. THICKNESS is `h-N` (horizontal) / `w-N`
+// (vertical) — `px` = 1px, the same raw unbound literal the base plan already
+// uses (see `FigmaComponentLinePlanItem`); LENGTH is `w-full` / `self-stretch`
+// (fill the caller's container), which has no intrinsic value, so both
+// orientations use the plan's existing `representativeLengthPx` as a disclosed
+// stand-in. Horizontal's override is empty (the base `line` already is the
+// horizontal line, so Horizontal reproduces today's plan exactly); Vertical
+// carries a complete replacement `line` (the replay merge is a shallow
+// Object.assign) with `orientation: "vertical"`. The color is the base line's
+// own `bg-border` color, unchanged.
+function buildSeparatorAxes(
+  classString: string,
+  colorVariable: string,
+  baseThicknessPx: number,
+  representativeLengthPx: number,
+  notes: string[],
+): FigmaComponentAxisPlanItem[] {
+  const tokens = classString.split(/\s+/).filter(Boolean);
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+
+  for (const orientation of ["horizontal", "vertical"] as const) {
+    const label = capitalize(orientation);
+    const own = tokens.filter((t) => t.startsWith(`data-${orientation}:`)).map((t) => t.slice(`data-${orientation}:`.length));
+    if (own.length === 0) continue; // this orientation isn't in the source at all
+    const thicknessPrefix = orientation === "horizontal" ? "h-" : "w-";
+    const thicknessClass = own.find((t) => t.startsWith(thicknessPrefix));
+    let thicknessPx: number | null = null;
+    if (thicknessClass === `${thicknessPrefix}px`) thicknessPx = 1;
+    else if (thicknessClass) thicknessPx = tailwindClassPx(thicknessClass);
+    if (thicknessClass === undefined || thicknessPx === null) {
+      skippedOptions.push({ name: label, reason: `no readable \`${thicknessPrefix}px\`/\`${thicknessPrefix}N\` thickness class among this orientation's real \`data-${orientation}:\` classes, so the line's thickness can't be derived` });
+      continue;
+    }
+    const lengthClass = own.find((t) => t === "w-full" || t === "h-full" || t === "self-stretch");
+    if (lengthClass) disclosures.push(`Orientation ${label}: the real length class ${lengthClass} makes the line fill whatever container it sits in, which has no fixed value, so the Figma line uses a representative ${representativeLengthPx}px stand-in as its ${orientation === "horizontal" ? "width" : "height"} (not a real default length).`);
+    else disclosures.push(`Orientation ${label}: no known fill-the-container length class (w-full / h-full / self-stretch) among this orientation's real classes, so the Figma line uses a representative ${representativeLengthPx}px stand-in length.`);
+    const unmodeled = own.filter((t) => t !== thicknessClass && t !== lengthClass);
+    if (unmodeled.length > 0) disclosures.push(`Orientation ${label}: ${unmodeled.join(", ")} isn't modeled.`);
+    if (thicknessPx === baseThicknessPx && thicknessClass === `${thicknessPrefix}px`) {
+      disclosures.push(`Orientation ${label}: the line is a raw 1px (${thicknessClass}), not bound to a spacing token — no spacing token is that thin (the smallest is 4px).`);
+    }
+
+    options.push({
+      name: label,
+      overrides: orientation === "horizontal"
+        ? {} // the base `line` is already the horizontal line
+        : { line: { colorVariable, thicknessPx, representativeLengthPx, orientation: "vertical" } },
+    });
+  }
+
+  if (options.length === 0) {
+    notes.push("Separator: no `data-horizontal:` / `data-vertical:` orientation classes were found in the vendored source, so no Orientation property was built — Separator stays the one horizontal line (real vendored source may have changed shape).");
+    return [];
+  }
+  disclosures.push(...describeIdenticalOptions("Orientation", options));
+  for (const line of disclosures) notes.push(`Separator ${line.startsWith("Orientation") ? "" : "Orientation "}${line}`.replace(/\s+/g, " "));
+  return [{ propertyName: "Orientation", options, skippedOptions, disclosures }];
 }
 
 // Seventeenth real component, added 2026-09-21 — same batch as Separator,
@@ -2292,9 +3248,9 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
 // `bg-destructive/10` case: the real 50%-translucent muted background
 // becomes a SOLID `background.secondary` fill here, a disclosed
 // approximation, not a parser miss). Item's real `size` axis
-// (`default`/`sm`/`xs`) is NOT modeled — only `size: "default"`'s own
-// classes are read, the same "one size" scope every other component in
-// this file already uses.
+// (`default`/`sm`/`xs`) is modeled since Batch 3 of
+// figma-component-variations-plan.md (2026-10-08) via `buildItemSizeAxis`
+// — the first `sections` + `extraAxes` combination.
 //
 // Real, load-bearing finding this batch exists to confirm: `rounded-lg`
 // is `item.tsx`'s own real base-class radius, exactly like Toggle/Badge/
@@ -2342,8 +3298,23 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
     }
   }
 
-  notes.push("Item: only its real outer frame and ItemTitle/ItemDescription are modeled — ItemMedia (an icon/image slot) and ItemActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons named in figma-remaining-components-plan.md. Its real size axis (default/sm/xs) isn't modeled either — always its default size's own classes.");
+  // The one Title + Description section, parameterized by the two values a
+  // Size option can change (horizontal padding, Description font size); the
+  // base plan and every Size option build theirs through this one function.
+  const buildSections = (paddingHVar: string, descriptionFontVar: string): FigmaComponentSectionPlanItem[] => [
+    {
+      paddingHorizontalVariable: paddingHVar,
+      textLines: [
+        { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Item title" },
+        { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
+      ],
+    },
+  ];
+
+  notes.push("Item: only its real outer frame and ItemTitle/ItemDescription are modeled — ItemMedia (an icon/image slot) and ItemActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons named in figma-remaining-components-plan.md. Its real size axis (default/sm/xs) is modeled as a Size property — see the `Item Size ...` notes below for what it does and doesn't change.");
   notes.push("Item: ItemContent's real gap-1 (4px) between Title and Description has no home in this schema's sections/textLines shape — the two lines stack directly adjacent in the replay, relying only on each line's own line-height for visual separation, not a bound 4px gap.");
+
+  const sizeAxis = buildItemSizeAxis(itemSource, spacing, fontSize, notes, buildSections);
 
   return {
     name: "Item",
@@ -2353,16 +3324,114 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: paddingVMatch.figmaName,
-    sections: [
-      {
-        paddingHorizontalVariable: paddingHMatch.figmaName,
-        textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Item title" },
-          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
-        ],
-      },
-    ],
+    sections: buildSections(paddingHMatch.figmaName, fontSizeMatch.figmaName),
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+}
+
+// Item's `Size` axis (component-variations plan, Batch 3, 2026-10-08) — the
+// first `sections` + `extraAxes` combination. Reads the real `size` cva axis
+// (default/sm/xs): `py-N` -> `sectionGapVariable` (the outer frame's top/
+// bottom padding, exactly how the base Item plan already uses it), `px-N` ->
+// the single section's horizontal padding, and ItemDescription's own real
+// `group-data-[size=X]/item:text-*` class -> the Description line's font size
+// (via `parseDataSizeClasses`, its first consumer). An option's overrides
+// carry a full replacement `sections` + `sectionGapVariable`, which the
+// replay merges over the component's own. The Default option is computed the
+// same way as the base plan (py-2.5 / px-3 / text-sm), so it reproduces
+// Item's pre-axis values exactly. Never throws: an option with no readable
+// `px-N`/`py-N` is skipped with a reason. Real classes this schema can't
+// carry (the flex `gap-N` between Item's media/content/actions parts, the
+// `in-data-[slot=...]` context rule, and the `group-data-[size=X]/item:`
+// classes that resize ItemMedia/ItemContent) are disclosed, never dropped
+// silently.
+function buildItemSizeAxis(
+  itemSource: string,
+  spacing: Record<string, number>,
+  fontSize: Record<string, number>,
+  notes: string[],
+  buildSections: (paddingHVar: string, descriptionFontVar: string) => FigmaComponentSectionPlanItem[],
+): FigmaComponentAxisPlanItem | undefined {
+  let sizeEntries: Array<[string, string]>;
+  try {
+    sizeEntries = parseCvaAxis(itemSource, "size");
+  } catch {
+    notes.push("Item: could not find a `size` axis in the vendored source, so no Size property was built — Item stays one size (real vendored source may have changed shape).");
+    return undefined;
+  }
+  if (sizeEntries.length === 0) return undefined;
+
+  const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
+  const descriptionClasses = (itemSource.match(/data-slot="item-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "").split(/\s+/).filter(Boolean);
+  const descriptionBySize = parseDataSizeClasses(descriptionClasses.join(" "));
+  const allBySize = parseDataSizeClasses(itemSource.replace(/["'`,]/g, " "));
+  const baseFontPx = 14; // ItemTitle/ItemDescription's own real text-sm, same as the base plan
+
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+
+  for (const [sizeName, classString] of sizeEntries) {
+    const classes = classString.split(/\s+/).filter(Boolean);
+    const label = capitalize(sizeName);
+    const padXClass = classes.find((cls) => /^px-\d/.test(cls));
+    const padYClass = classes.find((cls) => /^py-\d/.test(cls));
+    const padXPx = padXClass ? tailwindClassPx(padXClass) : null;
+    const padYPx = padYClass ? tailwindClassPx(padYClass) : null;
+    if (!padXClass || padXPx === null || !padYClass || padYPx === null) {
+      skippedOptions.push({ name: sizeName, reason: "no readable `px-N` and `py-N` classes in this size's real class string, so the padding can't be derived" });
+      continue;
+    }
+    const padXMatch = nearestToken(padXPx, spacing, "spacing");
+    const padYMatch = nearestToken(padYPx, spacing, "spacing");
+    const descFontClass = (descriptionBySize[sizeName] ?? []).find((cls) => cls.startsWith("text-") && tailwindClassPx(cls) !== null);
+    const descFontPx = descFontClass ? (tailwindClassPx(descFontClass) as number) : baseFontPx;
+    const descFontMatch = nearestToken(descFontPx, fontSize, "typography/primitive/fontSize");
+
+    // The base Item plan already discloses Default's own py-2.5 / px-3 snaps
+    // (`Item horizontal/vertical padding` notes), so only the other sizes
+    // repeat theirs here.
+    if (sizeName !== "default") {
+      if (padYMatch.deltaPx > 0) disclosures.push(`Size ${label}: vertical padding ${padYClass} (${padYPx}px) snapped to ${padYMatch.figmaName} (${tokenPx(padYMatch.figmaName, spacing)}px), ${padYMatch.deltaPx}px off — no exact spacing token.`);
+      if (padXMatch.deltaPx > 0) disclosures.push(`Size ${label}: horizontal padding ${padXClass} (${padXPx}px) snapped to ${padXMatch.figmaName} (${tokenPx(padXMatch.figmaName, spacing)}px), ${padXMatch.deltaPx}px off — no exact spacing token.`);
+      if (descFontMatch.deltaPx > 0) disclosures.push(`Size ${label}: Description text size ${descFontPx}px snapped to ${descFontMatch.figmaName} (${tokenPx(descFontMatch.figmaName, fontSize)}px), ${Math.round(descFontMatch.deltaPx * 100) / 100}px off — no exact type-scale token.`);
+    }
+
+    const gapClass = classes.find((cls) => /^gap-\d/.test(cls));
+    if (gapClass) {
+      disclosures.push(`Size ${label}: ${gapClass} (the space between Item's media, content and actions parts) isn't modeled — this Figma Item has only the one text section.`);
+    }
+    const contextual = classes.filter((cls) => cls.startsWith("in-data-"));
+    if (contextual.length > 0) {
+      disclosures.push(`Size ${label}: ${contextual.join(" ")} (a rule that only applies when the Item sits inside another component) isn't modeled.`);
+    }
+    const descSet = new Set(descriptionBySize[sizeName] ?? []);
+    const otherSizeClasses = (allBySize[sizeName] ?? []).filter((cls) => !descSet.has(cls));
+    if (otherSizeClasses.length > 0) {
+      disclosures.push(`Size ${label}: this size also applies ${otherSizeClasses.join(", ")} to Item's inner parts (media image / content spacing) — not modeled, since this Figma Item has only the Title and Description text.`);
+    }
+
+    options.push({
+      name: label,
+      overrides: {
+        sectionGapVariable: padYMatch.figmaName,
+        sections: buildSections(padXMatch.figmaName, descFontMatch.figmaName),
+      },
+    });
+  }
+
+  if (options.length === 0) {
+    notes.push("Item: no size in the vendored `size` axis had readable px/py padding, so no Size property was built — Item stays one size.");
+    return undefined;
+  }
+
+  disclosures.push(...describeIdenticalOptions("Size", options));
+  if (skippedOptions.length > 0) {
+    disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+  }
+  for (const line of disclosures) notes.push(`Item ${line}`);
+
+  return { propertyName: "Size", options, skippedOptions, disclosures };
 }
 
 // Nineteenth real component, added 2026-09-21 — "Batch 8" of
@@ -2424,6 +3493,108 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
 // entirely from `text-sm`'s own line-height — `min-h-4` (16px) is a
 // MINIMUM only, not a hard height this schema has any way to enforce, and
 // in practice text-sm's own line-height already exceeds it.
+// Marker's `separator` and `border` variants (component-variations plan,
+// Batch 8, 2026-10-08), added to the EXISTING `Variant` list (the cva axis is
+// named `variant`, so Figma's `Variant=Default/Separator/Border` is the natural
+// fit; an extraAxes Style would have produced two competing "variant"
+// properties). `Default` is built by the caller, byte-identical to before. The
+// real classes (read below, never invented):
+//   separator: `before:mr-1 before:h-px before:min-w-0 before:flex-1
+//     before:bg-border after:ml-1 after:h-px after:min-w-0 after:flex-1
+//     after:bg-border` — two 1px border.default hairlines (pseudo-elements that
+//     are flex children, so the base `gap-2` applies too) flanking the label;
+//     gap label-to-line = gap-2 + mr-1/ml-1 = 12px. -> `flankLines`.
+//   border: `border-b border-border pb-2` — a 1px bottom rule in border.default
+//     plus 8px bottom padding. -> `strokeVariable` + `strokeSides: "bottom"` +
+//     `paddingBottomVariable`.
+// An option whose classes don't fit either shape becomes a `skippedVariants`
+// entry with the reason, never an approximation.
+function buildMarkerStyleVariants(
+  entries: Array<[string, string]>,
+  baseClassString: string,
+  baseColors: { textVariable: string },
+  spacing: Record<string, number>,
+  disclosures: string[],
+): { variants: FigmaComponentVariantPlanItem[]; skippedVariants: Array<{ name: string; reason: string }> } {
+  const variants: FigmaComponentVariantPlanItem[] = [];
+  const skippedVariants: Array<{ name: string; reason: string }> = [];
+  const baseGapClass = baseClassString.split(/\s+/).find((t) => /^gap-\d+(?:\.\d+)?$/.test(t));
+  const baseGapPx = baseGapClass ? tailwindClassPx(baseGapClass) : 0;
+  const marginPx = (cls: string | undefined): number | null => {
+    const m = cls?.match(/^m[rl]-(\d+(?:\.\d+)?)$/);
+    return m ? parseFloat(m[1]) * 4 : null;
+  };
+
+  for (const [name, classString] of entries) {
+    if (classString === "") continue; // `default`: the caller builds it
+    const label = capitalize(name);
+    const tokens = classString.split(/\s+/).filter(Boolean);
+    const before = tokens.filter((t) => t.startsWith("before:")).map((t) => t.slice("before:".length));
+    const after = tokens.filter((t) => t.startsWith("after:")).map((t) => t.slice("after:".length));
+
+    if (before.length > 0 || after.length > 0) {
+      // Flanking-lines shape.
+      const side = (classes: string[]) => ({
+        color: classes.map((c) => classToFigmaVariable(c)).find((r) => r !== null && r.kind === "fill") ?? null,
+        height: classes.find((c) => c === "h-px" || /^h-\d+(?:\.\d+)?$/.test(c)),
+        margin: classes.find((c) => /^m[rl]-\d+(?:\.\d+)?$/.test(c)),
+      });
+      const b = side(before);
+      const a = side(after);
+      const thicknessOf = (h: string | undefined) => (h === "h-px" ? 1 : h ? tailwindClassPx(h) : null);
+      const bThick = thicknessOf(b.height);
+      const aThick = thicknessOf(a.height);
+      const bMargin = marginPx(b.margin);
+      const aMargin = marginPx(a.margin);
+      if (!b.color || !a.color || bThick === null || aThick === null || bMargin === null || aMargin === null) {
+        skippedVariants.push({ name: label, reason: "its before:/after: lines don't match the expected pair of `bg-<color>` + `h-px`/`h-N` + `mr-N`/`ml-N` classes, so the flanking lines can't be derived without guessing" });
+        continue;
+      }
+      if (b.color.variable !== a.color.variable || bThick !== aThick || bMargin !== aMargin) {
+        skippedVariants.push({ name: label, reason: "its before: and after: lines differ in colour, thickness or margin, but Figma's flanking pair is symmetrical, so it can't be represented without picking one side" });
+        continue;
+      }
+      const gapMatch = nearestToken((baseGapPx ?? 0) + bMargin, spacing, "spacing");
+      const isHandled = (c: string) => c === "flex-1" || c === "min-w-0" || c === "h-px" || /^h-\d+(?:\.\d+)?$/.test(c) || /^m[rl]-\d+(?:\.\d+)?$/.test(c) || classToFigmaVariable(c)?.kind === "fill";
+      const unmodeled = [...before.filter((c) => !isHandled(c)).map((c) => `before:${c}`), ...after.filter((c) => !isHandled(c)).map((c) => `after:${c}`)];
+      variants.push({
+        name: label,
+        textVariable: baseColors.textVariable,
+        underline: false,
+        flankLines: { colorVariable: b.color.variable, thicknessPx: bThick, representativeLengthPx: 80, gapVariable: gapMatch.figmaName },
+      });
+      disclosures.push(`Variant ${label}: the two real ${bThick}px ${b.color.variable} lines (before:/after: pseudo-elements) flank the label with a ${(baseGapPx ?? 0) + bMargin}px gap (gap-2 plus the line's own margin), bound to ${gapMatch.figmaName}${gapMatch.deltaPx > 0 ? ` (${gapMatch.deltaPx}px off the real value)` : ""}.`);
+      disclosures.push(`Variant ${label}: the real lines have flex-1 and stretch to fill the Marker's full width, which has no fixed value, so Figma uses two 80px stand-in lines (not a real default length) and the Marker hugs its content instead of being full-width. The ${bThick}px thickness is a raw literal, not a spacing token (no spacing token is that thin).`);
+      if (unmodeled.length > 0) disclosures.push(`Variant ${label}: these real classes aren't modeled: ${unmodeled.join(" ")}.`);
+      continue;
+    }
+
+    // Bottom-rule shape.
+    const hasBottomBorder = tokens.includes("border-b");
+    const stroke = tokens.map((t) => classToFigmaVariable(t)).find((r) => r !== null && r.kind === "border") ?? null;
+    if (!hasBottomBorder || !stroke) {
+      skippedVariants.push({ name: label, reason: "its classes are neither the expected pair of before:/after: lines nor a `border-b` + `border-<color>` bottom rule, so how it differs from Default can't be derived without guessing" });
+      continue;
+    }
+    const pbClass = tokens.find((t) => /^pb-\d+(?:\.\d+)?$/.test(t));
+    const pbPx = pbClass ? parseFloat(pbClass.slice(3)) * 4 : null;
+    const pbMatch = pbPx !== null ? nearestToken(pbPx, spacing, "spacing") : null;
+    const unmodeled = tokens.filter((t) => t !== "border-b" && t !== pbClass && classToFigmaVariable(t)?.kind !== "border");
+    variants.push({
+      name: label,
+      textVariable: baseColors.textVariable,
+      strokeVariable: stroke.variable,
+      strokeSides: "bottom",
+      strokeWeightPx: 1,
+      underline: false,
+      ...(pbMatch ? { paddingBottomVariable: pbMatch.figmaName } : {}),
+    });
+    disclosures.push(`Variant ${label}: the real 1px bottom rule (border-b ${tokens.find((t) => classToFigmaVariable(t)?.kind === "border")} → ${stroke.variable}) is drawn as a 1px stroke on the bottom edge only${pbMatch ? `, with ${pbClass} (${pbPx}px) as bottom padding bound to ${pbMatch.figmaName}${pbMatch.deltaPx > 0 ? ` (${pbMatch.deltaPx}px off the real value)` : ""}` : ""}. The 1px weight is a raw literal, not a spacing token (no spacing token is that thin), and the Figma Marker hugs its text, so the rule is only as wide as the text (the real Marker is full-width). The stroke also adds 1px to this variant's height (a stroke counts toward an auto-layout frame's size).`);
+    if (unmodeled.length > 0) disclosures.push(`Variant ${label}: these real classes aren't modeled: ${unmodeled.join(" ")}.`);
+  }
+  return { variants, skippedVariants };
+}
+
 function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[]): FigmaComponentPlanItem {
   for (const marker of ["function Marker(", "markerVariants = cva(", "text-muted-foreground"]) {
     if (!markerSource.includes(marker)) {
@@ -2455,14 +3626,23 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
   if (fontSizeMatch.deltaPx > 0) {
     notes.push(`Marker font size: nearest real token is ${fontSizeMatch.deltaPx}px off shadcn's own exact Tailwind value.`);
   }
-  notes.push("Marker: modeled as a single colorless 'Default' box, per the user's own decision (figma-remaining-components-plan.md, Batch 8) — its real cva() variant axis (default/separator/border) is ignored entirely, not just its color-bearing parts. `border`'s own classes DO carry a real, parseable border.default match (the same already-tabled token used everywhere else in this file, not a new/different hue) that this reframing doesn't represent — see this function's own comment for the full finding.");
-  notes.push("Marker: has no padding or radius class of its own in its real source (confirmed: no `rounded-*` class anywhere in the file, and no padding class outside the ignored `border` option's own `pb-2`) — represented as a bare text node (0px padding, radius/none), the same real finding and treatment already established for Label.");
+  // Batch 8 (component-variations plan, 2026-10-08): the cva axis is no longer
+  // ignored. `Default` stays the colorless box above (byte-identical); the
+  // Separator and Border variants are built from their real classes (see
+  // `buildMarkerStyleVariants`), anything unreadable lands in `skippedVariants`.
+  const disclosures: string[] = [];
+  const styled = buildMarkerStyleVariants(variantEntries, classMatch[1], colors, spacing, disclosures);
+  for (const skipped of styled.skippedVariants) disclosures.push(`Variant ${skipped.name} was not built: ${skipped.reason}.`);
+  disclosures.push("Variants (all): the real Marker is full-width (w-full, min-h-4); the Figma Marker hugs its text in every variant.");
+  notes.push("Marker: the Default variant is a single colorless box (its real `default` option is an empty no-op); the real `separator` and `border` options are modeled as the Separator and Border variants (see buildMarkerStyleVariants), not ignored as before.");
+  for (const line of disclosures) notes.push(`Marker ${line}`);
+  notes.push("Marker: has no padding or radius class of its own in its real source (confirmed: no `rounded-*` class anywhere in the file, and no padding class outside the `border` option's own `pb-2`, which only the Border variant carries, as bottom padding) — Default is a bare text node (0px padding, radius/none), the same real finding and treatment already established for Label.");
 
   return {
     name: "Marker",
     variantPropertyName: "Variant",
-    variants: [{ name: "Default", ...colors, underline: false }],
-    skippedVariants: [],
+    variants: [{ name: "Default", ...colors, underline: false }, ...styled.variants],
+    skippedVariants: styled.skippedVariants,
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
@@ -2470,6 +3650,7 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "Marker",
+    ...(disclosures.length > 0 ? { disclosures } : {}),
   };
 }
 // Batch 10 of figma-remaining-components-plan.md ("chat/AI kit" registry
@@ -2711,6 +3892,124 @@ function readTabsTriggerClassString(tabsSource: string): string {
   if (literals.length === 0) throw new Error("TabsTrigger's own className={cn(...)} call contained no quoted string literals — real vendored source may have changed shape since this parser was written.");
   return literals.join(" ");
 }
+// Tabs' `Style` axis (component-variations plan, Batch 8, 2026-10-08): the
+// real `tabsListVariants` cva `variant` axis (default / line). It lives on
+// TabsList, which this plan does not model, so each style's effect on the
+// TRIGGER comes from the trigger's own `group-data-[variant=<style>]/tabs-list:`
+// prefixed classes (read below, never invented):
+//   default: `group-data-[variant=default]/tabs-list:data-active:shadow-sm`
+//   line:    `...[variant=line]/tabs-list:bg-transparent` (inactive trigger,
+//            already transparent), `...:data-active:bg-transparent` (active
+//            trigger loses the filled pill), `...:data-active:shadow-none`, and
+//            `...:data-active:after:opacity-100` which turns on the trigger's
+//            `after:` pseudo-element (`after:bg-foreground`, `h-0.5`,
+//            `bottom-[-5px]`, full width): a 2px foreground bar just under the
+//            active tab, the classic underline-tab indicator.
+// Default reproduces today's Tabs exactly (empty overrides). Line is a
+// `variantOverrides` entry per variant keyed by the existing names
+// ("Inactive"/"Active"): Active drops its fill and gains a BOTTOM-EDGE stroke
+// (`strokeSides: "bottom"`, `strokeWeightPx` from `h-0.5`, colored by
+// `after:bg-foreground`). Why a stroke and not a child bar: Figma's per-side
+// stroke weights make this a small additive change to the existing frame
+// (no new node, stays bound to a color variable), but it is the NEAREST
+// representable look, not an exact one: the real bar is a separate element that
+// sits 3-5px BELOW the tab and spans the tab's inner width, while the Figma
+// stroke is flush on the tab's own bottom edge across its full width. That is
+// disclosed on the axis (and so in the Figma set description).
+function buildTabsStyleAxis(tabsSource: string, triggerTokens: string[], baseInactive: FigmaComponentVariantPlanItem, baseActive: FigmaComponentVariantPlanItem, notes: string[]): FigmaComponentAxisPlanItem[] {
+  let entries: Array<[string, string]>;
+  try {
+    entries = parseCvaAxis(tabsSource, "variant");
+  } catch {
+    notes.push("Tabs: no `variant` axis was found in the vendored tabsListVariants, so no Style property was built — Tabs stays the one (Default) style (real vendored source may have changed shape).");
+    return [];
+  }
+  if (entries.length === 0) {
+    notes.push("Tabs: the vendored tabsListVariants `variant` axis has no options, so no Style property was built.");
+    return [];
+  }
+
+  // The base TabsList class string (the first quoted string of the cva call),
+  // for the list-level `data-[variant=X]:` classes the disclosures name.
+  const listBase = tabsSource.match(/tabsListVariants\s*=\s*cva\(\s*"([^"]+)"/)?.[1] ?? "";
+  const listBaseTokens = listBase.split(/\s+/).filter(Boolean);
+
+  // The active indicator bar, from the trigger's unconditional `after:` classes.
+  const barColorClass = triggerTokens.find((t) => /^after:bg-[a-z-]+$/.test(t));
+  const barColor = barColorClass ? classToFigmaVariable(barColorClass.slice("after:".length)) : null;
+  const barHeightClass = triggerTokens.find((t) => /^group-data-horizontal\/tabs:after:h-\d+(?:\.\d+)?$/.test(t));
+  const barHeightPx = barHeightClass ? tailwindClassPx(barHeightClass.slice(barHeightClass.lastIndexOf(":") + 1)) : null;
+  const barBottomClass = triggerTokens.find((t) => /^group-data-horizontal\/tabs:after:bottom-\[-?\d+px\]$/.test(t));
+  const barBottomPx = barBottomClass ? parseInt(barBottomClass.match(/\[(-?\d+)px\]/)![1], 10) : null;
+
+  const options: FigmaComponentAxisPlanItem["options"] = [];
+  const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const disclosures: string[] = [];
+  const merged: Array<{ label: string; byVariant: Record<string, string> }> = []; // each option's finished per-variant look, for the "identical to Default" check
+
+  for (const [name] of entries) {
+    const label = capitalize(name);
+    const prefix = `group-data-[variant=${name}]/tabs-list:`;
+    const own = triggerTokens.filter((t) => t.startsWith(prefix)).map((t) => t.slice(prefix.length));
+    const inactiveOverride: Partial<FigmaComponentVariantPlanItem> = {};
+    const activeOverride: Partial<FigmaComponentVariantPlanItem> = {};
+    const unmodeled: string[] = [];
+    for (const cls of own) {
+      if (cls === "bg-transparent") {
+        if (baseInactive.fillVariable) inactiveOverride.fillVariable = "";
+      } else if (cls === "data-active:bg-transparent") {
+        if (baseActive.fillVariable) activeOverride.fillVariable = "";
+      } else if (cls === "data-active:after:opacity-100") {
+        if (barColor && barColor.kind === "fill" && barHeightPx !== null) {
+          activeOverride.strokeVariable = barColor.variable;
+          activeOverride.strokeSides = "bottom";
+          activeOverride.strokeWeightPx = barHeightPx;
+          disclosures.push(`Style ${label}: the real active tab's underline bar (${barColorClass} ${barHeightClass}${barBottomClass ? ` ${barBottomClass}` : ""}) is drawn as a ${barHeightPx}px stroke on the Active tab's bottom edge only, bound to ${barColor.variable}. This is the nearest look Figma's frame can show, not an exact copy: in the real component the bar is a separate element${barBottomPx !== null ? ` that sits ${Math.abs(barBottomPx) - barHeightPx} to ${Math.abs(barBottomPx)}px below the tab` : " that sits just below the tab"} and spans the tab's inner width (inside its 1px border), while the Figma stroke sits flush on the tab's own bottom edge across its full width, its ends follow the tab's rounded bottom corners (the real bar is straight), and it makes the Active tab 2px taller than the others (a stroke counts toward an auto-layout frame's size; the real bar is absolutely positioned and adds no height). Because the inactive tab's 60% text opacity is dropped (the file-wide opacity simplification), this bar is the only thing telling Active from Inactive in this style.`);
+        } else {
+          unmodeled.push(cls);
+          disclosures.push(`Style ${label}: the real active tab shows an underline bar, but its colour/height classes (after:bg-*, group-data-horizontal/tabs:after:h-*) could not be read from the vendored source, so the bar is NOT drawn and Active shows no indicator.`);
+        }
+      } else {
+        unmodeled.push(cls);
+      }
+    }
+    if (unmodeled.length > 0) {
+      disclosures.push(`Style ${label}: these real trigger classes aren't modeled: ${unmodeled.map((c) => `${prefix}${c}`).join(" ")}${unmodeled.some((c) => /shadow/.test(c)) ? " (the active tab's drop shadow isn't drawn in either style)" : ""}.`);
+    }
+    const listOwn = [
+      ...entries.filter(([key]) => key === name).map(([, classes]) => classes).filter(Boolean),
+      ...listBaseTokens.filter((t) => t.startsWith(`data-[variant=${name}]:`)),
+    ].join(" ").trim();
+    disclosures.push(`Style ${label}: the TabsList container is not modeled in either style, so ${listOwn ? `its own classes for this style (${listOwn}) don't appear` : "this style's list-level look doesn't appear"} — only the tab trigger is drawn.`);
+
+    const variantOverrides: Record<string, Partial<FigmaComponentVariantPlanItem>> = {};
+    if (Object.keys(inactiveOverride).length > 0) variantOverrides[baseInactive.name] = inactiveOverride;
+    if (Object.keys(activeOverride).length > 0) variantOverrides[baseActive.name] = activeOverride;
+    options.push({ name: label, overrides: Object.keys(variantOverrides).length > 0 ? { variantOverrides } : {} });
+    merged.push({
+      label,
+      byVariant: {
+        [baseInactive.name]: JSON.stringify({ ...baseInactive, ...inactiveOverride }),
+        [baseActive.name]: JSON.stringify({ ...baseActive, ...activeOverride }),
+      },
+    });
+  }
+
+  // Per-variant look that comes out the same as the first style's (Line's
+  // Inactive tab = Default's Inactive tab): all options are still built so the
+  // Figma property values match the code's `variant` values.
+  for (const m of merged.slice(1)) {
+    for (const variantName of Object.keys(m.byVariant)) {
+      if (m.byVariant[variantName] === merged[0].byVariant[variantName]) {
+        disclosures.push(`Style ${m.label}: the ${variantName} tab renders identical to ${merged[0].label}'s ${variantName} tab in Figma (this style only changes the other tab's look) — still created so the Figma property values match the code's own values.`);
+      }
+    }
+  }
+  disclosures.push(...describeIdenticalOptions("Style", options));
+  for (const line of disclosures) notes.push(`Tabs ${line}`);
+  return [{ propertyName: "Style", options, skippedOptions, disclosures }];
+}
+
 function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): FigmaComponentPlanItem {
   for (const marker of ["function TabsTrigger", "data-active:bg-background", "data-active:text-foreground", "rounded-md", "text-foreground/60"]) {
     if (!tabsSource.includes(marker)) {
@@ -2750,16 +4049,19 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
     }
   }
 
-  notes.push("Tabs: only TabsTrigger itself is modeled, as a manual Active/Inactive axis (there is no real cva() here to parse) — TabsList's own wrapping pill container (its real p-[3px] padding and bg-muted track) isn't modeled, the same 'meaningful sub-part only' scope Avatar's own AvatarFallback-only cut already established. The real 'line' TabsList variant and every dark:-scoped override are ignored entirely, not just their color-bearing parts — the same 'one path only' scope this file applies everywhere.");
+  notes.push("Tabs: only TabsTrigger itself is modeled, as a manual Active/Inactive axis (there is no real cva() here to parse) — TabsList's own wrapping pill container (its real p-[3px] padding and bg-muted track) isn't modeled, the same 'meaningful sub-part only' scope Avatar's own AvatarFallback-only cut already established. Every dark:-scoped override is ignored entirely, not just its color-bearing parts — the same 'one path only' scope this file applies everywhere. The real TabsList 'line' variant is modeled as a Style axis (Default / Line) on the TRIGGER only (see buildTabsStyleAxis).");
   notes.push("Tabs: Active and Inactive end up with the SAME bound text.primary, not a genuinely different pair — the real inactive state's own text-foreground/60 (60% opacity) is dropped per this file's existing opacity-modifier simplification (same as Badge's bg-destructive/10), so the one real visual difference this plan still carries is Active's own filled background.primary pill, not a text-color change.");
+
+  const tabsVariants: FigmaComponentVariantPlanItem[] = [
+    { name: "Inactive", fillVariable: inactiveColors.fillVariable, textVariable: inactiveColors.textVariable, strokeVariable: inactiveColors.strokeVariable, underline: false },
+    { name: "Active", fillVariable: activeColors.fillVariable, textVariable: activeColors.textVariable, underline: false },
+  ];
+  const extraAxes = buildTabsStyleAxis(tabsSource, tokens, tabsVariants[0], tabsVariants[1], notes);
 
   return {
     name: "Tabs",
     variantPropertyName: "Variant",
-    variants: [
-      { name: "Inactive", fillVariable: inactiveColors.fillVariable, textVariable: inactiveColors.textVariable, strokeVariable: inactiveColors.strokeVariable, underline: false },
-      { name: "Active", fillVariable: activeColors.fillVariable, textVariable: activeColors.textVariable, underline: false },
-    ],
+    variants: tabsVariants,
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingHMatch.figmaName,
@@ -2768,6 +4070,7 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "Tab",
+    ...(extraAxes.length > 0 ? { extraAxes } : {}),
   };
 }
 
@@ -3148,10 +4451,67 @@ function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[
   const radius = readCssScale(tokensCss, "radius");
   const radiusMatch = exactRadiusFull(radius); // real rounded-full on both track and thumb
 
-  const trackWidthPx = 32; // real data-[size=default]:w-[32px] — a confirmed real, exact arbitrary value, no matching token scale to bind against (same "raw literal, not bound" treatment as Separator's own thicknessPx)
-  const trackHeightPx = 18.4; // real data-[size=default]:h-[18.4px]
-  const thumbSizePx = 16; // real group-data-[size=default]/switch:size-4
+  // Component-variations plan, Batch 4 (2026-10-08): every size's track and
+  // thumb dims are read from the real `data-[size=X]:` / `group-data-[size=X]/switch:`
+  // classes via `parseDataSizeClasses` (default: h-[18.4px] w-[32px] size-4;
+  // sm: h-[14px] w-[24px] size-3). The two markers above guarantee the
+  // default size reads back as the 32 / 18.4 / 16 this plan always had.
   const borderInsetPx = 1; // real Tailwind bare `border` utility width — the same well-known 1px default this file already assumes for every other bare `border`-based strokeWeight
+  const bySize = parseDataSizeClasses(switchSource.replace(/["'`,]/g, " "));
+  const arbitraryPx = (classes: string[], axis: "h" | "w"): number | null => {
+    for (const cls of classes) {
+      const m = cls.match(new RegExp(`^${axis}-\\[(\\d+(?:\\.\\d+)?)px\\]$`));
+      if (m) return parseFloat(m[1]);
+    }
+    return null;
+  };
+  const readSwitchSize = (sizeName: string): { trackWidthPx: number; trackHeightPx: number; thumbSizePx: number } | null => {
+    const classes = bySize[sizeName] ?? [];
+    const trackWidthPx = arbitraryPx(classes, "w");
+    const trackHeightPx = arbitraryPx(classes, "h");
+    const thumbClass = classes.find((cls) => /^size-\d/.test(cls));
+    const thumbSizePx = thumbClass ? tailwindClassPx(thumbClass) : null;
+    if (trackWidthPx === null || trackHeightPx === null || thumbSizePx === null) return null;
+    return { trackWidthPx, trackHeightPx, thumbSizePx };
+  };
+  // The ONE place the thumb geometry is computed, for every size: checked =
+  // trackWidth - thumbSize - borderInset (real translate-x-[calc(100%-2px)]),
+  // unchecked = borderInset (real translate-x-0). Key order matters (the
+  // Default size must serialize byte-identically to the pre-axis plan).
+  const makeThumb = (state: "Unchecked" | "Checked", dims: { trackWidthPx: number; trackHeightPx: number; thumbSizePx: number }): NonNullable<FigmaComponentVariantPlanItem["thumb"]> => ({
+    trackColorVariable: sdsgtPathToFigmaName(state === "Checked" ? "action.primary" : "border.default"),
+    thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
+    trackWidthPx: dims.trackWidthPx,
+    trackHeightPx: dims.trackHeightPx,
+    thumbSizePx: dims.thumbSizePx,
+    thumbOffsetXPx: state === "Checked" ? dims.trackWidthPx - dims.thumbSizePx - borderInsetPx : borderInsetPx,
+    radiusVariable: radiusMatch.figmaName,
+  });
+  const defaultDims = readSwitchSize("default");
+  if (!defaultDims) {
+    throw new Error("Switch's real source has the default-size markers but its data-[size=default] track/thumb classes could not be read — real vendored source may have changed shape since buildSwitchPlan was written.");
+  }
+
+  const sizeOrder = ["default", ...Object.keys(bySize).filter((n) => n !== "default")];
+  const axisOptions: FigmaComponentAxisPlanItem["options"] = [];
+  const axisSkipped: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+  const axisDisclosures: string[] = [];
+  for (const sizeName of sizeOrder) {
+    const dims = readSwitchSize(sizeName);
+    if (!dims) {
+      axisSkipped.push({ name: sizeName, reason: "no readable `h-[Npx]`, `w-[Npx]` and thumb `size-N` classes for this size, so the track and thumb can't be derived" });
+      continue;
+    }
+    axisOptions.push({
+      name: capitalize(sizeName),
+      overrides: { variantOverrides: { Unchecked: { thumb: makeThumb("Unchecked", dims) }, Checked: { thumb: makeThumb("Checked", dims) } } },
+    });
+  }
+  axisDisclosures.push("Size: track and thumb sizes are the real literal px values (e.g. 32 x 18.4 track and 16px thumb for Default), not spacing tokens — there is no matching token scale, so nothing was snapped. The thumb's horizontal position is recomputed per size as a geometric equivalent of the real CSS transform, not replicated.");
+  axisDisclosures.push(...describeIdenticalOptions("Size", axisOptions));
+  if (axisSkipped.length > 0) axisDisclosures.push(`Size options not built: ${axisSkipped.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+  for (const line of axisDisclosures) notes.push(`Switch ${line}`);
+  const sizeAxis: FigmaComponentAxisPlanItem | undefined = axisOptions.length > 0 ? { propertyName: "Size", options: axisOptions, skippedOptions: axisSkipped, disclosures: axisDisclosures } : undefined;
 
   notes.push("Switch: needs no icon capability at all — confirmed by re-reading its real source in full, not assumed. Its track's own real bg-input (unchecked) resolves to a fill bound to a variable literally named border/default, via this file's existing shadcn-var table — a real, confirmed-correct binding, not a mismatch (see this function's own comment).");
   notes.push("Switch: the thumb's own real position is set via a CSS transform (translate-x-[calc(100%-2px)] when checked, translate-x-0 when unchecked) — represented here as a computed geometric equivalent (trackWidthPx - thumbSizePx - borderInsetPx, and borderInsetPx respectively), not a literal replication of the real transform math.");
@@ -3160,36 +4520,13 @@ function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[
     name: "Switch",
     variantPropertyName: "Variant",
     variants: [
-      {
-        name: "Unchecked",
-        underline: false,
-        thumb: {
-          trackColorVariable: sdsgtPathToFigmaName("border.default"),
-          thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
-          trackWidthPx,
-          trackHeightPx,
-          thumbSizePx,
-          thumbOffsetXPx: borderInsetPx,
-          radiusVariable: radiusMatch.figmaName,
-        },
-      },
-      {
-        name: "Checked",
-        underline: false,
-        thumb: {
-          trackColorVariable: sdsgtPathToFigmaName("action.primary"),
-          thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
-          trackWidthPx,
-          trackHeightPx,
-          thumbSizePx,
-          thumbOffsetXPx: trackWidthPx - thumbSizePx - borderInsetPx,
-          radiusVariable: radiusMatch.figmaName,
-        },
-      },
+      { name: "Unchecked", underline: false, thumb: makeThumb("Unchecked", defaultDims) },
+      { name: "Checked", underline: false, thumb: makeThumb("Checked", defaultDims) },
     ],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName, // interface-shape parity only, mirrors thumb.radiusVariable — same precedent line/bar already established
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
 }
 
@@ -3355,8 +4692,23 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     }
   }
 
-  notes.push("Attachment: only the outer frame and AttachmentTitle/AttachmentDescription are modeled — AttachmentMedia (a real icon/image slot, always caller-supplied, never a default the component ships with) and AttachmentActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons already named in figma-remaining-components-plan.md and established by Item's own ItemMedia/ItemActions exclusion. Only its default size, horizontal orientation, and 'done' state (the component's own real default) are modeled — sm/xs/vertical and the real idle/uploading/processing/error states aren't.");
+  // The one Title + Description section, parameterized by the two values a
+  // Size/Orientation option can change (horizontal padding, Title font size);
+  // the base plan and every axis option build theirs through this function.
+  const buildSections = (paddingHVar: string, titleFontVar: string): FigmaComponentSectionPlanItem[] => [
+    {
+      paddingHorizontalVariable: paddingHVar,
+      textLines: [
+        { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
+        { textVariable: descColors.textVariable, fontSizeVariable: descFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "2.4 MB" },
+      ],
+    },
+  ];
+
+  notes.push("Attachment: only the outer frame and AttachmentTitle/AttachmentDescription are modeled — AttachmentMedia (a real icon/image slot, always caller-supplied, never a default the component ships with) and AttachmentActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons already named in [Legacy] figma-remaining-components-plan.md and established by Item's own ItemMedia/ItemActions exclusion. Only its 'done' state (the component's own real default) is modeled — the real idle/uploading/processing/error states aren't. Its real size (default/sm/xs) and orientation (horizontal/vertical) axes are modeled as Size and Orientation properties — see the `Attachment Size ...`/`Attachment Orientation ...` notes below for what they do and don't change.");
   notes.push("Attachment: AttachmentTitle has no explicit color class of its own — it inherits from Attachment's own text-card-foreground, NOT the global body's text-foreground this file's usual fallback assumes, so it's hardcoded to text.on-surface directly rather than routed through scanClassesForColors's own generic fallback default, which would have been wrong here.");
+
+  const extraAxes = buildAttachmentAxes(attachmentSource, spacing, radius, fontSize, radiusMatch, notes, buildSections);
 
   return {
     name: "Attachment",
@@ -3366,16 +4718,208 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: paddingVMatch.figmaName,
-    sections: [
-      {
-        paddingHorizontalVariable: paddingHMatch.figmaName,
-        textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontSize.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
-          { textVariable: descColors.textVariable, fontSizeVariable: descFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "2.4 MB" },
-        ],
-      },
-    ],
+    sections: buildSections(paddingHMatch.figmaName, titleFontSize.figmaName),
+    ...(extraAxes.length > 0 ? { extraAxes } : {}),
   };
+}
+
+// Attachment's `Size` and `Orientation` axes (component-variations plan,
+// Batch 6, 2026-10-08) — the first component with TWO extra axes. Reads the
+// real `attachmentVariants` `size` (default/sm/xs) and `orientation`
+// (horizontal/vertical) cva axes; never invents a value.
+//
+// Size, per option: `has-data-[slot=attachment-content]:px-N/py-N` (the root's
+// padding when it holds a content part, which is how the modeled Title/
+// Description sit) -> the section's horizontal padding and `sectionGapVariable`
+// (the frame's top/bottom padding); the bare `text-*` class (inherited by
+// AttachmentTitle, which sets no size of its own) -> Title font size; the
+// `rounded-*` class (xs: `rounded-lg`, i.e. radius.md; the others keep the
+// base `rounded-xl`) -> radius. AttachmentDescription keeps its own explicit
+// `text-xs` in every size.
+//
+// Orientation, per option (read from the cva `orientation` classes and from
+// AttachmentContent's own `group-data-[orientation=X]/attachment:px-N`):
+// horizontal (`min-w-40 items-center`) changes nothing the Figma Attachment
+// models, so its overrides are empty (Default + Horizontal therefore equals
+// the pre-axis plan exactly). Vertical (`w-24 flex-col
+// has-data-[slot=attachment-content]:w-30`, plus the content's extra `px-1`)
+// models a FIXED width (`widthVariable`, w-30 snapped to the spacing scale)
+// and adds the content's `px-1` on top of each size's own `px-N`; that padding
+// depends on BOTH axes, so it lives in `combinationOverrides` per Size.
+// `flex-col` only restacks the media part above the content, which isn't
+// modeled.
+function buildAttachmentAxes(
+  attachmentSource: string,
+  spacing: Record<string, number>,
+  radius: Record<string, number>,
+  fontSize: Record<string, number>,
+  baseRadius: { figmaName: string; deltaPx: number },
+  notes: string[],
+  buildSections: (paddingHVar: string, titleFontVar: string) => FigmaComponentSectionPlanItem[],
+): FigmaComponentAxisPlanItem[] {
+  const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
+  const axes: FigmaComponentAxisPlanItem[] = [];
+
+  // ---- Size ----
+  let sizeEntries: Array<[string, string]> = [];
+  try {
+    sizeEntries = parseCvaAxis(attachmentSource, "size");
+  } catch {
+    notes.push("Attachment: could not find a `size` axis in the vendored source, so no Size property was built — Attachment stays one size (real vendored source may have changed shape).");
+  }
+  const contentPadClass = (classes: string[], axis: "px" | "py"): { cls: string; px: number } | null => {
+    for (const cls of classes) {
+      const m = cls.match(new RegExp(`^has-data-\\[slot=attachment-content\\]:(${axis}-\\d+(?:\\.\\d+)?)$`));
+      if (!m) continue;
+      const px = tailwindClassPx(m[1]);
+      if (px !== null) return { cls, px };
+    }
+    return null;
+  };
+  type SizeInfo = { label: string; padXPx: number; padXClass: string; padHVar: string; titleFontVar: string };
+  const sizeInfo = new Map<string, SizeInfo>(); // label -> what the Orientation combos need
+
+  if (sizeEntries.length > 0) {
+    const options: FigmaComponentAxisPlanItem["options"] = [];
+    const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+    const disclosures: string[] = [];
+    for (const [sizeName, classString] of sizeEntries) {
+      const classes = classString.split(/\s+/).filter(Boolean);
+      const label = capitalize(sizeName);
+      const padX = contentPadClass(classes, "px");
+      const padY = contentPadClass(classes, "py");
+      const textClass = classes.find((cls) => cls.startsWith("text-") && tailwindClassPx(cls) !== null);
+      if (!padX || !padY || !textClass) {
+        skippedOptions.push({ name: sizeName, reason: "no readable `has-data-[slot=attachment-content]:px-N`, `:py-N` and bare `text-*` classes in this size's real class string, so padding and Title size can't be derived" });
+        continue;
+      }
+      const padXMatch = nearestToken(padX.px, spacing, "spacing");
+      const padYMatch = nearestToken(padY.px, spacing, "spacing");
+      const titleMatch = nearestToken(tailwindClassPx(textClass) as number, fontSize, "typography/primitive/fontSize");
+      const roundedClass = classes.find((cls) => cls.startsWith("rounded-"));
+      let radiusMatch = baseRadius;
+      if (roundedClass === "rounded-lg") radiusMatch = exactRadiusMd(radius);
+      else if (roundedClass && roundedClass !== "rounded-xl") {
+        disclosures.push(`Size ${label}: radius class ${roundedClass} isn't one this builder understands, so the base rounded-xl radius is kept.`);
+      }
+
+      // Default's own snaps are already disclosed by the base plan's notes.
+      if (sizeName !== "default") {
+        if (padYMatch.deltaPx > 0) disclosures.push(`Size ${label}: vertical padding ${padY.cls.split(":")[1]} (${padY.px}px) snapped to ${padYMatch.figmaName} (${tokenPx(padYMatch.figmaName, spacing)}px), ${padYMatch.deltaPx}px off — no exact spacing token.`);
+        if (padXMatch.deltaPx > 0) disclosures.push(`Size ${label}: horizontal padding ${padX.cls.split(":")[1]} (${padX.px}px) snapped to ${padXMatch.figmaName} (${tokenPx(padXMatch.figmaName, spacing)}px), ${padXMatch.deltaPx}px off — no exact spacing token.`);
+        if (titleMatch.deltaPx > 0) disclosures.push(`Size ${label}: Title text size ${tailwindClassPx(textClass)}px snapped to ${titleMatch.figmaName}, ${titleMatch.deltaPx}px off — no exact type-scale token.`);
+      }
+      const gapClass = classes.find((cls) => /^gap-\d/.test(cls));
+      if (gapClass) disclosures.push(`Size ${label}: ${gapClass} (the space between Attachment's media, content and actions parts) isn't modeled — this Figma Attachment has only the one text section.`);
+      const mediaPad = classes.find((cls) => cls.startsWith("has-data-[slot=attachment-media]:"));
+      if (mediaPad) disclosures.push(`Size ${label}: ${mediaPad} (the padding when the Attachment holds only a media part) isn't modeled — Media isn't part of this Figma Attachment.`);
+
+      sizeInfo.set(label, { label, padXPx: padX.px, padXClass: padX.cls.split(":")[1], padHVar: padXMatch.figmaName, titleFontVar: titleMatch.figmaName });
+      options.push({
+        name: label,
+        overrides: {
+          radiusVariable: radiusMatch.figmaName,
+          sectionGapVariable: padYMatch.figmaName,
+          sections: buildSections(padXMatch.figmaName, titleMatch.figmaName),
+        },
+      });
+    }
+    if (options.length > 0) {
+      disclosures.push("Size: AttachmentDescription keeps its own explicit text-xs (12px) in every size, and the media part's per-size classes (group-data-[size=X]/attachment: width, radius, icon size on AttachmentMedia) aren't modeled — Media isn't part of this Figma Attachment.");
+      disclosures.push(...describeIdenticalOptions("Size", options));
+      if (skippedOptions.length > 0) disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
+      axes.push({ propertyName: "Size", options, skippedOptions, disclosures });
+    } else {
+      notes.push("Attachment: no size in the vendored `size` axis had readable padding and text classes, so no Size property was built — Attachment stays one size.");
+    }
+  }
+
+  // ---- Orientation ----
+  let orientationEntries: Array<[string, string]> = [];
+  try {
+    orientationEntries = parseCvaAxis(attachmentSource, "orientation");
+  } catch {
+    notes.push("Attachment: could not find an `orientation` axis in the vendored source, so no Orientation property was built — Attachment stays one orientation (real vendored source may have changed shape).");
+  }
+  if (orientationEntries.length > 0) {
+    const contentSource = attachmentSource.match(/data-slot="attachment-content"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+    const contentTokens = contentSource.split(/\s+/).filter(Boolean);
+    const options: FigmaComponentAxisPlanItem["options"] = [];
+    const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
+    const disclosures: string[] = [];
+    for (const [orientationName, classString] of orientationEntries) {
+      const classes = classString.split(/\s+/).filter(Boolean);
+      const label = capitalize(orientationName);
+      const overrides: FigmaComponentLayoutOverrides = {};
+      let combinationOverrides: Record<string, FigmaComponentLayoutOverrides> | undefined;
+
+      // The content's extra horizontal padding for this orientation, from AttachmentContent's own classes.
+      const contentPadToken = contentTokens.find((cls) => new RegExp(`^group-data-\\[orientation=${orientationName}\\]/attachment:px-\\d`).test(cls));
+      const contentPadPx = contentPadToken ? tailwindClassPx(contentPadToken.split(":")[1]) : null;
+      // The fixed width when the Attachment holds a content part (the modeled case).
+      const widthToken = classes.find((cls) => /^has-data-\[slot=attachment-content\]:w-\d/.test(cls));
+      const widthMatch = widthToken?.match(/:w-(\d+(?:\.\d+)?)$/);
+      const widthPx = widthMatch ? parseFloat(widthMatch[1]) * 4 : null;
+
+      if (widthPx !== null) {
+        const widthTokenMatch = nearestToken(widthPx, spacing, "spacing");
+        overrides.widthVariable = widthTokenMatch.figmaName;
+        const widthClass = (widthToken as string).split(":")[1];
+        if (widthTokenMatch.deltaPx > 0) disclosures.push(`Orientation ${label}: width ${widthClass} (${widthPx}px, the width when the Attachment holds a content part) snapped to ${widthTokenMatch.figmaName} (${tokenPx(widthTokenMatch.figmaName, spacing)}px), ${widthTokenMatch.deltaPx}px off — no exact spacing token that wide, so the Figma ${label} Attachment is narrower than the real one.`);
+        else disclosures.push(`Orientation ${label}: width ${widthClass} (${widthPx}px) is a fixed ${tokenPx(widthTokenMatch.figmaName, spacing)}px (${widthTokenMatch.figmaName}).`);
+        disclosures.push(`Orientation ${label}: Title and Description truncate with an ellipsis when too long for the fixed width (like the real component's truncate), so a longer text shows cut off.`);
+      }
+      if (contentPadPx !== null) {
+        combinationOverrides = {};
+        for (const info of sizeInfo.values()) {
+          const sumMatch = nearestToken(info.padXPx + contentPadPx, spacing, "spacing");
+          combinationOverrides[`Size=${info.label}`] = { sections: buildSections(sumMatch.figmaName, info.titleFontVar) };
+          if (sumMatch.deltaPx > 0) disclosures.push(`Orientation ${label} with Size ${info.label}: horizontal padding ${info.padXClass} (${info.padXPx}px) plus the content's own ${(contentPadToken as string).split(":")[1]} (${contentPadPx}px) is ${info.padXPx + contentPadPx}px, snapped to ${sumMatch.figmaName} (${tokenPx(sumMatch.figmaName, spacing)}px), ${sumMatch.deltaPx}px off — no exact spacing token.`);
+        }
+      }
+      const minW = classes.find((cls) => /^min-w-\d/.test(cls));
+      if (minW) disclosures.push(`Orientation ${label}: ${minW} (a minimum width) isn't modeled — the Figma ${label} Attachment hugs its text, as before.`);
+      if (classes.includes("flex-col")) disclosures.push(`Orientation ${label}: flex-col (stacks the media part above the content) has no visible effect here — Media isn't part of this Figma Attachment.`);
+      const noContentWidth = classes.find((cls) => /^w-\d/.test(cls));
+      if (noContentWidth) disclosures.push(`Orientation ${label}: ${noContentWidth} (the width when the Attachment has no content part) isn't modeled — this Figma Attachment always has its Title and Description.`);
+      if (orientationName === "vertical") disclosures.push("Orientation Vertical: AttachmentActions' vertical placement (absolute, top-right) and the media part's vertical sizing aren't modeled — Media and Actions aren't part of this Figma Attachment.");
+
+      options.push({ name: label, overrides, ...(combinationOverrides ? { combinationOverrides } : {}) });
+    }
+    disclosures.push(...describeIdenticalOptions("Orientation", options));
+    axes.push({ propertyName: "Orientation", options, skippedOptions, disclosures });
+  }
+
+  // Combinations that come out identical only ACROSS the two axes (the
+  // per-axis helper above can't see these): merge each combination the same
+  // way SKILL.md step 2c does and compare.
+  if (axes.length === 2) {
+    const [sizeAxis, orientationAxis] = axes;
+    const seen = new Map<string, string>();
+    const crossLines: string[] = [];
+    for (const orientationOption of orientationAxis.options) {
+      for (const sizeOption of sizeAxis.options) {
+        const merged = Object.assign(
+          {},
+          sizeOption.overrides,
+          orientationOption.overrides,
+          sizeOption.combinationOverrides?.[`Orientation=${orientationOption.name}`] ?? {},
+          orientationOption.combinationOverrides?.[`Size=${sizeOption.name}`] ?? {},
+        );
+        const key = JSON.stringify(merged);
+        const first = seen.get(key);
+        const name = `Size=${sizeOption.name}, Orientation=${orientationOption.name}`;
+        if (first === undefined) seen.set(key, name);
+        else crossLines.push(`Orientation combined with Size: ${name} renders identical to ${first} in Figma (both snap to the same tokens) — still created so the Figma property values match the code's own values.`);
+      }
+    }
+    orientationAxis.disclosures = [...(orientationAxis.disclosures ?? []), ...crossLines];
+  }
+
+  for (const axis of axes) {
+    for (const line of axis.disclosures ?? []) notes.push(`Attachment ${line.startsWith(axis.propertyName) ? "" : `${axis.propertyName} `}${line}`.replace(/\s+/g, " "));
+  }
+  return axes;
 }
 
 // One entry per component this parser knows how to build a plan for —

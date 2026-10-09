@@ -640,7 +640,10 @@ shadcn/ui's `Button`, `Badge`, `Toggle`, `Alert`, `Input`, `Textarea`,
 `Card`, `Kbd`, `NativeSelect`, `Avatar`, `Label`, `Skeleton`, `Breadcrumb`,
 `Empty`, `Field`, `Separator`, `FieldSeparator`, `Item`, `Marker`,
 `Bubble`, `Progress`, `Tabs`, `Accordion`, `Tooltip`, `Checkbox`,
-`Spinner`, `Switch`, `RadioGroup`, `Attachment` — one size each, rest
+`Spinner`, `Switch`, `RadioGroup`, `Attachment` — one size each EXCEPT Button
+(which has a `Size` axis as of 2026-10-08; sizes are being added component
+by component per `figma-component-variations-plan.md`; Separator and Field
+also have an `Orientation` axis as of Batch 7), rest
 states only (see
 `cli/src/scaffold/figma-components-plan.ts`'s own header for the full
 scope decision, including the real component shapes this plan handles —
@@ -892,6 +895,218 @@ used to (incorrectly) imply was close enough for Badge.
   Tabs/Checkbox/RadioGroup already use for their own bare-prefix axes.
   Final full-page check: 26 component sets, zero orphans, no regressions
   to any of the 23 prior components.
+- **Button now has a `Size` axis (Batch 1 of
+  `figma-component-variations-plan.md`, 2026-10-08) — the first component
+  using `extraAxes`** (see step 2c below and `FigmaComponentAxisPlanItem`'s
+  own comment in `figma-components-plan.ts`). Four options (Default/Xs/Sm/
+  Lg) x the five built variants = 20 component variants named
+  `Variant=Default, Size=Sm`. Each size's `h-N` binds a fixed frame height
+  to a spacing token, so Button Default is now a fixed 32px where it used
+  to hug its content (disclosed). Real, disclosed snaps: Sm (28px) -> 24px
+  and Lg (36px) -> 32px, so Sm renders identical to Xs and Lg identical to
+  Default — all four are still created so Figma values match code `size=`
+  values. **Live proof (2026-10-08, same day, "SDSGT test file", Southleft
+  Desktop Bridge): done.** Smoke test: `counterAxisSizingMode = "FIXED"`
+  then `frame.setBoundVariable("height", spacing/8)` bound cleanly and read
+  back exactly 32 (no fallback needed). Full push: all 20 variants built as
+  a NEW set "Button (sizes test)" in its own sibling Section (the existing
+  Button set was untouched, plan rule 6); every variant's height read back
+  at 32 (Default/Lg) or 24 (Xs/Sm) with the height, radius, font size, fill,
+  stroke and text color all still variable-bound (no invisible-text
+  regression on Ghost/Destructive/Link); `Size` came out with options
+  Default/Xs/Sm/Lg; `componentSet.description` landed (verified by read-back);
+  a test instance took `setProperties({Variant: "Destructive", Size: "Lg",
+  Label: "Delete account"})`, rendered correctly, and was deleted. Measured:
+  10 variant frames built+converted in ~450ms, and the other 10 plus
+  `combineAsVariants` and layout in ~315ms — i.e. all 20 fit in a single
+  `figma_execute` call with huge headroom (roughly 20-45ms per frame), so
+  chunking is not needed at Button's current 20 variants.
+- **Button's `Size` axis now also has the four icon-only sizes (Batch 2 of
+  `figma-component-variations-plan.md`, 2026-10-08)**: Icon, Icon-xs,
+  Icon-sm, Icon-lg, so 8 Size options x 5 variants = 40 component variants.
+  Each is a SQUARE frame (`size-N` -> one spacing token used for both width
+  and height) with a centered, variant-colored "plus" icon (representative
+  placeholder, disclosed; real code passes any icon as children). Real
+  snaps, disclosed: Icon-sm (28px) -> 24px, Icon-lg (36px) -> 32px, so
+  Icon-lg renders identical to Icon (Icon-sm differs from Icon-xs only in
+  icon size, 16px vs 12px). **Live proof (2026-10-08, "SDSGT test file",
+  Southleft Desktop Bridge): done.** All 40 variants built in ONE
+  `figma_execute` call in ~760ms (~19ms per frame, whole call incl.
+  combine+Label ~820ms) — no chunking needed. Binding
+  `frame.setBoundVariable("width", ...)` works (after sizing both axes
+  `"FIXED"`), and every icon-only variant reads back exactly its token
+  size (32/24/24/32) with fill, stroke, radius and icon stroke all
+  variable-bound. A test instance `setProperties({Variant: "Outline", Size:
+  "Icon-sm"})` plus a `Label` value works (Label is simply not rendered by
+  icon-only variants, and the value survives swapping Size icon->text and
+  back). Step 5's `findOne(...PrimaryText).componentPropertyReferences =`
+  throws on a variant with no text node, so it is now null-guarded (live:
+  20 text variants bound, 20 icon-only skipped, no error). New finding: a
+  wrapped auto-layout set packs by width, so narrow icon variants break the
+  5-column grid; see step 2c's layout note (manual grid instead).
+- **Toggle and Item now have a `Size` axis too (Batch 3 of
+  `figma-component-variations-plan.md`, 2026-10-08)**, both through the
+  shared `buildCvaSizeAxis` / the Item-specific `buildItemSizeAxis`.
+  **Toggle** (Default/Outline x Default/Sm/Lg = 6 variants): `h-8/h-7/h-9`
+  -> fixed heights 32/24/32 (Sm 28px and Lg 36px snap, so Lg renders
+  identical to Default), text 14/12/14 (`text-[0.8rem]` = 12.8px snaps to
+  12), radius `radius/md`; `min-w-N` and the icon-related classes are
+  disclosed as not modeled. **Item** (Default/Outline/Muted x Default/Sm/Xs
+  = 9 variants, the first `sections` + `extraAxes` combination): each size
+  option carries a replacement `sections` plus `sectionGapVariable`; the
+  replay's `sections` branch now reads `item.sections` /
+  `item.sectionGapVariable` (not `component.`), which is identical when
+  there is no `extraAxes`. Xs changes the horizontal padding (spacing/2) and
+  the Description to 12px; Sm is identical to Default (the real classes
+  that differ sit on Item parts this plan doesn't model, disclosed).
+  **Live proof (2026-10-08, "SDSGT test file", Southleft Desktop Bridge):
+  done.** Built NEW sets "Toggle (sizes test)" and "Item (sizes test)" in a
+  NEW Section "Toggle and Item sizes test" (15 frames in ~390ms, one call;
+  existing sets untouched). Read-back: every Toggle height 32/24/32 bound
+  to the spacing token, every Item's Title and Description present and
+  bound in every size (Xs Description 12px, section padding 8px, frame 176
+  wide vs 211), fills/strokes/text all still variable-bound. Test
+  instances took `setProperties` on Variant, Size, and the Label / Title /
+  Description text properties (including a longer description), then were
+  deleted; no orphans. Both sets' descriptions carry their disclosure lines
+  (13 and 9).
+- **Avatar and Switch now have a `Size` axis too (Batch 4 of
+  `figma-component-variations-plan.md`, 2026-10-08)**, the first consumers of
+  `parseDataSizeClasses` for components without a `cva()` size axis.
+  **Avatar** (Default/Sm/Lg): each size is a TRUE square, `item.square` +
+  `item.heightVariable` (`spacing/8`, `/6`, `/10`; width AND height bound,
+  padding zeroed, label centered), fallback text 14/12/14px. This replaces
+  the old hug-content-with-padding approximation, so Default is now a fixed
+  32px circle (disclosed). **Switch** (Default/Sm): per-size
+  `variantOverrides.<Variant>.thumb` supplies a COMPLETE replacement `thumb`
+  object (track 32x18.4 / 24x14, thumb 16 / 12px, offsets 1/15 and 1/11);
+  step 2c's thumb branch reads `variantItem.thumb` (the merged object), and
+  the `Object.assign` merge is shallow so nothing is deep-merged. **Live
+  proof (2026-10-08, "SDSGT test file", Southleft Desktop Bridge): done.**
+  NEW sets "Avatar (sizes test)" (3 variants) and "Switch (sizes test)" (4)
+  in a NEW Section "Avatar and Switch sizes test" at y=2270, built in one
+  call (~240ms); existing sets untouched. Read-back: Avatar frames 32/24/40
+  with width, height, radius, fill, stroke, font size and text fill all
+  variable-bound, the Label property bound to every variant's text (a test
+  instance took `{Variant, Size: Lg, Label: "AB"}`); Switch thumbs at x=1
+  (Unchecked) and 15 / 11 (Checked, Default / Sm), flush against the right
+  edge, track and thumb colors bound; a Checked Sm instance rendered 24x14
+  with the thumb at x=11. Instances deleted, no orphans. Descriptions carry
+  the 3 (Avatar) and 1 (Switch) disclosure lines. Layout: sets this small
+  (3 and 4 variants) used a manual grid (Avatar one row, Switch 2x2).
+- **Card and NativeSelect now have a `Size` axis too (Batch 5 of
+  `figma-component-variations-plan.md`, 2026-10-08).** Both read their real
+  `data-[size=X]:` classes via `parseDataSizeClasses`. **Card** (Default/Sm)
+  uses the `sections` + `extraAxes` path unchanged: each option carries a
+  full replacement `sections` plus `sectionGapVariable`. Sm's
+  `[--card-spacing:--spacing(3)]` becomes `spacing/3` for the root top/bottom
+  padding, the gap between sections AND each section's horizontal padding
+  (Default stays `spacing/4`); Title text 16 -> 14px (Description and Content
+  are 14px in both). Every option keeps the same `labelPropertyName`s
+  (Title/Description/Content), so step 5's binding finds them in every
+  variant. **NativeSelect** (Default/Sm) uses the existing `heightVariable`
+  branch (fixed height, content centered, vertical padding ignored): Default
+  `spacing/8`, Sm `spacing/6` (h-7 28px snaps to 24px); no replay change was
+  needed. **Live proof (2026-10-08, "SDSGT test file", Southleft Desktop
+  Bridge): done.** NEW sets "Card (sizes test)" (2 variants) and
+  "NativeSelect (sizes test)" (2) in a NEW Section "Card and NativeSelect
+  sizes test" at y=2500 (below "Avatar and Switch sizes test", which ends at
+  y=2411); all 4 frames built in one call; existing sets untouched.
+  Read-back: Card Default 243x106 (identical to the old Card set's variant),
+  Sm 235x92 with 12px top/bottom padding, 12px gap, 12px section padding, all
+  bound; NativeSelect 32 / 24px high bound to `spacing/8` / `spacing/6`.
+  Text size, text fill, fill and stroke bound on every variant; Title,
+  Description, Content and Label properties exist and are bound. Test
+  instances (`{Size: Default, Title, Description, Content}` on Card,
+  `{Size: Sm, Label}` on NativeSelect) rendered correctly and were deleted;
+  no orphans. Descriptions carry the 2 (Card) and 5 (NativeSelect)
+  disclosure lines. Layout: manual row per set.
+- **Attachment now has TWO extra axes, `Size` and `Orientation` (Batch 6 of
+  `figma-component-variations-plan.md`, 2026-10-08).** First component with
+  two `extraAxes`: 1 variant x 3 sizes x 2 orientations = 6 components named
+  `Variant=Default, Size=Sm, Orientation=Vertical`. Size (default/sm/xs)
+  swaps the content padding, Title size and (xs) radius via full replacement
+  `sections` + `sectionGapVariable` + `radiusVariable`; Orientation's Vertical
+  adds `widthVariable` (a fixed width, replay in step 3's `sections` code) and
+  a `combinationOverrides` entry per Size (the content's extra `px-1` adds to
+  each size's own padding), which step 2c's combination code applies after
+  every axis's own overrides. **Live proof (2026-10-08, "SDSGT test file",
+  Southleft Desktop Bridge): done.** NEW set "Attachment (sizes test)" in a
+  NEW Section "Attachment sizes test" at y=2850 (below "Card and NativeSelect
+  sizes test", which ends at y=2758); 6 frames built and combined in one call
+  (~475ms); existing sets untouched. Figma reported three VARIANT properties
+  (Variant, Size, Orientation: Default / Default, Sm, Xs / Horizontal,
+  Vertical) and the Title and Description TEXT properties. Read-back:
+  Default/Horizontal 93x51 (identical to the old Attachment), Sm 83x40, Xs
+  75x40, every Vertical 96 wide (`spacing/24`; the real 120px snaps down,
+  disclosed); padding, gap, radius, width, font size and fills all
+  variable-bound; Vertical text is FILL with ending truncation (Default
+  Vertical shows "receipt.p..." at 96px). A test instance took
+  `setProperties` on Variant, Size, Orientation, Title and Description (Size
+  and Orientation round trips resized it correctly) and was deleted; no
+  orphans. Description: 17 disclosure lines. Layout: manual grid, columns =
+  Size, rows = Orientation, positioned by PARSING each child's name
+  (`combineAsVariants` keeps creation order, so index math puts them in the
+  wrong cells).
+- **Separator and Field now have an `Orientation` axis (Batch 7 of
+  `figma-component-variations-plan.md`, 2026-10-08).** Separator
+  (`buildSeparatorAxes`, read from the real `data-horizontal:` /
+  `data-vertical:` classes): Horizontal is today's line (empty overrides);
+  Vertical carries a complete replacement `line` with `orientation:
+  "vertical"` (1px wide, `representativeLengthPx` tall). The line branch of
+  step 2 now reads the MERGED `item.line` (the only replay change for it);
+  both lengths are a disclosed representative stand-in (the real classes are
+  `w-full` / `self-stretch`). Field (`buildFieldOrientationAxis`, read from
+  the real `fieldVariants` cva `orientation` axis): Vertical = empty overrides
+  (reproduces the old Field exactly, 195x86), Horizontal = the same three
+  sections with `textLineDirection: "horizontal"` (Breadcrumb's existing
+  row branch, no code change), `responsive` -> `skippedOptions` ("breakpoint-
+  driven layout (container query); Figma components have no viewport"), and
+  the real classes not modeled (`flex-auto` label, `items-start`, the
+  checkbox `mt-px`, vertical `*:w-full`) are listed verbatim in the
+  disclosures. **Live proof (2026-10-08, "SDSGT test file", Southleft Desktop
+  Bridge): done.** NEW sets "Separator (orientation test)" (2 variants) and
+  "Field (orientation test)" (2 variants) in a NEW Section "Separator and
+  Field orientation test" at y=3150 (below "Attachment sizes test", which
+  ends at y=3056); both sets built in one call; existing sets untouched.
+  Read-back: Separator Horizontal 200x1, Vertical 1x200, both fills bound to
+  `color/semantic/border/default`; Field Vertical 195x86 (same as the old
+  Field; padding top/bottom and gap bound to `spacing/2`), Horizontal 449x18
+  (HORIZONTAL, gap bound to `spacing/2`, no padding); every text node's size
+  and fill is variable-bound and bound to the Label/Description/Error
+  properties in BOTH orientations. Test instances took `setProperties` on
+  Orientation and all three Field text properties (Separator Vertical 1x200,
+  Field Horizontal 247x18 with short text, Vertical 97x86) and were deleted;
+  no orphans. Descriptions: 4 lines (Separator), 5 (Field). Layout: a manual
+  row per set, positioned by parsing each child's name.
+- **Tabs has a `Style` axis and Marker has Separator/Border variants (Batch 8
+  of `figma-component-variations-plan.md`, 2026-10-08).** Tabs
+  (`buildTabsStyleAxis`, read from the trigger's real
+  `group-data-[variant=line]/tabs-list:` classes): Default = empty overrides
+  (today's Tabs); Line = `variantOverrides.Active` with `fillVariable: ""`
+  (no fill), `strokeVariable` text.primary, `strokeSides: "bottom"`,
+  `strokeWeightPx: 2` (the real `after:` bar, nearest look: flush bottom
+  stroke instead of a bar 3-5px below the tab). Marker
+  (`buildMarkerStyleVariants`, read from the real cva options) extends the
+  existing `Variant` list: Separator = `flankLines` ([80px line, text, 80px
+  line], gap `spacing/3` = gap-2 + mr-1), Border = bottom-only 1px
+  border.default stroke + `paddingBottomVariable` `spacing/2` (pb-2). New
+  replay pieces in step 3: per-side stroke weights, bottom padding override,
+  flank rectangles; step 2c's description write now includes the
+  component-level `disclosures`. **Live proof (2026-10-08, "SDSGT test file",
+  Southleft Desktop Bridge): done.** NEW sets "Tabs (style test)" (4 variants)
+  and "Marker (variants test)" (3) in a NEW Section "Tabs and Marker test" at
+  y=3730 (below "Separator and Field orientation test", which ends at y=3636);
+  built in two calls (~90ms each); existing sets untouched. Read-back: Tabs
+  Active/Default fill background.primary 33x18; Active/Line no fill, stroke
+  text.primary, per-side weights [0,0,2,0], 33x20 (the stroke adds 2px height,
+  disclosed); Inactive identical in both styles (disclosed); Marker Default
+  50x18, Separator 234x18 (two 80x1 rects, gap 12 bound), Border 50x27 (bottom
+  padding 8 bound, weights [0,0,1,0]); all text and fills variable-bound,
+  Label bound. Test instances took `setProperties` on every property, then
+  were deleted; no orphans. Descriptions: 6 (Tabs), 4 (Marker). Surprises:
+  the bottom stroke follows the tab's rounded corners (curved ends), also
+  disclosed.
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -962,17 +1177,23 @@ For each item in `plan.components`, in order:
    (`combineAsVariants`)/step 5 (label properties) using whichever node
    this produces in place of the usual auto-layout `frame`:
    ```js
-   if (component.line) {
-     const lineColor = getVar(component.line.colorVariable);
+   // `item` === `component` unless `extraAxes` is present (step 2c merges the
+   // chosen options into `item`); Separator's Orientation axis (Batch 7)
+   // overrides `line` per option, so this branch reads the MERGED `item.line`,
+   // never `component.line`, for every field below.
+   if (item.line) {
+     const lineColor = getVar(item.line.colorVariable);
      function makeLineRect(lengthPx) {
        const rect = figma.createRectangle();
-       rect.resize(lengthPx, component.line.thicknessPx); // fixed size, NOT auto-layout — a bare line has no content to "hug"
+       // Vertical (Batch 7, `item.line.orientation === "vertical"`): width = thickness, height = length.
+       if (item.line.orientation === "vertical") rect.resize(item.line.thicknessPx, lengthPx);
+       else rect.resize(lengthPx, item.line.thicknessPx); // fixed size, NOT auto-layout — a bare line has no content to "hug"
        rect.fills = [bindPaint({ r: 0, g: 0, b: 0 }, lineColor)];
        return rect;
      }
 
      let node; // plays the same role `frame` plays for every other component below
-     if (component.line.centerLabel) {
+     if (item.line.centerLabel) {
        // [line, text, line] row — a disclosed, non-overlapping approximation
        // of FieldSeparator's real absolute-position + background-mask
        // technique (see FigmaComponentLinePlanItem's own comment). Only
@@ -984,24 +1205,24 @@ For each item in `plan.components`, in order:
        row.primaryAxisAlignItems = "CENTER";
        row.counterAxisAlignItems = "CENTER";
        row.fills = [];
-       row.setBoundVariable("itemSpacing", getVar(component.line.centerLabel.gapVariable));
-       row.appendChild(makeLineRect(component.line.representativeLengthPx));
+       row.setBoundVariable("itemSpacing", getVar(item.line.centerLabel.gapVariable));
+       row.appendChild(makeLineRect(item.line.representativeLengthPx));
 
        await figma.loadFontAsync({ family: fontFamilyValue, style: "Regular" });
        const label = figma.createText();
        label.name = "CenterLabelText"; // lets step 5 find this specific node by name, same convention as PrimaryText/SecondaryText
        label.fontName = { family: fontFamilyValue, style: "Regular" };
-       label.characters = component.line.centerLabel.defaultLabel;
-       label.setBoundVariable("fontSize", getVar(component.line.centerLabel.fontSizeVariable));
-       label.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(component.line.centerLabel.textVariable))];
+       label.characters = item.line.centerLabel.defaultLabel;
+       label.setBoundVariable("fontSize", getVar(item.line.centerLabel.fontSizeVariable));
+       label.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(item.line.centerLabel.textVariable))];
        row.appendChild(label);
 
-       row.appendChild(makeLineRect(component.line.representativeLengthPx));
+       row.appendChild(makeLineRect(item.line.representativeLengthPx));
        node = row;
      } else {
        // Separator's own default case — the rectangle itself IS the
        // component; no wrapping frame needed at all.
-       node = makeLineRect(component.line.representativeLengthPx);
+       node = makeLineRect(item.line.representativeLengthPx);
      }
 
      const comp = figma.createComponentFromNode(node); // works directly on a RECTANGLE, not just a FRAME — confirmed real Plugin API behavior
@@ -1017,11 +1238,11 @@ For each item in `plan.components`, in order:
    In step 5, a `line`-based component never has `component.labelPropertyName`
    set (neither Separator nor FieldSeparator's plan sets it at the top
    level), so that whole TEXT-property block is skipped automatically —
-   but if `component.line.centerLabel` is present, add ONE additional TEXT
+   but if `item.line.centerLabel` is present, add ONE additional TEXT
    property for it, bound to the `CenterLabelText` node by name (same
    by-name lookup step 5 already uses for `PrimaryText`/`SecondaryText`):
    ```js
-   if (component.line?.centerLabel) {
+   if (component.line?.centerLabel) { // `component`, not `item`: step 5 runs once per set, and no axis ever overrides centerLabel
      const centerPropName = componentSet.addComponentProperty(component.line.centerLabel.labelPropertyName, "TEXT", component.line.centerLabel.defaultLabel);
      for (const variant of componentSet.children) {
        variant.findOne(n => n.type === "TEXT" && n.name === "CenterLabelText").componentPropertyReferences = { characters: centerPropName };
@@ -1109,7 +1330,13 @@ For each item in `plan.components`, in order:
    have already created, rather than assuming a thrown error means nothing
    happened.
 2c. **Check `variant.thumb` FIRST, before anything else in the per-variant
-   step below** (Switch — added 2026-09-22, final NEEDS-ICON batch; see
+   step below** (when the component has `extraAxes`, read it from the
+   MERGED `variantItem` instead — see the next numbered block's merge:
+   `variantItem.thumb` is the size option's own complete `thumb` object,
+   which fully REPLACES the variant's, because `Object.assign` is shallow.
+   Switch's plan supplies the whole object, colors and radius included,
+   for every size; Batch 4. Name the component with the axis suffix, e.g.
+   `Variant=Checked, Size=Sm`) (Switch — added 2026-09-22, final NEEDS-ICON batch; see
    `FigmaComponentVariantPlanItem.thumb`'s own comment in
    `figma-components-plan.ts`). Unlike `icon`/`centerDot` below (content
    INSIDE an otherwise-normal frame), a `thumb`-bearing variant REPLACES
@@ -1118,8 +1345,8 @@ For each item in `plan.components`, in order:
    discretely-positioned circular thumb inside it, never a color/radius
    binding on an outer box the usual way:
    ```js
-   if (variant.thumb) {
-     const t = variant.thumb;
+   if (variantItem.thumb) { // `variantItem` === `variant` when there is no `extraAxes`
+     const t = variantItem.thumb;
      const track = figma.createFrame();
      track.resize(t.trackWidthPx, t.trackHeightPx);
      track.setBoundVariable("topLeftRadius", getVar(t.radiusVariable));
@@ -1149,6 +1376,197 @@ For each item in `plan.components`, in order:
    If `variant.thumb` was present, that fully replaces this variant's own
    build — continue the loop to the next variant, skipping step 3 below
    entirely for this one.
+2c. **If `component.extraAxes` is present** (Button's `Size` — added
+   2026-10-08, component-variations Batch 1; see
+   `FigmaComponentLayoutOverrides`/`FigmaComponentAxisPlanItem` in
+   `figma-components-plan.ts`), this component produces MORE than one
+   Figma component per `variant`: one per combination of `extraAxes`
+   options. A component WITHOUT `extraAxes` skips this whole block and
+   replays exactly as before (`item` below is just `component`).
+   - **Combinations.** The cartesian product of every axis's `options`
+     (axes in plan order). Iterate the axis combination in the OUTER loop
+     and `component.variants` in the INNER loop, so the finished set reads
+     as one row per size, one column per variant. For each (combination,
+     variant) pair, build the merged objects and then run step 3's existing,
+     unchanged frame code on them:
+     ```js
+     // `combo` = [{axis, option}, ...] in plan order, one entry per axis.
+     // `combinationOverrides` (Batch 6; absent on every earlier component) are
+     // extra overrides an option applies ONLY alongside one specific option of
+     // another axis, keyed "<otherAxis.propertyName>=<otherOption.name>"
+     // (e.g. Attachment's Vertical has "Size=Sm"); they come last so they win.
+     const comboOverrides = combo.flatMap(c => combo.filter(o => o !== c)
+       .map(o => (c.option.combinationOverrides || {})[`${o.axis.propertyName}=${o.option.name}`]).filter(Boolean));
+     const allOverrides = [...combo.map(c => c.option.overrides), ...comboOverrides]; // later axes win; overrides only carry the fields they change
+     const item = Object.assign({}, component, ...allOverrides);
+     const variantItem = Object.assign({}, variant, ...allOverrides.map(o => (o.variantOverrides || {})[variant.name] || {}));
+     ```
+     In step 3's code, `item` supplies the padding/radius/font/height
+     values and `variantItem` the fill/stroke/text values.
+   - **line + extraAxes (Separator's Orientation, Batch 7).** A `line`
+     component skips step 3's frame code but still goes through this
+     combination code: the merged `item.line` (the option's own `line`
+     replaces the base one wholesale) is what step 2's line branch reads, so
+     Vertical (`item.line.orientation === "vertical"`) draws a fixed
+     rectangle `thicknessPx` wide and `representativeLengthPx` tall, with the
+     same color-variable binding as Horizontal. Name each component
+     `Variant=Default, Orientation=Vertical`; place the two in a simple row.
+   - **Horizontal sections (Field's Orientation, Batch 7).** An option may
+     replace `sections` with the same sections carrying `textLineDirection:
+     "horizontal"` (Field Horizontal); step 3's existing `sections` code then
+     builds Breadcrumb's side-by-side row: the frame's padding is zeroed and
+     `itemSpacing` binds `item.sectionGapVariable`, while the Vertical option
+     (empty overrides) keeps the stacked layout and its disclosed top/bottom
+     padding. Every `textLines[].labelPropertyName` is identical in both
+     orientations, so step 5 binds the same Label/Description/Error
+     properties on every variant.
+   - **variantOverrides with fill/stroke (Tabs' Style, Batch 8).** Tabs' Style
+     axis (Default / Line) is a `variantOverrides` entry per variant name
+     ("Inactive"/"Active"): Line's Active has `fillVariable: ""` (the empty
+     string means "remove the base value"; JSON can't carry `undefined`, and
+     step 3 already tests truthiness, so no fill is drawn) plus `strokeVariable`,
+     `strokeSides: "bottom"` and `strokeWeightPx: 2`, which step 3 draws as a
+     bottom-edge-only stroke (`strokeBottomWeight`; the other three sides 0).
+     This is the nearest representable look to the real `after:` underline bar
+     (the real bar sits 3-5px below the tab; the stroke is flush on its edge),
+     disclosed in the axis. Combinations are named `Variant=Active, Style=Line`;
+     one variant-property pair per row, `columns = component.variants.length`.
+   - **Marker's variants (Batch 8) are NOT an axis.** They extend the existing
+     `Variant` list (Default / Separator / Border), so no combination code runs.
+     Separator carries `flankLines` ([line, text, line], gap bound to a spacing
+     token) and Border carries `strokeSides: "bottom"` + `paddingBottomVariable`;
+     both are read from `variantItem` in step 3. The set's `description` comes
+     from the component-level `disclosures` (see "Description" below).
+   - **Names.** `"<variantPropertyName>=<variant.name>, <axis.propertyName>=<option.name>"`
+     in plan order, e.g. `"Variant=Default, Size=Sm"`. Figma derives the
+     `Size` property and its options from this convention exactly like
+     `Variant`, no separate property call. Skipped options
+     (`axis.skippedOptions`) get no component — say their reasons in plain
+     language first, like skipped variants.
+   - **Height (verified live 2026-10-08).** When `item.heightVariable` is set, step 3's frame
+     keeps horizontal auto-layout with hugging width, but its height is
+     FIXED and bound to the spacing token, with vertical padding zeroed
+     (content stays centered via `counterAxisAlignItems = "CENTER"`):
+     `frame.counterAxisSizingMode = "FIXED"; frame.setBoundVariable("height", getVar(item.heightVariable));`.
+     Confirmed live: the bind takes and the frame's height reads back exactly
+     the token value (32 for `spacing/8`). Set `counterAxisSizingMode` to
+     `"AUTO"` first with the rest of the layout and then flip it to
+     `"FIXED"` right before the height bind, exactly as the step 3 sample
+     does. (Fallback if a future Figma build rejects it: `frame.resize(frame.width,
+     <token px>)` plus a disclosure — not needed so far.)
+   - **iconOnly (verified live 2026-10-08, Batch 2).** When `item.iconOnly`
+     is set (Button's Icon sizes): a SQUARE frame, no text node. Size both
+     axes `"FIXED"`, zero all four paddings, bind BOTH `width` and `height`
+     to `getVar(item.heightVariable)` (verified: both bind and read back
+     exactly the token value), center via the same `primaryAxisAlignItems`/
+     `counterAxisAlignItems = "CENTER"`, then append the icon:
+     `frame.appendChild(buildLucideIcon(Object.assign({}, item.iconOnly, { colorVariable: variantItem.textVariable || item.iconOnly.colorVariable })));`
+     — the plan's `iconOnly.colorVariable` is only a fallback; each variant's
+     own `textVariable` colors the icon (Destructive/Default white, Outline/
+     Ghost dark, Link brand color; none invisible against its fill). The
+     icon lands centered (e.g. 16px icon at x=8,y=8 in a 32px square).
+     Instances: the `Label` TEXT property still exists on the set but
+     icon-only variants have no node bound to it, so step 5 must skip them
+     (see its null guard). `setProperties({Label: ...})` on an icon-only
+     instance does not error, it just renders nothing.
+   - **square (Avatar's Size, Batch 4).** When `item.square` is set together
+     with `item.heightVariable`: a true square that KEEPS its text label.
+     Horizontal auto-layout, both axes `"FIXED"`, all four paddings 0,
+     content centered, then bind BOTH `width` and `height` to
+     `getVar(item.heightVariable)` (same binding as `iconOnly`, verified
+     live there). Radius (`radius/full`), fill, stroke, text and
+     `item.fontSizeVariable` bind exactly as in step 3 — the stroke is the
+     ring. A label longer than a couple of initials is clipped/overflows
+     rather than widening the circle, like the real component.
+   - **Two or more axes (Attachment's Size x Orientation, Batch 6).** The
+     combination loop above is already the full cartesian product, so a
+     second axis needs no new loop: Attachment builds 1 variant x 3 sizes x 2
+     orientations = 6 components, each named
+     `Variant=Default, Size=Sm, Orientation=Vertical` (variant property
+     first, then each axis in plan order; Figma then reports THREE VARIANT
+     properties). Any option field a later axis sets replaces the earlier
+     axis's (e.g. Orientation never sets `sections`, so Size's per-size
+     `sections` survive; only the `combinationOverrides` entry swaps them
+     for the Vertical-plus-this-size version).
+   - **widthVariable (Attachment's Vertical, Batch 6).** When `item.widthVariable`
+     is set together with `item.sections`: after step 3's sections code has
+     made the outer frame VERTICAL, set `frame.counterAxisSizingMode = "FIXED"`
+     and `frame.setBoundVariable("width", getVar(item.widthVariable))`; each
+     `sectionFrame` then gets `layoutSizingHorizontal = "FILL"` and each
+     text line `layoutSizingHorizontal = "FILL"`, `textTruncation = "ENDING"`,
+     `maxLines = 1` (the real `truncate`). See step 3's `sections` code.
+   - **Timeout chunking (measured live 2026-10-08).**
+     `figma_execute` caps at ~30s (pass `timeout: 30000`). Measured: 10
+     variant frames took ~450ms and the next 10 plus combine/layout ~315ms,
+     so Button's 20 variants fit in ONE call with huge margin (roughly
+     20-45ms per frame; an untested extrapolation puts the ~30s cap in the
+     hundreds of frames). Keep chunks to ~50 frames per call to stay safe
+     until a larger set (Batch 15's 200) measures otherwise. Batch 2
+     measured 40 frames (including 20 with `createNodeFromSvg` icons) at
+     ~760ms in one call (~19ms per frame), so even 40 needs no chunking.
+     For Button's 20 one call is fine; a chunked version still works the same
+     way (the 20 above were actually built as two 10-frame calls and combined
+     in the second). Each chunk call converts its frames with
+     `createComponentFromNode` into a Section and RETURNS the new component
+     node IDs; the LAST call re-fetches those IDs with
+     `figma.getNodeByIdAsync`, runs `combineAsVariants`, lays the set out,
+     adds the label property (step 5) and writes the description. On any
+     error, follow this step's existing orphan-cleanup rule (find and remove
+     partial components from earlier chunks too — they're real nodes now,
+     not rolled back).
+   - **Layout of the finished set.** 20 variants in one horizontal row is
+     far too wide. If every variant is about the same width, after
+     `combineAsVariants` use a wrapping grid —
+     `componentSet.layoutMode = "HORIZONTAL"; componentSet.layoutWrap = "WRAP"; componentSet.primaryAxisSizingMode = "FIXED"; componentSet.resize(columns * widestVariantWidth + (columns - 1) * 24 + 2 * padding, componentSet.height); componentSet.itemSpacing = 24; componentSet.counterAxisSpacing = 24; componentSet.counterAxisSizingMode = "AUTO"`
+     with `columns = component.variants.length` (verified live: gave a clean
+     5-column x 4-row grid, 716x184, no overlaps; `set.paddingLeft` came
+     back 0 after `combineAsVariants`, so no padding term was needed in
+     practice; the widest variant was Outline at 124px because its 1px
+     stroke adds width).
+   - **Mixed widths (Batch 2, verified live): use a manual grid instead.**
+     When the set mixes wide text variants with narrow icon-only ones, an
+     auto-layout wrap packs by width and the icon rows break across
+     columns (seen live). Switch to absolute positions:
+     `set.layoutMode = "NONE"`, then for each row of `columns` children
+     (row = one `extraAxes` combination) set `child.x = col * (widest + 24)`
+     and `child.y = rowTop + (rowHeight - child.height) / 2`, and
+     `set.resize(columns * widest + (columns - 1) * 24, totalHeight)`.
+     Gave a clean 5 x 8 grid, 716x392; resize the parent Section to
+     `set.width + 80` x `set.height + 80` and put the set at (40, 40).
+   - **Few variants x several axes (Attachment, Batch 6).** With one
+     variant, `columns = component.variants.length` would give a single
+     column. Use the FIRST extra axis (Size) as the columns instead and the
+     last (Orientation) as the rows, in the same manual-grid style
+     (widths differ per size and orientation, so absolute positions again).
+   - **Sections + extraAxes (Item's Size, verified live 2026-10-08).** An
+     option may carry a replacement `sections` array and `sectionGapVariable`
+     (Item Xs: narrower horizontal padding, 12px Description). Because
+     `item = Object.assign({}, component, ...overrides)`, the `sections`
+     branch of step 3 must read `item.sections` / `item.sectionGapVariable`
+     so each size's own sections take effect (validated per size, not only
+     Default). Step 5's per-line label binding still iterates
+     `component.sections` (the labels are the same in every size). Card's
+     Size (Batch 5) works the same way, with the extra detail that the root's
+     top/bottom padding and `itemSpacing` also bind to the option's own
+     `sectionGapVariable`.
+   - **Description (disclosure, the second of the "disclose twice"
+     places).** After `combineAsVariants`:
+     `componentSet.description = [...(component.disclosures || []), ...(component.extraAxes || []).flatMap(a => a.disclosures || [])].join("\n");`
+     (`component.disclosures`, Batch 8, carries fidelity gaps that belong to no
+     axis, e.g. Marker's Separator/Border variants; a component with a
+     `disclosures` list but NO `extraAxes` still gets this description, so do
+     this write for it too, even though the rest of step 2c is skipped.)
+     Read it back and confirm it landed (verified live: exact match).
+   - **Placement used in the live test.** The test set went into a NEW
+     sibling Section ("Button sizes test", below the existing "Components"
+     Section) instead of growing the existing Section, so no existing node
+     was resized or touched. When the set replaces the old Button for real,
+     move it into "Components" at the old Button's slot.
+   - Step 5's label binding is unchanged (it already loops every child of
+     the set), and step 6's instance check should `setProperties()` the
+     `Variant`, `Size` and `Label` keys together (read
+     `Object.keys(instance.componentProperties)` first, as step 6 says).
+
 3. **Build each real variant as its own auto-layout frame** (skip this
    entire step for a `component.icon`, `component.line`, `component.bar`
    component, or a variant that already went through the `variant.thumb`
@@ -1186,10 +1604,34 @@ For each item in `plan.components`, in order:
    } else {
      frame.primaryAxisSizingMode = "AUTO";   // hug contents
      frame.counterAxisSizingMode = "AUTO";
-     frame.setBoundVariable("paddingLeft", getVar(item.paddingHorizontalVariable));
-     frame.setBoundVariable("paddingRight", getVar(item.paddingHorizontalVariable));
-     frame.setBoundVariable("paddingTop", getVar(item.paddingVerticalVariable));
-     frame.setBoundVariable("paddingBottom", getVar(item.paddingVerticalVariable));
+     if (item.square && item.heightVariable) {
+       // Avatar's Size (Batch 4): a true square — never bind padding here
+       // (setting a raw 0 on a bound padding would be ambiguous), just zero
+       // it, size both axes FIXED and bind width AND height to the token.
+       frame.paddingLeft = 0;
+       frame.paddingRight = 0;
+       frame.paddingTop = 0;
+       frame.paddingBottom = 0;
+       frame.primaryAxisSizingMode = "FIXED";
+       frame.counterAxisSizingMode = "FIXED";
+       frame.setBoundVariable("width", getVar(item.heightVariable));
+       frame.setBoundVariable("height", getVar(item.heightVariable));
+     } else {
+       frame.setBoundVariable("paddingLeft", getVar(item.paddingHorizontalVariable));
+       frame.setBoundVariable("paddingRight", getVar(item.paddingHorizontalVariable));
+       if (item.heightVariable) {
+         // Only set by an `extraAxes` Size option (step 2c) — a fixed token-bound
+         // height instead of hugging; vertical padding is ignored (content is
+         // centered). Verified live 2026-10-08 — see step 2c.
+         frame.paddingTop = 0;
+         frame.paddingBottom = 0;
+         frame.counterAxisSizingMode = "FIXED";
+         frame.setBoundVariable("height", getVar(item.heightVariable));
+       } else {
+         frame.setBoundVariable("paddingTop", getVar(item.paddingVerticalVariable));
+         frame.setBoundVariable("paddingBottom", getVar(item.paddingVerticalVariable));
+       }
+     }
    }
    frame.setBoundVariable("topLeftRadius", getVar(item.radiusVariable));
    frame.setBoundVariable("topRightRadius", getVar(item.radiusVariable));
@@ -1198,12 +1640,26 @@ For each item in `plan.components`, in order:
    // fills/strokes bind on the PAINT, never via frame.setBoundVariable("fills", ...)
    // directly — that call fails outright (confirmed live). Omit fills entirely
    // for a transparent variant (Ghost/Link) rather than binding a fake one.
-   if (variant.fillVariable) frame.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.fillVariable))];
+   // `variantItem` === `variant` unless `extraAxes` merged a `variantOverrides`
+   // entry (step 2c). An empty-string `fillVariable`/`strokeVariable` from such an
+   // override means "none" (Tabs Line's Active drops its fill) and is falsy here.
+   if (variantItem.fillVariable) frame.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.fillVariable))];
    else frame.fills = [];
-   if (variant.strokeVariable) {
-     frame.strokes = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.strokeVariable))];
-     frame.strokeWeight = 1; // or bind to a real border-width/* variable if the plan names one
+   if (variantItem.strokeVariable) {
+     frame.strokes = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.strokeVariable))];
+     if (variantItem.strokeSides === "bottom") {
+       // Batch 8 (Tabs Line's active bar, Marker Border's rule): BOTTOM edge only,
+       // via Figma's per-side stroke weights. Absent `strokeSides` = all four sides.
+       frame.strokeTopWeight = 0;
+       frame.strokeLeftWeight = 0;
+       frame.strokeRightWeight = 0;
+       frame.strokeBottomWeight = variantItem.strokeWeightPx ?? 1;
+     } else {
+       frame.strokeWeight = variantItem.strokeWeightPx ?? 1; // or bind to a real border-width/* variable if the plan names one
+     }
    }
+   // Marker Border (Batch 8): bottom padding only, after the component-level padding above.
+   if (variantItem.paddingBottomVariable) frame.setBoundVariable("paddingBottom", getVar(variantItem.paddingBottomVariable));
    ```
    **Icon child — only when `variant.icon` is present** (Checkbox's own
    Checked variant — added 2026-09-22, icon-support work; see
@@ -1237,15 +1693,22 @@ For each item in `plan.components`, in order:
    string:
    ```js
      await figma.loadFontAsync({ family: fontFamilyValue, style: "Medium" }); // resolve fontFamilyValue from the fontFamily variable's own value first
+     // Marker Separator (Batch 8): `variantItem.flankLines` = [line, text, line]. The
+     // first line goes in before the text; the second is appended after it below.
+     // Fixed-size rectangles in a horizontal auto-layout frame (cross-axis centered
+     // already), gap bound to the token; `makeFlank` fills are variable-bound.
+     const makeFlank = () => { const r = figma.createRectangle(); r.resize(variantItem.flankLines.representativeLengthPx, variantItem.flankLines.thicknessPx); r.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.flankLines.colorVariable))]; return r; };
+     if (variantItem.flankLines) { frame.setBoundVariable("itemSpacing", getVar(variantItem.flankLines.gapVariable)); frame.appendChild(makeFlank()); }
      const text = figma.createText();
      text.name = "PrimaryText"; // lets step 5 find this specific node once a variant can have two
      text.fontName = { family: fontFamilyValue, style: "Medium" };
      text.characters = component.defaultLabel;
-     text.setBoundVariable("fontSize", getVar(component.fontSizeVariable));
+     text.setBoundVariable("fontSize", getVar(item.fontSizeVariable)); // `item` === `component` unless an extraAxes option overrides the font size (step 2c)
      text.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.textVariable))];
      try { text.setBoundVariable("fontFamily", getVar(component.fontFamilyVariable)); } catch (e) {} // real Figma versions support this; wrap anyway
      if (variant.underline) text.textDecoration = "UNDERLINE";
      frame.appendChild(text);
+     if (variantItem.flankLines) frame.appendChild(makeFlank());
    } else if (!component.fixedSizePx) {
      // Real, live-only finding (Skeleton, 2026-09-18) — don't skip this
      // else-branch even though it looks like it should be a no-op. A
@@ -1319,7 +1782,7 @@ For each item in `plan.components`, in order:
    checking the first section's own field is enough to decide the whole
    component's stacking axis:
    ```js
-   const sectionsAreHorizontal = component.sections[0]?.textLineDirection === "horizontal";
+   const sectionsAreHorizontal = item.sections[0]?.textLineDirection === "horizontal";
    frame.layoutMode = sectionsAreHorizontal ? "HORIZONTAL" : "VERTICAL"; // overrides the HORIZONTAL default from step 1; absent textLineDirection (every component before Breadcrumb) always resolves to "VERTICAL" — Card's own original line, unchanged
    if (sectionsAreHorizontal) {
      // Breadcrumb's own real shape — its root <nav> has no padding of its
@@ -1330,20 +1793,30 @@ For each item in `plan.components`, in order:
      frame.paddingTop = 0;
      frame.paddingBottom = 0;
      frame.itemSpacing = 0;
-     frame.setBoundVariable("itemSpacing", getVar(component.sectionGapVariable));
+     frame.setBoundVariable("itemSpacing", getVar(item.sectionGapVariable));
    } else {
      // Card's own original vertical stack — UNCHANGED from before this
      // batch, byte-for-byte, so Card's existing live-proven replay isn't
      // at risk from this addition.
      frame.paddingLeft = 0;
      frame.paddingRight = 0; // Card's real root has no horizontal padding of its own — each section supplies its own
-     frame.setBoundVariable("paddingTop", getVar(component.sectionGapVariable));
-     frame.setBoundVariable("paddingBottom", getVar(component.sectionGapVariable));
+     frame.setBoundVariable("paddingTop", getVar(item.sectionGapVariable));
+     frame.setBoundVariable("paddingBottom", getVar(item.sectionGapVariable));
      frame.itemSpacing = 0;
-     frame.setBoundVariable("itemSpacing", getVar(component.sectionGapVariable)); // real Plugin API: bind itemSpacing the same way as padding
+     frame.setBoundVariable("itemSpacing", getVar(item.sectionGapVariable)); // real Plugin API: bind itemSpacing the same way as padding
    }
 
-   for (const section of component.sections) {
+   // Attachment's Vertical (Batch 6): a FIXED, token-bound width (the vertical
+   // frame's counter axis is horizontal). Absent on every earlier component.
+   if (item.widthVariable) {
+     frame.counterAxisSizingMode = "FIXED";
+     frame.setBoundVariable("width", getVar(item.widthVariable));
+   }
+
+   // `item` === `component` unless an extraAxes option overrides `sections` /
+   // `sectionGapVariable` (Item's Size, step 2c) — the frame code above and
+   // this loop therefore read `item.`, never `component.`, for those two fields.
+   for (const section of item.sections) {
      const sectionFrame = figma.createFrame();
      sectionFrame.layoutMode = section.textLineDirection === "horizontal" ? "HORIZONTAL" : "VERTICAL"; // absent (every section before Breadcrumb) always resolves to "VERTICAL" — Card's own original line, unchanged
      sectionFrame.primaryAxisSizingMode = "AUTO";
@@ -1359,8 +1832,17 @@ For each item in `plan.components`, in order:
        lineText.setBoundVariable("fontSize", getVar(line.fontSizeVariable));
        lineText.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(line.textVariable))];
        sectionFrame.appendChild(lineText);
+       if (item.widthVariable) {
+         // Fixed-width frame (Attachment Vertical): the text fills the section
+         // and truncates with an ellipsis like the real `truncate`. Set after
+         // appendChild — FILL needs an auto-layout parent.
+         lineText.layoutSizingHorizontal = "FILL";
+         lineText.textTruncation = "ENDING";
+         lineText.maxLines = 1;
+       }
      }
      frame.appendChild(sectionFrame);
+     if (item.widthVariable) sectionFrame.layoutSizingHorizontal = "FILL"; // set after appendChild — FILL needs an auto-layout parent
 
      // Decorative separator glyph — only when `section.separatorGlyph` is
      // present (Breadcrumb's own real separator, an SVG <ChevronRightIcon>
@@ -1395,7 +1877,7 @@ For each item in `plan.components`, in order:
    separate property-creation call needed for the variant axis itself.
    ```js
    const comp = figma.createComponentFromNode(frame);
-   comp.name = `${plan.variantPropertyName}=${variant.name}`;
+   comp.name = `${plan.variantPropertyName}=${variant.name}`; // with extraAxes: "Variant=Default, Size=Sm" — see step 2c
    // ...repeat per variant, then:
    const componentSet = figma.combineAsVariants(components, section); // section = a real Section, never blank canvas — see figma_execute's own housekeeping rules
    componentSet.name = component.name; // "Button"
@@ -1416,7 +1898,10 @@ For each item in `plan.components`, in order:
    if (component.labelPropertyName) {
      const propName = componentSet.addComponentProperty(component.labelPropertyName, "TEXT", component.defaultLabel);
      for (const variant of componentSet.children) {
-       variant.findOne(n => n.type === "TEXT" && n.name === "PrimaryText").componentPropertyReferences = { characters: propName };
+       // Null guard: an `extraAxes` icon-only variant (Button's Icon sizes) has NO text node,
+       // so `findOne` returns null and a bare `.componentPropertyReferences =` would throw.
+       const labelNode = variant.findOne(n => n.type === "TEXT" && n.name === "PrimaryText");
+       if (labelNode) labelNode.componentPropertyReferences = { characters: propName };
      }
      if (component.secondaryLabelPropertyName) {
        const secondaryPropName = componentSet.addComponentProperty(component.secondaryLabelPropertyName, "TEXT", component.defaultSecondaryLabel);
@@ -1493,7 +1978,9 @@ differently-named one (same "first push, not sync" limitation as tokens,
 above) — no update-in-place logic exists yet. Also not yet built: any
 component beyond Button/Badge/Toggle/Alert/Input/Textarea/Card/Kbd/
 NativeSelect/Avatar/Label/Skeleton/Breadcrumb/Empty/Field/Separator/
-FieldSeparator/Item/Marker/Bubble, any size beyond `default`, Breadcrumb's real
+FieldSeparator/Item/Marker/Bubble, any size beyond `default` except Button's
+sizes, Toggle's and Item's (every other component's extra sizes
+are still pending — `figma-component-variations-plan.md`), Breadcrumb's real
 `BreadcrumbEllipsis` (a collapsed-items affordance with its own icon, not
 modeled — see `buildBreadcrumbPlan`'s own comment), its support for any
 item count beyond a fixed three-item trail, its real

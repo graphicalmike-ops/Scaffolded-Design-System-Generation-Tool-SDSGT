@@ -8,7 +8,8 @@
     "promote": "node src/cli.ts promote",
     "generate": "node src/cli.ts generate",
     "typecheck": "tsc --noEmit",
-    "qa:matrix": "node scripts/qa-matrix.ts"
+    "qa:matrix": "node scripts/qa-matrix.ts",
+    "regen:components-plan": "node scripts/regen-components-plan.ts"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

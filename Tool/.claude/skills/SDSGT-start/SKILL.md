@@ -735,7 +735,22 @@ override any of the four independently — they don't have to move together.
   pushed, not an unproven mechanism). See
   `docs/layer2-layer3-plan.md`'s own dated entries and
   `SDSGT-figma-push/SKILL.md` step 7's own "proven live" statement for the
-  full verification detail. Card is the first real compound component (a
+  full verification detail. **Sizes (2026-10-08): these components were
+  first built one size each (`default`); extra sizes are now being added
+  component by component per `figma-component-variations-plan.md` —
+  Button has a `Size` property (default/xs/sm/lg plus the four icon-only
+  sizes, with a placeholder plus icon) as of Batches 1-2, and Toggle
+  (default/sm/lg) and Item (default/sm/xs) have one too as of Batch 3, and
+  Avatar (default/sm/lg) and Switch (default/sm) as of Batch 4, and Card
+  and NativeSelect (both default/sm) as of Batch 5, and Attachment
+  (Size default/sm/xs plus Orientation horizontal/vertical, its first two
+  properties) as of Batch 6, and Separator (Horizontal/Vertical) and Field
+  (Vertical/Horizontal; its breakpoint-driven `responsive` option is skipped
+  and disclosed) get an `Orientation` property as of Batch 7, and Tabs gets
+  a `Style` property (Default/Line, the Line underline drawn as a bottom-edge
+  stroke) and Marker the Separator and Border variants as of Batch 8, with
+  some sizes snapping to the nearest token and disclosed in the plan's
+  notes; every other component is still one size until its own batch.** Card is the first real compound component (a
   real Header/Content structure with three independent text properties,
   not just one label); Label is the first component with no box styling
   of its own at all — a bare text node, no fill/stroke/padding/radius;
