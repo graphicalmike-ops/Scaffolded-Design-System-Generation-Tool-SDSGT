@@ -11,19 +11,20 @@
 // copy is needed in the temp dir.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import type { CaseRunResult, CheckResult } from "./types.ts";
 import { verdictFromChecks } from "./types.ts";
+import { buildFigmaComponentsPushPlan } from "../../src/scaffold/figma-components-plan.ts";
 
 const CLI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CLI_ENTRY = join(CLI_ROOT, "src", "cli.ts");
 const EXAMPLE_CONFIG = join(CLI_ROOT, "examples", "sample-seed-config.json");
 
-export const CLI_CASE_IDS = ["CLI-1", "CLI-2", "CLI-3", "CLI-4", "CLI-5"];
+export const CLI_CASE_IDS = ["CLI-1", "CLI-2", "CLI-3", "CLI-4", "CLI-5", "CLI-6"];
 
 interface RunResult {
   status: number;
@@ -112,11 +113,106 @@ function caseCli4And5(): [CaseRunResult, CaseRunResult] {
   return [result4, result5];
 }
 
+
+// CLI-6 — Figma push drift check (Batch 16 of figma-component-variations-plan.md). The vendored shadcn/ui
+// components already ship every variation; the Figma push plan models them as properties. If a future shadcn
+// release adds a variant/size/orientation key (or a whole new axis) the plan has not seen, this fails instead of
+// the new option silently missing from Figma. Rule: every cva `variant` / `size` / `orientation` key in a mapped
+// vendored file must be BUILT (a plan variant or axis option) or LISTED in the plan's skipped list
+// (`skippedVariants` / the axis' `skippedOptions`). Uses its OWN tiny parser (not the plan builder's) so a builder
+// that fails to read a key cannot hide it. Needs a real vendored shadcn/ui folder; SKIPs when there is none
+// (point SDSGT_VENDORED_UI_DIR at a freshly scaffolded project's src/components/ui to check a new release).
+const FIGMA_DRIFT_MAP: Array<{ file: string; component: string; axis: string; planAxis: "Variant" | "Size" | "Orientation" | "Style" }> = [
+  { file: "button.tsx", component: "Button", axis: "variant", planAxis: "Variant" },
+  { file: "button.tsx", component: "Button", axis: "size", planAxis: "Size" },
+  { file: "badge.tsx", component: "Badge", axis: "variant", planAxis: "Variant" },
+  { file: "toggle.tsx", component: "Toggle", axis: "variant", planAxis: "Variant" },
+  { file: "toggle.tsx", component: "Toggle", axis: "size", planAxis: "Size" },
+  { file: "alert.tsx", component: "Alert", axis: "variant", planAxis: "Variant" },
+  { file: "item.tsx", component: "Item", axis: "variant", planAxis: "Variant" },
+  { file: "item.tsx", component: "Item", axis: "size", planAxis: "Size" },
+  { file: "attachment.tsx", component: "Attachment", axis: "size", planAxis: "Size" },
+  { file: "attachment.tsx", component: "Attachment", axis: "orientation", planAxis: "Orientation" },
+  { file: "bubble.tsx", component: "Bubble", axis: "variant", planAxis: "Variant" },
+  { file: "field.tsx", component: "Field", axis: "orientation", planAxis: "Orientation" },
+  { file: "tabs.tsx", component: "Tabs", axis: "variant", planAxis: "Style" },
+  { file: "marker.tsx", component: "Marker", axis: "variant", planAxis: "Variant" },
+];
+
+// Keys of one cva axis, e.g. `size: { default: "...", xs: "..." }` -> ["default","xs"].
+function cvaAxisKeys(source: string, axis: string): string[] | null {
+  const block = source.match(new RegExp(`\\n {6}${axis}:\\s*\\{([\\s\\S]*?)\\n {6}\\},?`));
+  if (!block) return null;
+  const keys: string[] = [];
+  for (const m of block[1].matchAll(/^ {8}(?:["']([a-zA-Z0-9-]+)["']|([a-zA-Z0-9-]+)):/gm)) keys.push((m[1] ?? m[2]).toLowerCase());
+  return keys;
+}
+
+// Every cva axis name written in a vendored file (6-space indent inside `variants: {`).
+function cvaAxisNames(source: string): string[] {
+  const afterVariants = source.split("variants: {")[1];
+  if (!afterVariants) return [];
+  return [...afterVariants.matchAll(/^ {6}([a-zA-Z]+): \{/gm)].map((m) => m[1]);
+}
+
+function caseCli6(): CaseRunResult {
+  const start = Date.now();
+  const checks: CheckResult[] = [];
+  const uiDir = process.env.SDSGT_VENDORED_UI_DIR ?? join(CLI_ROOT, "..", "..", "Demo", "sdsgt-demo-app", "src", "components", "ui");
+  const commands = [`buildFigmaComponentsPushPlan(<tokens>, ${uiDir})`];
+  if (!existsSync(uiDir)) {
+    checks.push({ name: "vendored shadcn/ui source available", platform: "cli", status: "SKIP", detail: `no folder at ${uiDir}; set SDSGT_VENDORED_UI_DIR to a scaffolded project's src/components/ui to run the Figma drift check` });
+    return makeResult("CLI-6", commands, checks, Date.now() - start);
+  }
+  const tmp = mkdtempSync(join(tmpdir(), "sdsgt-qa-"));
+  try {
+    const p = runCli(["promote", "--config", EXAMPLE_CONFIG], tmp);
+    const g = runCli(["generate"], tmp);
+    expect(checks, "tokens for the plan generated (promote + generate)", p.status === 0 && g.status === 0, "exit 0 and 0", `${p.status} and ${g.status}`, (p.stderr + g.stderr).slice(0, 300));
+    const codeDir = join(tmp, "out", "Code tokens (consumables)");
+    const plan = buildFigmaComponentsPushPlan(codeDir, uiDir);
+    const byName = new Map(plan.components.map((c) => [c.name, c]));
+    const seenFiles = new Set<string>();
+    for (const { file, component, axis, planAxis } of FIGMA_DRIFT_MAP) {
+      const path = join(uiDir, file);
+      if (!existsSync(path)) { checks.push({ name: `${file} ${axis}: file vendored`, platform: "cli", status: "SKIP", detail: `${file} is not in the vendored folder` }); continue; }
+      const source = readFileSync(path, "utf-8");
+      seenFiles.add(file);
+      const keys = cvaAxisKeys(source, axis);
+      const comp = byName.get(component);
+      const name = `${file} ${axis}: every cva key is built or listed as skipped in the plan's ${component} ${planAxis}`;
+      if (!keys) { checks.push({ name, platform: "cli", status: "FAIL", expected: `a cva "${axis}" axis in ${file}`, actual: "axis not found (shadcn changed the file's shape?)" }); continue; }
+      if (!comp) { checks.push({ name, platform: "cli", status: "FAIL", expected: `${component} in the plan`, actual: "component missing from the plan" }); continue; }
+      let known: string[];
+      if (planAxis === "Variant") known = [...comp.variants.map((v) => v.name), ...comp.skippedVariants.map((v) => v.name)];
+      else {
+        const a = comp.extraAxes?.find((x) => x.propertyName === planAxis);
+        known = a ? [...a.options.map((o) => o.name), ...a.skippedOptions.map((o) => o.name)] : [];
+      }
+      const knownLower = new Set(known.map((n) => n.toLowerCase()));
+      const missing = keys.filter((k) => !knownLower.has(k));
+      expect(checks, name, missing.length === 0, "every key built or skipped", `not in the plan: ${missing.join(", ")}`, `source keys: ${keys.join(", ")}; plan knows: ${known.join(", ")}`);
+    }
+    // A brand-new cva axis (not variant/size/orientation) in a mapped file would also go unseen.
+    const mappedAxes = new Set(FIGMA_DRIFT_MAP.map((m) => m.axis));
+    for (const file of seenFiles) {
+      const extra = cvaAxisNames(readFileSync(join(uiDir, file), "utf-8")).filter((a) => !mappedAxes.has(a));
+      expect(checks, `${file}: no cva axis outside variant/size/orientation`, extra.length === 0, "none", extra.join(", "), "a new axis needs a decision (build it or add it to the drift map)");
+    }
+  } catch (e) {
+    checks.push({ name: "plan built from the vendored folder", platform: "cli", status: "FAIL", expected: "plan built without error", actual: e instanceof Error ? e.message.slice(0, 300) : String(e) });
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  return makeResult("CLI-6", commands, checks, Date.now() - start);
+}
+
 export function runCliCases(ids: string[]): CaseRunResult[] {
   const results: CaseRunResult[] = [];
   if (ids.includes("CLI-1")) results.push(caseCli1());
   if (ids.includes("CLI-2")) results.push(caseCli2());
   if (ids.includes("CLI-3")) results.push(caseCli3());
+  if (ids.includes("CLI-6")) results.push(caseCli6());
   if (ids.includes("CLI-4") || ids.includes("CLI-5")) {
     const [c4, c5] = caseCli4And5();
     if (ids.includes("CLI-4")) results.push(c4);

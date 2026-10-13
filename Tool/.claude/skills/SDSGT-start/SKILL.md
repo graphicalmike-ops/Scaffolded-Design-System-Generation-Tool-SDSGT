@@ -748,9 +748,22 @@ override any of the four independently — they don't have to move together.
   (Vertical/Horizontal; its breakpoint-driven `responsive` option is skipped
   and disclosed) get an `Orientation` property as of Batch 7, and Tabs gets
   a `Style` property (Default/Line, the Line underline drawn as a bottom-edge
-  stroke) and Marker the Separator and Border variants as of Batch 8, with
+  stroke) and Marker the Separator and Border variants as of Batch 8, and
+  Button also gets interaction states (a `State` property: hover, focus,
+  disabled, invalid) as of Batch 9, and Toggle (hover, focus, disabled,
+  invalid, pressed) and Badge (hover, focus, invalid; its hover applies only
+  when it is rendered as a link) get interaction states as of Batch 10, and
+  Input and Textarea (focus, disabled, invalid) get interaction states as of
+  Batch 11, and NativeSelect (hover, focus, disabled, invalid) and Item (hover,
+  focus; its hover applies only when it is rendered as a link) get them as of
+  Batch 12, and Checkbox and RadioGroup (focus, disabled, invalid) get them as of
+  Batch 13, and Switch (focus, disabled, invalid) and Tabs (hover, focus, disabled;
+  its hover looks identical to the rest look, disclosed) get them as of Batch 14, and Accordion
+  (hover, focus, disabled), Label (disabled only) and Attachment (focus; its hover is identical to rest, an open
+  decision) get them as of Batch 15 (Alert, Breadcrumb, Field, Marker and Bubble were checked and get none: their
+  hover/focus classes sit on links or buttons inside them that the component does not model, disclosed), with
   some sizes snapping to the nearest token and disclosed in the plan's
-  notes; every other component is still one size until its own batch.** Card is the first real compound component (a
+  notes; the component-variations plan (Batches 0 to 16) is complete as of 2026-10-13.** Card is the first real compound component (a
   real Header/Content structure with three independent text properties,
   not just one label); Label is the first component with no box styling
   of its own at all — a bare text node, no fill/stroke/padding/radius;

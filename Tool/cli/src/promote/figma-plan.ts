@@ -45,6 +45,7 @@ export type FigmaVariableScope =
   | "SHAPE_FILL"
   | "TEXT_FILL"
   | "STROKE_COLOR"
+  | "EFFECT_COLOR"
   | "CORNER_RADIUS"
   | "GAP"
   | "WIDTH_HEIGHT"
@@ -194,11 +195,14 @@ function scopesForSemanticPath(path: string[]): FigmaVariableScope[] {
     case "action":
       return ["ALL_FILLS", "STROKE_COLOR"];
     case "border":
+      // `focus-ring` (2026-10-13) is the colour of a ring DROP_SHADOW effect, not a stroke.
+      if (key === "focus-ring") return ["EFFECT_COLOR"];
       return ["STROKE_COLOR"];
     case "status":
       if (key.endsWith("-bg")) return ["FRAME_FILL", "SHAPE_FILL"];
       if (key.endsWith("-text")) return ["TEXT_FILL"];
       if (key.endsWith("-border")) return ["STROKE_COLOR"];
+      if (key.endsWith("-ring")) return ["EFFECT_COLOR"]; // status.error-ring: a ring effect colour (2026-10-13)
       return ["ALL_FILLS", "STROKE_COLOR"]; // base role (e.g. "error")
     case "overlay":
       return ["FRAME_FILL", "SHAPE_FILL"];

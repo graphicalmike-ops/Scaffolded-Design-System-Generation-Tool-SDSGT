@@ -1,0 +1,23 @@
+{
+  "scaffoldMode": "scaffold",
+  "targetFramework": "nextjs",
+  "targetDesignLanguage": "tailwind",
+  "componentLibrary": "shadcn",
+  "figmaManaged": true,
+  "figmaFileUrl": "https://www.figma.com/design/FiEnp6EqWy2I6m6ktW65h2/SDSGT-test-file?node-id=0-1&t=vHIwjoKtRiYg5BIp-1",
+  "figmaMcp": "southleft",
+  "figmaPlan": "free",
+  "lightDarkMode": "light",
+
+  "primaryColor": "#E90130",
+  "neutralColorStyle": "pure-gray",
+
+  "primaryFont": "Lexend Deca",
+  "secondaryFont": "Roboto",
+
+  "typeScalePreset": "tailwind",
+  "spacingPreset": "tailwind",
+  "radiusPreset": "bootstrap",
+  "opacityPreset": "tailwind",
+  "shadowPreset": "tailwind"
+}

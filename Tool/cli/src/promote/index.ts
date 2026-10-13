@@ -107,6 +107,7 @@ export function promote(seed: SeedConfig, options: PromoteOptions = {}): Promote
       brandRamp,
       neutralRamp,
       brandSecondaryRamp,
+      status["1"]["200"], // the error tone (role 1), see Proposal 2 A1
     );
   }
 
@@ -164,11 +165,18 @@ function rampToTokens(ramp: Ramp): Record<string, unknown> {
   return Object.fromEntries(Object.entries(ramp).map(([step, hex]) => [step, color(hex)]));
 }
 
+// The real shadcn ring transparencies (`ring-ring/50` for Focus, `ring-destructive/20`
+// for Invalid). Baked into `border.focus-ring` / `status.error-ring`; the Figma
+// components plan matches a ring by (colour, this alpha) to pick those tokens.
+const FOCUS_RING_ALPHA = 0.5;
+const ERROR_RING_ALPHA = 0.2;
+
 function buildSemanticColor(
   mode: "light" | "dark",
   brandRamp: Ramp,
   neutralRamp: Ramp,
   brandSecondaryRamp: Ramp | undefined,
+  statusErrorHex: string,
 ): unknown {
   const isLight = mode === "light";
 
@@ -178,6 +186,16 @@ function buildSemanticColor(
     secondary: isLight ? "color.primitive.neutral.200" : "color.primitive.neutral.1000",
     surface: isLight ? "color.primitive.static.100" : "color.primitive.neutral.1000",
     inverse: isLight ? "color.primitive.neutral.1100" : "color.primitive.neutral.100",
+    // Disabled field fill (Input, Textarea), added 2026-10-13: a solid step chosen by the user
+    // from the compared options (see contracts-and-seeds.md, "Figma instances lose a fill's or
+    // ring's transparency"); plain alias, no transparency.
+    fieldDisabled: isLight ? "color.primitive.neutral.200" : "color.primitive.neutral.900",
+    // Hover fill of an interactive card-like surface (Attachment), added 2026-10-13: the real
+    // `hover:bg-muted/50` is background.secondary at 50% over the page; a fill's transparency is
+    // lost on Figma instances, so this is the nearest SOLID step per mode, chosen by the user from
+    // a comparison page (see contracts-and-seeds.md). In dark mode it is the same step as the card
+    // at rest (background.surface = neutral.1000), so the hover shows no change there.
+    surfaceHover: isLight ? "color.primitive.neutral.200" : "color.primitive.neutral.1000",
   };
   const text = {
     primary: isLight ? "color.primitive.neutral.1100" : "color.primitive.neutral.100",
@@ -186,20 +204,43 @@ function buildSemanticColor(
     onPrimary: "color.primitive.static.100",
     onSurface: isLight ? "color.primitive.neutral.1100" : "color.primitive.neutral.100",
     inverse: isLight ? "color.primitive.neutral.100" : "color.primitive.neutral.1100",
+    // Disabled field placeholder (2026-10-13), see bg.fieldDisabled.
+    fieldDisabled: isLight ? "color.primitive.neutral.500" : "color.primitive.neutral.600",
+    // Resting text of an INACTIVE tab (Tabs), added 2026-10-13: the real light-mode class is
+    // `text-foreground/60` (text.primary at 60%), whose transparency is lost on Figma instances, so
+    // it is the nearest SOLID step, chosen by the user from a comparison page (neutral.700 matches
+    // text.primary @ 60% exactly on the tab bar). Dark mode is the real `dark:text-muted-foreground`
+    // = text.secondary = neutral.200, an exact match.
+    tabInactive: isLight ? "color.primitive.neutral.700" : "color.primitive.neutral.200",
+    // Label of a DISABLED Field (2026-10-13): the real `group-data-[disabled=true]/field:opacity-50` dims
+    // only the label (text.primary at 50%); a transparency is not used, so this is the best single solid
+    // step per mode chosen by the user from a comparison page (light neutral.600, dark neutral.500).
+    labelDisabled: isLight ? "color.primitive.neutral.600" : "color.primitive.neutral.500",
   };
   const border = {
     default: isLight ? "color.primitive.neutral.400" : "color.primitive.neutral.800",
     subtle: isLight ? "color.primitive.neutral.300" : "color.primitive.neutral.900",
     focus: "color.primitive.brand.600",
     onPrimary: "color.primitive.static.100",
+    // Disabled field stroke (2026-10-13), see bg.fieldDisabled. In dark mode the stroke and the
+    // fill are the same step (neutral.900), so the edge does not stand out from the fill there.
+    fieldDisabled: isLight ? "color.primitive.neutral.300" : "color.primitive.neutral.900",
   };
 
   // action-disabled is the one non-alias case: brand.600 blended 50% toward
   // neutral.600, baked once at promote time into a plain color value (not an
   // alias), per "Formulas run once" — there's no live formula left afterward.
+  //
+  // `<name>-hover-soft` (added 2026-10-13, see contracts-and-seeds.md, "Figma
+  // instances lose a fill's or ring's transparency"): the hover fill of a
+  // component whose real hover is `bg-primary/80`. It is a plain alias to a
+  // solid step per mode, because a fill's transparency does not survive on a
+  // Figma INSTANCE: brand.400 in light mode, brand.700 in dark mode. Separate
+  // from `-hover` (brand.700 in both modes), whose meaning is unchanged.
   const actionGroup = (name: "primary" | "secondary", ramp: Ramp, primitiveName: "brand" | "brand-secondary") => ({
     [name]: alias(`color.primitive.${primitiveName}.600`),
     [`${name}-hover`]: alias(`color.primitive.${primitiveName}.700`),
+    [`${name}-hover-soft`]: alias(`color.primitive.${primitiveName}.${isLight ? "400" : "700"}`),
     [`${name}-active`]: alias(`color.primitive.${primitiveName}.800`),
     [`${name}-pressed`]: alias(`color.primitive.${primitiveName}.800`),
     [`${name}-disabled`]: color(blendHex(ramp["600"], neutralRamp["600"], 0.5)),
@@ -223,6 +264,12 @@ function buildSemanticColor(
     statusTokens[`${role}-text`] = alias(`color.primitive.status.${n}.200`);
     statusTokens[`${role}-border`] = alias(`color.primitive.status.${n}.200`);
   }
+  // `status.error-ring` (added 2026-10-13): the error colour at the real
+  // `ring-destructive/20` transparency, baked (not an alias, like overlay.scrim
+  // and action-disabled) so the Figma ring keeps its fade on instances. NOT
+  // derived live: it does not follow later edits to status.error. See
+  // contracts-and-seeds.md, "Figma instances lose a fill's or ring's transparency".
+  statusTokens["error-ring"] = { $type: "color", $value: hexToRgba(statusErrorHex, ERROR_RING_ALPHA) };
 
   return {
     color: {
@@ -232,6 +279,8 @@ function buildSemanticColor(
           secondary: alias(bg.secondary),
           surface: alias(bg.surface),
           inverse: alias(bg.inverse),
+          "field-disabled": alias(bg.fieldDisabled),
+          "surface-hover": alias(bg.surfaceHover),
         },
         text: {
           primary: alias(text.primary),
@@ -240,12 +289,20 @@ function buildSemanticColor(
           "on-primary": alias(text.onPrimary),
           "on-surface": alias(text.onSurface),
           inverse: alias(text.inverse),
+          "field-disabled": alias(text.fieldDisabled),
+          "tab-inactive": alias(text.tabInactive),
+          "label-disabled": alias(text.labelDisabled),
         },
         action,
         border: {
           default: alias(border.default),
           subtle: alias(border.subtle),
           focus: alias(border.focus),
+          // `border.focus-ring` (added 2026-10-13): the focus colour at the real
+          // `ring-ring/50` transparency, baked (see `status.error-ring` above).
+          // Not derived live: it does not follow later edits to border.focus.
+          "focus-ring": { $type: "color", $value: hexToRgba(brandRamp["600"], FOCUS_RING_ALPHA) },
+          "field-disabled": alias(border.fieldDisabled),
           "on-primary": alias(border.onPrimary),
         },
         status: statusTokens,

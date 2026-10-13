@@ -149,6 +149,15 @@ function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPap
     );
   }
 
+  // Figma <-> code naming (Batch 16 of figma-component-variations-plan.md). The components pushed to Figma carry the
+  // real shadcn/ui variations as Figma properties, so an agent reading a Figma component set needs the translation
+  // rule. Only for shadcn projects (the pushed component library); harmless if the project has no Figma file.
+  if (hasShadcn) {
+    rules.push(
+      "Figma names map to code props by lowercasing, when this project's shadcn/ui components were pushed to Figma. A Figma component's properties are the real code variations: `Variant=Outline, Size=Icon-sm` means `variant=\"outline\" size=\"icon-sm\"`, and `Orientation=Vertical` means `orientation=\"vertical\"` (Separator, Field, Attachment). Four properties are NOT plain props: (1) `State` (Hover, Focus, Pressed) is styling the browser applies, not a prop you set; `Disabled` is the `disabled` prop (or `aria-disabled`/`data-disabled` where the component uses it) and `Invalid` is `aria-invalid` (`data-invalid` on Field). (2) For Tabs, `Style=Line` is the `variant=\"line\"` prop on `TabsList`, and `Variant=Active/Inactive` is which tab is selected, not a prop. (3) For Checkbox, RadioGroup and Switch, `Variant=Checked/Unchecked` is the control's checked state, not a `variant` prop. (4) For Bubble, `Clickable=Clickable` means the bubble content is rendered as a `<button>` or `<a>` (via `render`), which is what turns on its hover and focus looks. Also: a few Figma sizes are visually snapped to the nearest design token (for example Button `Sm` and `Icon-sm` draw at 24px although the code classes say 28px), and some states are drawn as an approximation. Trust the code's own classes for exact values, and do not measure the Figma file to decide a size or color. *(This project targets shadcn/ui.)*",
+    );
+  }
+
   if (hasRnr) {
     rules.push(
       "RNR's CSS variables (`--primary`, `--card`, etc., in `rnr/global.css`) and `rnr/constants.ts`'s `NAV_THEME` must stay in sync — they're generated from the same tokens, but are two separate files. Edit the semantic tokens and re-run `generate`, don't hand-edit either file directly. *(This project targets React Native Reusables.)*",

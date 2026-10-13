@@ -1107,6 +1107,189 @@ used to (incorrectly) imply was close enough for Badge.
   were deleted; no orphans. Descriptions: 6 (Tabs), 4 (Marker). Surprises:
   the bottom stroke follows the tab's rounded corners (curved ends), also
   disclosed.
+- **Button has a `State` property (Batch 9 of
+  `figma-component-variations-plan.md`, 2026-10-08, plus the 2026-10-09 user
+  decisions): PROVEN LIVE 2026-10-09 ("SDSGT test file", Southleft Desktop
+  Bridge).** `statePropertyName: "State"`, per-variant `states` (Hover / Focus /
+  Disabled / Invalid, sparse overrides; Default is the rest look) and
+  `skippedStates`, built by `buildStatesForVariants` from the real `hover:` /
+  `focus-visible:` / `disabled:` / `aria-invalid:` classes of the vendored
+  button.tsx (200 components = 5 variants x 8 sizes x 5 states). Step 2c's State
+  loop and name suffix, step 3's `fillOpacity` / `strokeOpacity`, `nodeOpacity`,
+  `focusRing` and `strokesIncludedInLayout = false` all work, with two
+  CORRECTIONS found by the smoke tests (now written into step 3): paint opacity
+  and the ring's `spread` / alpha must be applied in a SECOND pass (read back,
+  clone, set, reassign), because setting them before binding silently drops them
+  (the binding itself is kept). **Live result:** NEW set "Button (states test)"
+  (200 variants, properties Variant / Size / State plus the Label TEXT property;
+  716x2296, widest variant 124px, 5 columns x 40 rows) in a NEW Section "Button
+  states test" at y=4060 (below "Tabs and Marker test", whose bottom edge is
+  3959), built in two calls: 50 frames in 960ms, then 150 frames in 3135ms
+  (about 19-21ms per frame), then 834ms for combine + Label + description + grid.
+  Read-back: Default Hover fill action.primary at opacity 0.8; Outline/Ghost
+  Hover fill background.secondary, text text.primary; Destructive Hover fill
+  status/error-bg + text status/error; Destructive Focus identical to its rest
+  look; Link rest not underlined, Link Hover UNDERLINE; Disabled frame opacity
+  0.5 on every variant; Focus: stroke border.focus + DROP_SHADOW spread 3, alpha
+  0.5, colour bound to border.focus; Invalid: stroke status/error + ring alpha
+  0.2 bound to status/error; Focus/Invalid on a no-rest-stroke variant keep the
+  Default width (122, `strokesIncludedInLayout` false); Outline keeps 124. All
+  text fills / font sizes / icon strokes variable-bound; Label bound on the 100
+  text variants. Screenshots: all five states visibly distinct per Variant, text
+  and icons legible at every size including Icon-xs. Test instance took
+  `setProperties` on Variant, Size, State and Label (live key `Label#115:223`)
+  and was deleted; no orphans; description verified (25 lines, exact match).
+  **Next for the user:** swap the test set in for the old Button set when happy.
+- **Toggle and Badge have a `State` property (Batch 10 of
+  `figma-component-variations-plan.md`, 2026-10-09): PROVEN LIVE 2026-10-09
+  ("SDSGT test file", Southleft Desktop Bridge).** Same mechanism as Button, no
+  replay changes: Toggle = Variant x Size x State (Default, Hover, Focus,
+  Disabled, Invalid, Pressed) = 36 variants; Badge = Variant x State (Default,
+  Hover, Focus, Invalid, no extraAxes) = 20 variants. New NEW sets "Toggle (states
+  test)" (160x1044) and "Badge (states test)" (327x164) in a NEW Section "Toggle
+  and Badge states test" at y=6540 (below "Button states test", bottom edge 6436);
+  36 frames in ~870ms and 20 in ~490ms, one call each. Figma reports Variant /
+  Size / State (Toggle) and Variant / State (Badge) as VARIANT properties plus
+  the Label TEXT property. Read-back matched the plan (fills, paint opacity 0.8
+  on Badge Default Hover, strokes, ring effects spread 3 alpha 0.5 bound to
+  border/focus, Disabled frame opacity 0.5, Link rest NONE decoration vs Hover
+  UNDERLINE, Destructive Hover status/error-bg + status/error, Destructive Focus
+  identical to rest, `strokesIncludedInLayout` false on state-added strokes,
+  Focus/Invalid widths unchanged). **LIVE FINDING (applies to any component with
+  a Focus ring): Figma draws a drop shadow only for a frame that HAS a fill.** On a
+  fill-less frame (Toggle Default/Outline, Badge Outline/Ghost/Link, and Button's
+  Ghost/Link) the ring effect is set correctly but nothing renders, even with a
+  stroke and `showShadowBehindNode`; a fill with ANY transparency instead draws the
+  ring through the whole box (tested on throwaway frames, deleted). So for those
+  variants Focus shows as the border-focus stroke only; the plan now discloses it
+  (`buildCommonStateDisclosures`). Test instances took `setProperties` on every
+  property (Toggle Outline/Lg/Pressed/"Bold" 49x32; Badge Destructive/Hover/
+  "Delete" 54x15, pale-red tint with red text), screenshots correct, deleted; page
+  children were exactly the 14 earlier nodes plus the one new Section.
+- **Input and Textarea have a `State` property (Batch 11 of
+  `figma-component-variations-plan.md`, 2026-10-09): PROVEN LIVE 2026-10-09
+  ("SDSGT test file", Southleft Desktop Bridge).** Same mechanism, no replay
+  changes: each is one "Default" variant x State (Default, Focus, Disabled,
+  Invalid) = 4 variants, no extraAxes. NEW sets "Input (states test)" (117x216)
+  and "Textarea (states test)" (117x248) in a NEW Section "Input and Textarea
+  states test" at y=7770 (below "Toggle and Badge states test", bottom edge 7664),
+  one call each (4 frames, ~150ms). Figma reports Variant / State as VARIANT
+  properties plus the Label TEXT property. Read-back matched the plan: rest
+  Input 111x30 and Textarea 111x38 (identical to the existing sets), Focus stroke
+  border/focus + DROP_SHADOW spread 3 alpha 0.5 bound to border/focus, Invalid
+  stroke status/error + ring alpha 0.2 bound to status/error, Disabled frame
+  opacity 0.5 with a border/default fill at paint opacity 0.5 (the two multiply),
+  no frame widened, text fill / font size / Label bound on all 8. As predicted
+  (both fields are fill-less at rest), the Focus and Invalid rings are set but do
+  NOT render; the states show as a border-colour change (disclosed, plan notes and
+  descriptions). Test instances took `setProperties` on Label, State and Variant
+  (Disabled, then Invalid / Focus), screenshots correct, deleted; page children
+  were the earlier nodes plus the one new Section.
+- **NativeSelect and Item have a `State` property (Batch 12 of
+  `figma-component-variations-plan.md`, 2026-10-09): PROVEN LIVE 2026-10-09
+  ("SDSGT test file", Southleft Desktop Bridge).** Same mechanism, no replay
+  changes. NEW sets "NativeSelect (states test)" (137x556; Variant, Size, State as
+  VARIANT properties plus the Label TEXT property; 10 variants, 131x32 / 131x24) and
+  "Item (states test)" (693x723; Variant, Size, State plus the Title and Description
+  TEXT properties; 27 variants) in a NEW Section "NativeSelect and Item states test" at
+  y=8200 (below "Input and Textarea states test", bottom edge 8098), one call each
+  (10 frames 841ms, 27 frames 1883ms). Read-back matched the plan: NativeSelect Focus
+  stroke border/focus + ring spread 3 alpha 0.5, Invalid stroke status/error + ring
+  alpha 0.2, Disabled frame opacity 0.5, Hover identical to Default, no frame widened;
+  Item Hover fill background/secondary (Default and Outline; Muted unchanged), Focus
+  stroke border/focus with `strokesIncludedInLayout` false where the rest look has no
+  stroke, ring on the outer frame, one section intact and Title/Description present,
+  bound and property-referenced in all 27, Xs Description 12px. Screenshot: Hover
+  visible on Default/Outline, Focus a border change (the ring only shows on Muted,
+  which has a fill), as disclosed. Instances took `setProperties` on every property
+  (NativeSelect Sm/Invalid/Label; Item Outline/Xs/Focus/Title/Description), screenshots
+  correct, deleted; the Section holds exactly the two sets, no orphans.
+- **Checkbox and RadioGroup have a `State` property (Batch 13 of
+  `figma-component-variations-plan.md`, 2026-10-13): PROVEN LIVE 2026-10-13 ("SDSGT test file").**
+  Same mechanism, no replay changes expected: Variant (Unchecked/Checked) x State
+  (Default, Focus, Disabled, Invalid) = 8 frames per component, both `fixedSizePx` 16x16,
+  Checkbox's Checked variant with its check `icon`, RadioGroup's with its `centerDot`.
+  Things to check when pushing: a Checked frame's Focus/Invalid carries ONLY the ring (no
+  `strokeVariable`; its border stays `action/primary`), Unchecked's Focus/Invalid carry the
+  stroke change plus a ring that will not render (fill-less at rest, disclosed), Disabled is
+  frame opacity 0.5, the icon/dot survive every state, and a ring on a 16x16 fixed frame
+  draws (drop shadow, spread 3). Neither component has a `Label` property to bind.
+  Result: NEW sets "Checkbox (states test)" and "RadioGroup (states test)" (8 variants each, 62x160)
+  in a NEW Section "Checkbox and RadioGroup states test" at y=9103, one call (16 frames, 369ms); read-back
+  matched the plan. **Grid note:** a component set clips its content, so the manual grid must leave 3px of
+  ring room on the LEFT and RIGHT as well as above/below (shift every column +3px, widen the set +6px) or the
+  right-hand column's ring is cut off. **Known limit (all ring states, batches 9-13), FIXED 2026-10-13:** a
+  bound ring's colour alpha (and a fill's paint opacity) is correct on the main component but reads back as 1
+  on an INSTANCE. The plan now binds ring effects to the baked tokens `color/semantic/border/focus-ring` and
+  `color/semantic/status/error-ring` (the effect's own alpha is set EQUAL to the token's alpha, 0.5 / 0.2, so
+  set and instances agree; scope `EFFECT_COLOR`) and the Default hover fill of Button/Badge to the solid
+  token `color/semantic/action/primary-hover-soft`; nothing in the replay code changed (ring.colorVariable is
+  just a different variable). Push the three variables with the token push first, or `getVar` throws. See
+  `contracts-and-seeds.md`, "Figma instances lose a fill's or ring's transparency". The Input/Textarea
+  Disabled state was fixed the same day too: its fill, stroke and placeholder text bind the solid tokens
+  `color/semantic/background/field-disabled`, `border/field-disabled`, `text/field-disabled` and the frame
+  is NOT dimmed (frame opacity 1) for that one state; the replay needs nothing new (`variantItem.fillVariable`
+  / `strokeVariable` / `textVariable` are read as for any state). Push the variables first. Attachment's
+  Hover binds `color/semantic/background/surface-hover` (solid) the same way; in dark mode it equals the
+  card at rest.
+- **Field Invalid and Bubble Clickable (2026-10-13): PROVEN LIVE ("SDSGT test file").** Two small additive replay
+  pieces, both documented where they live: step 3's `sections` loop reads `variantItem.textLineOverrides` (Field's
+  Invalid recolours only the Label line), and step 2c's combination code skips a state's fields when an axis option
+  lists it in `ignoreStates` (Bubble's `Clickable=Default` builds Hover and Focus identical to rest). New sets
+  "Field (states test)" (4 variants) and "Bubble (states test)" (30 variants) were built by CLONING the existing
+  rest variants (so the rest look is identical) and then applying each state's bindings; ring alpha on an instance
+  equals the main component's (the ring tokens). Field Disabled (the Label line takes `color/semantic/text/label-disabled`, no opacity) was added to the
+  Field set the same day by cloning the Default variants INTO the set (`set.appendChild(clone)` is required, a bare
+  `clone()` does not land in the set) and re-laying the grid; Bubble Muted's Hover is identical to rest by decision.
+- **Alert inline link + Hover (2026-10-13): PROVEN LIVE.** The Alert description ends with an underlined inline link
+  (a styled range in the SAME text layer) and Hover recolours only that range (`linkTextVariable`). **Figma limit:** a
+  text node bound to a TEXT component property is flattened and all instances share the property's styled default, so
+  the Alert has NO `Description` TEXT property when `inlineLink` is present (step 5 skips it because
+  `secondaryLabelPropertyName` is absent); apply the range styling per variant, and designers edit the text in place.
+- **Switch and Tabs have a `State` property (Batch 14 of
+  `figma-component-variations-plan.md`, 2026-10-13): PROVEN LIVE 2026-10-13 ("SDSGT test file").**
+  Switch: Variant (Unchecked/Checked) x Size (Default/Sm) x State (Default, Focus, Disabled, Invalid)
+  = 16 frames; Tabs: Variant (Inactive/Active) x Style (Default/Line) x State (Default, Hover, Focus,
+  Disabled) = 16 frames. Two SMALL replay points (both written into step 2c's code above and
+  below as notes, nothing else changed):
+  (1) **The `variant.thumb` branch (Switch) skips the whole step 3 frame code, so it must apply the
+  merged state fields itself, on the TRACK frame:** `variantItem.strokeVariable` (a 1px stroke, `strokeWeight`
+  1, `strokesIncludedInLayout = false` in a try/catch), `variantItem.nodeOpacity` (`track.opacity`) and
+  `variantItem.focusRing` (the same DROP_SHADOW two-pass as step 3; the track has a fill, so the ring renders).
+  The thumb child is untouched, so it is the same in every state. A Switch state frame stays 32x18.4 / 24x14.
+  (2) **Tabs Line / Active / Focus:** the state carries `strokeSides: "all"` + `strokeWeightPx: 1` (new on
+  `FigmaComponentStatePlanItem`, merged AFTER the Style override), so the replay's existing non-"bottom"
+  branch draws a uniform 1px focus border INSTEAD of the 2px bottom bar (a frame has one stroke colour).
+  Use the MERGED REST look to decide `strokesIncludedInLayout`: set it to `false` when the REST look
+  (variant + Style override, before the state) has no stroke, or when the state's `strokeSides === "all"`;
+  step 3's `!variant.strokeVariable` test alone would also switch it off for the Line Active REST frame
+  (33x20 in Batch 8, the bar adds 2px by design). Result: Line Active Default/Hover/Disabled 33x20,
+  Line Active Focus 33x18.
+  Result: NEW sets "Switch (states test)" (182x123) and "Tabs (states test)" (186x134, plus a Label TEXT
+  property bound on all 16) in a NEW Section "Switch and Tabs states test" at y=9443 (previous bottom edge 9343),
+  one call each (16 frames, ~300ms and ~410ms). Read-back matched the plan on every frame (fills, strokes,
+  ring effects spread 3 / alpha 0.5 and 0.2 bound to the ring tokens, frame opacity 0.5, thumb positions
+  1/15 and 1/11, Tabs text/radius/padding/font bound). Instances took `setProperties` on every property
+  (Switch Variant/Size/State; Tabs Variant/Style/State/Label), the instance ring alpha equals the main
+  component's (0.2 / 0.5), instances were deleted, no orphans (19 top-level nodes).
+- **Accordion, Label and Attachment have a `State` property (Batch 15 of
+  `figma-component-variations-plan.md`, 2026-10-13): PROVEN LIVE 2026-10-13 ("SDSGT test file"), with NO replay
+  change at all** (steps 2c and 3 as written). Accordion = Variant x State (Default, Hover, Focus, Disabled) = 4
+  frames (Hover is `state.underline: true`, which step 3's text code already reads from `variantItem`; Focus adds a
+  1px `border/focus` stroke with `strokesIncludedInLayout = false` plus the 3px ring, which does NOT render because
+  the frame has no fill, disclosed; Disabled is frame opacity 0.5). Label = Variant x State (Default, Disabled) = 2
+  frames (frame opacity 0.5 on a bare text frame). Attachment = Variant x Size (Default/Sm/Xs) x Orientation
+  (Horizontal/Vertical) x State (Default, Hover, Focus) = 18 frames through the same `sections` + `extraAxes` path as
+  Item (Focus = a 1px `border/focus-ring` ring on the filled frame, which renders; Hover is an EMPTY state, identical
+  to Default, listed in `skippedStates` with the exact class and the open decision). Result: NEW sets "Accordion (states
+  test)" (116x235), "Label (states test)" (45x75) and "Attachment (states test)" (342x421) in a NEW Section
+  "Accordion, Label and Attachment states test" at y=9920 (previous bottom edge 9820), one call for Accordion + Label
+  (~170ms) and one for Attachment (~590ms). Read-back matched the plan on all 24 frames (bound fills, strokes, radius,
+  padding, font size; ring spread 3 / 1 at alpha 0.5 bound to `border/focus-ring`; opacity 0.5; Vertical width bound
+  to `spacing/24`; Accordion Hover text underlined; all Label/Title/Description text bound to the TEXT properties; set
+  descriptions 11, 4 and 25 lines). Instances took `setProperties` on every property, instance ring alpha equals the
+  main component's (0.5 / 0.5), instances deleted, no orphans (20 top-level nodes: the 19 earlier plus the new Section).
+  The five triaged components (Alert, Breadcrumb, Field, Marker, Bubble) get no State property, only `disclosures`.
 
 **A component can now have NO text at all** (Skeleton, added 2026-09-18 —
 see `FigmaComponentVariantPlanItem.textVariable`'s own comment in
@@ -1375,8 +1558,14 @@ For each item in `plan.components`, in order:
    ```
    If `variant.thumb` was present, that fully replaces this variant's own
    build — continue the loop to the next variant, skipping step 3 below
-   entirely for this one.
-2c. **If `component.extraAxes` is present** (Button's `Size` — added
+   entirely for this one. **Exception (Batch 14, Switch States):** apply the
+   merged STATE fields to `track` before `createComponentFromNode`: a state
+   stroke (`track.strokes = [bindPaint(..., getVar(variantItem.strokeVariable))]`,
+   `track.strokeWeight = 1`, `strokesIncludedInLayout = false` in a try/catch),
+   `track.opacity = variantItem.nodeOpacity` and the `variantItem.focusRing`
+   drop shadow exactly as step 3 does it (the track has a fill, so the ring
+   draws). Proven live 2026-10-13.
+2c. **If `component.extraAxes` OR `component.statePropertyName` is present** (Button's `Size` — added
    2026-10-08, component-variations Batch 1; see
    `FigmaComponentLayoutOverrides`/`FigmaComponentAxisPlanItem` in
    `figma-components-plan.ts`), this component produces MORE than one
@@ -1386,9 +1575,13 @@ For each item in `plan.components`, in order:
    - **Combinations.** The cartesian product of every axis's `options`
      (axes in plan order). Iterate the axis combination in the OUTER loop
      and `component.variants` in the INNER loop, so the finished set reads
-     as one row per size, one column per variant. For each (combination,
-     variant) pair, build the merged objects and then run step 3's existing,
-     unchanged frame code on them:
+     as one row per size, one column per variant. When the component has
+     `statePropertyName` (Batch 9: Button), the STATE loop sits between them:
+     axis combinations (outer) -> states (`Default` first, then `variant.states`
+     in plan order) -> variants (inner), so a row is one Size x State pair and a
+     column is one Variant. For each (combination, state, variant) triple, build
+     the merged objects and then run step 3's existing, unchanged frame code on
+     them:
      ```js
      // `combo` = [{axis, option}, ...] in plan order, one entry per axis.
      // `combinationOverrides` (Batch 6; absent on every earlier component) are
@@ -1399,7 +1592,17 @@ For each item in `plan.components`, in order:
        .map(o => (c.option.combinationOverrides || {})[`${o.axis.propertyName}=${o.option.name}`]).filter(Boolean));
      const allOverrides = [...combo.map(c => c.option.overrides), ...comboOverrides]; // later axes win; overrides only carry the fields they change
      const item = Object.assign({}, component, ...allOverrides);
-     const variantItem = Object.assign({}, variant, ...allOverrides.map(o => (o.variantOverrides || {})[variant.name] || {}));
+     // Batch 9: `state` is null for the implicit Default state (the variant's rest
+     // values), else one entry of `variant.states`. Drop its `name` before merging
+     // (it would overwrite the variant's own name); every other field is a sparse
+     // override (fillVariable/fillOpacity/textVariable/strokeVariable/strokeOpacity/
+     // underline/nodeOpacity/focusRing) laid on top of the variant AFTER the axis
+     // `variantOverrides`, so a state wins over a Size/Style tweak.
+     // 2026-10-13 (Bubble's Clickable axis): an axis option may list `ignoreStates` (e.g. ["Hover","Focus"]); for those
+     // State values the state's fields are NOT applied, so the frame is built identical to the rest look.
+     const stateIgnored = state && allOverrides.some(o => (o.ignoreStates || []).includes(state.name));
+     const stateFields = state && !stateIgnored ? (({ name, ...rest }) => rest)(state) : {};
+     const variantItem = Object.assign({}, variant, ...allOverrides.map(o => (o.variantOverrides || {})[variant.name] || {}), stateFields);
      ```
      In step 3's code, `item` supplies the padding/radius/font/height
      values and `variantItem` the fill/stroke/text values.
@@ -1438,7 +1641,9 @@ For each item in `plan.components`, in order:
      both are read from `variantItem` in step 3. The set's `description` comes
      from the component-level `disclosures` (see "Description" below).
    - **Names.** `"<variantPropertyName>=<variant.name>, <axis.propertyName>=<option.name>"`
-     in plan order, e.g. `"Variant=Default, Size=Sm"`. Figma derives the
+     in plan order, e.g. `"Variant=Default, Size=Sm"`; with states the State
+     property comes LAST (`"Variant=Default, Size=Sm, State=Hover"`, the
+     implicit one is `State=Default`). Figma derives the
      `Size` property and its options from this convention exactly like
      `Variant`, no separate property call. Skipped options
      (`axis.skippedOptions`) get no component — say their reasons in plain
@@ -1549,6 +1754,103 @@ For each item in `plan.components`, in order:
      Size (Batch 5) works the same way, with the extra detail that the root's
      top/bottom padding and `itemSpacing` also bind to the option's own
      `sectionGapVariable`.
+   - **States (Batch 9, Button; PROVEN LIVE 2026-10-09, "SDSGT test file": 200
+     variants, all checks passed; the smoke-test results are recorded below, and
+     two of the original assumptions were wrong and are corrected in step 3).** When
+     `component.statePropertyName` is set, every variant carries `states`
+     (Hover / Focus / Disabled / Invalid, sparse overrides; Default is the
+     rest look) and maybe `skippedStates` (states that render identical to
+     Default, or lost a class: say these reasons in plain language before
+     building, like skipped variants). Two Button decisions made by the user
+     on 2026-10-09 are already in the plan data, so the replay needs no special
+     code for them: Destructive's Hover is fill `status/error-bg` + text
+     `status/error` (a token-based approximation of the real 20%-over-10% tint,
+     disclosed), and Link has NO underline at rest (`underline: false`) with
+     `underline: true` on its Hover state. **Batch 10 (Toggle, Badge; PROVEN
+     LIVE 2026-10-09) reuses all of this unchanged:** Toggle adds a Pressed state
+     and Badge has no extraAxes (rows = the State values only, 4 x 5 columns);
+     the manual grid and chunking work as written (36 and 20 frames, one call each).
+     **Batch 11 (Input, Textarea; PROVEN LIVE 2026-10-09) also reuses it unchanged**
+     (one variant x 4 states, 4 frames per call).
+     **Batch 12 (NativeSelect, Item; PROVEN LIVE 2026-10-09) also reuses it unchanged:**
+     NativeSelect = Size x State (10 frames, one call, ~840ms); Item = Variant x Size x
+     State (27 frames, one call, ~1.9s). Step 3's existing `sections` branch plus the
+     fill / stroke / opacity / ring code apply a state to Item's OUTER frame with no
+     change (the Title and Description sections are built as before).
+     **Known Figma limit:** the Focus ring (drop shadow) is not drawn on a frame
+     with NO fill, so it is invisible on variants that are transparent at rest
+     (the plan discloses which); do not try to work around it with a transparent
+     fill (the shadow then fills the whole box). After building, screenshot and
+     confirm Destructive Default vs Hover and Link Default vs Hover visibly
+     differ. 5 variants x 8 sizes x 5 states = 200
+     components for Button, all named
+     `Variant=Default, Size=Sm, State=Hover` (State last). Step 3 reads these
+     merged fields (all absent for a component without states, so nothing
+     changes for the other 28):
+       - `fillOpacity` / `strokeOpacity`: paint opacity on the bound fill /
+         stroke (`paints[0].opacity`).
+       - `nodeOpacity`: `frame.opacity` (Disabled's 50%).
+       - `focusRing` `{colorVariable, widthPx, opacity}`: a DROP_SHADOW effect,
+         `spread = widthPx`, `radius = 0` (no blur), offset 0,0, colour bound to
+         the variable.
+       - `textVariable` / `underline`: step 3's text code reads `variantItem`.
+       - `linkTextVariable` (2026-10-13, Alert Hover): recolours the component's inline link range (`inlineLink`).
+       - `textLineOverrides` `{ <labelPropertyName>: { textVariable } }` (2026-10-13, Field Invalid): recolours
+         ONE named text line of a `sections` component (step 3's `sections` loop reads it).
+     **Smoke tests (run live 2026-10-09 on throwaway frames, deleted afterward).**
+     (1) *Paint opacity:* `opacity: 0.8` put on the paint before assigning it is
+     DROPPED (reads back 1; the binding stays). Applying it as a second pass
+     (read `frame.fills` back, clone, set `opacity`, assign) gives 0.8 with
+     `boundVariables.color` kept. Step 3 uses the second pass.
+     (2) *Ring effect:* `setBoundVariableForEffect` binds fine but returns the effect
+     with `spread` reset to 0 and the alpha reads back as the variable's own (1).
+     A second pass (read `frame.effects` back, clone, set `spread` and `color.a`,
+     assign) keeps the binding AND the alpha: a 0.5-alpha bound ring renders as a
+     50% band in a screenshot. So the literal-alpha fallback (and its extra
+     disclosure) is NOT needed; the ring colour stays variable-bound.
+     (3) *`strokesIncludedInLayout = false`:* works. A 66x28 hugging frame grows to
+     68x30 with a 1px stroke and stays 66x28 with the flag, in either order.
+     **Chunking (measured live 2026-10-09).** Chunk by whole Size x State rows
+     (5 frames per row; row index = size index x 5 + state index), `timeout: 30000`.
+     Measured: 50 frames in 960ms, then 150 frames in 3135ms (about 19-21ms per
+     frame, the same as earlier batches), so ~50-per-call is very conservative; the
+     200 fit in 2 calls with huge margin. Each chunk appends its components to the
+     NEW Section and the last call finds them with
+     `section.children.filter(n => n.type === "COMPONENT")` (no ID passing needed),
+     then runs `combineAsVariants`, the Label property, the description and the grid
+     (834ms for 200). On error each chunk removes only the nodes it created.
+     **Layout (manual grid, 200 variants).** One row per Size x State pair
+     (8 x 5 = 40 rows), one column per Variant (5), placed by PARSING each
+     child's NAME, never by index (Figma keeps creation order, so this is a
+     safeguard):
+     ```js
+     const parse = (n) => Object.fromEntries(n.split(", ").map(p => p.split("=")));
+     const variantNames = component.variants.map(v => v.name);
+     const rowKeyOf = (props) => Object.entries(props).filter(([k]) => k !== component.variantPropertyName).map(([k, v]) => v).join("|");
+     // rowKeys in plan order: axis combinations (outer), then Default + each state name (inner).
+     const colW = widestChildWidth + 24; // widest of ALL children, not per column
+     const rowH = {}; for (const c of set.children) { const k = rowKeyOf(parse(c.name)); rowH[k] = Math.max(rowH[k] || 0, c.height); }
+     let y = 0; const rowY = {}; for (const k of rowKeys) { rowY[k] = y; y += (rowH[k] || 0) + 24 + 6; } // +6: room for the 3px ring on each side
+     set.layoutMode = "NONE";
+     for (const c of set.children) { const props = parse(c.name); c.x = variantNames.indexOf(props[component.variantPropertyName]) * colW; c.y = rowY[rowKeyOf(props)] + 3 + (rowH[rowKeyOf(props)] - c.height) / 2; }
+     set.resize(variantNames.length * colW - 24, y - 24); // y already includes each row's 24 gap + 6 ring room
+     ```
+     Then size the parent Section to `set.width + 80` x `set.height + 80`, set at
+     (40, 40), and put the NEW Section below everything already on the page:
+     `Math.max(...figma.currentPage.children.map(n => n.y + n.height)) + 100`.
+     **Focus/Invalid on a variant with no rest stroke** (Default, Ghost,
+     Destructive, Link): the state adds a 1px stroke, which an auto-layout frame
+     counts toward its width. To keep these frames the same width as their
+     Default state, set `frame.strokesIncludedInLayout = false` (in a try/catch)
+     when `variantItem.strokeVariable` is set and the REST `variant.strokeVariable`
+     is not. Outline (a rest stroke) is untouched.
+     Step 5's Label binding is unchanged (it loops all children and already
+     null-guards variants with no PrimaryText node; live: 100 text variants bound,
+     100 icon-only skipped). Step 6's instance check should `setProperties()`
+     Variant, Size, State and Label together (live: keys were
+     `Label#115:223`, `Variant`, `Size`, `State`; setting Destructive / Lg / Hover /
+     "Delete account" rendered the pale-red Hover look with red text). Live grid:
+     716x2296 set (widest variant 124px, 5 columns x 40 rows), Section 796x2376.
    - **Description (disclosure, the second of the "disclose twice"
      places).** After `combineAsVariants`:
      `componentSet.description = [...(component.disclosures || []), ...(component.extraAxes || []).flatMap(a => a.disclosures || [])].join("\n");`
@@ -1643,10 +1945,34 @@ For each item in `plan.components`, in order:
    // `variantItem` === `variant` unless `extraAxes` merged a `variantOverrides`
    // entry (step 2c). An empty-string `fillVariable`/`strokeVariable` from such an
    // override means "none" (Tabs Line's Active drops its fill) and is falsy here.
-   if (variantItem.fillVariable) frame.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.fillVariable))];
-   else frame.fills = [];
+   // Batch 9 (states; VERIFIED live 2026-10-09): paint opacity from `fillOpacity` /
+   // `strokeOpacity`. An `opacity` put on the paint BEFORE it is assigned is silently
+   // DROPPED when the paint carries a variable binding (reads back 1, with the binding
+   // intact). It only sticks as a SECOND pass: assign the bound paint, then read
+   // `frame.fills` back, clone it, set `opacity` on the clone and assign that
+   // (reads back 0.8 and keeps `boundVariables.color`). So never put `opacity` on the
+   // paint passed to `setBoundVariableForPaint` / the first assignment.
+   const withPaintOpacity = (paints, opacity) => {
+     if (opacity === undefined) return paints;
+     const c = JSON.parse(JSON.stringify(paints)); c[0].opacity = opacity; return c;
+   };
+   if (variantItem.fillVariable) {
+     frame.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.fillVariable))];
+     if (variantItem.fillOpacity !== undefined) frame.fills = withPaintOpacity(frame.fills, variantItem.fillOpacity);
+   } else frame.fills = [];
    if (variantItem.strokeVariable) {
      frame.strokes = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.strokeVariable))];
+     if (variantItem.strokeOpacity !== undefined) frame.strokes = withPaintOpacity(frame.strokes, variantItem.strokeOpacity);
+     // A state that ADDS a stroke the rest look doesn't have (Focus/Invalid on Default,
+     // Ghost, Destructive, Link) must not widen the frame: strokes count toward an
+     // auto-layout frame's size, so exclude them (VERIFIED live 2026-10-09: a 1px stroke
+     // took a 66x28 frame to 68x30; with `strokesIncludedInLayout = false` it stays 66x28,
+     // set before or after the stroke).
+     // Batch 14 refinement: "rest has no stroke" means the MERGED rest look (variant + Style override, no state),
+     // so Tabs Line / Active (rest bar stroke, 33x20 by design) is not switched off for its non-Focus states; a
+     // state with `strokeSides === "all"` (Tabs Line / Active / Focus: border replaces the bar) is also set false.
+     const restStrokeVariable = Object.assign({}, variant, ...(typeof allOverrides === "undefined" ? [] : allOverrides.map(o => (o.variantOverrides || {})[variant.name] || {}))).strokeVariable;
+     if (!restStrokeVariable || variantItem.strokeSides === "all") { try { frame.strokesIncludedInLayout = false; } catch (e) {} }
      if (variantItem.strokeSides === "bottom") {
        // Batch 8 (Tabs Line's active bar, Marker Border's rule): BOTTOM edge only,
        // via Figma's per-side stroke weights. Absent `strokeSides` = all four sides.
@@ -1660,6 +1986,22 @@ For each item in `plan.components`, in order:
    }
    // Marker Border (Batch 8): bottom padding only, after the component-level padding above.
    if (variantItem.paddingBottomVariable) frame.setBoundVariable("paddingBottom", getVar(variantItem.paddingBottomVariable));
+   // Disabled (Batch 9): the whole frame, children included, at the real `disabled:opacity-50`.
+   if (variantItem.nodeOpacity !== undefined) frame.opacity = variantItem.nodeOpacity;
+   // Focus / Invalid ring (Batch 9; VERIFIED live 2026-10-09, step 2c's smoke test 2): a
+   // 3px band outside the frame = a DROP_SHADOW with spread = widthPx and no blur,
+   // colour bound to the ring variable, alpha = the real ring opacity. LIVE FINDING:
+   // `setBoundVariableForEffect` returns the effect with `spread` reset to 0 and, once
+   // assigned, the colour alpha reads back as the VARIABLE's own alpha (1). The binding
+   // is kept, though, so fix both in a SECOND pass: read `frame.effects` back, clone,
+   // set `spread` and `color.a`, assign again (binding kept, alpha 0.5/0.2 renders as
+   // 50%/20%, confirmed by screenshot). No literal-colour fallback is needed.
+   if (variantItem.focusRing) {
+     const ring = variantItem.focusRing;
+     const ringEffect = { type: "DROP_SHADOW", color: { r: 0, g: 0, b: 0, a: ring.opacity }, offset: { x: 0, y: 0 }, radius: 0, spread: ring.widthPx, visible: true, blendMode: "NORMAL" };
+     frame.effects = [figma.variables.setBoundVariableForEffect(ringEffect, "color", getVar(ring.colorVariable))];
+     const fx = JSON.parse(JSON.stringify(frame.effects)); fx[0].spread = ring.widthPx; fx[0].color.a = ring.opacity; frame.effects = fx;
+   }
    ```
    **Icon child — only when `variant.icon` is present** (Checkbox's own
    Checked variant — added 2026-09-22, icon-support work; see
@@ -1704,9 +2046,9 @@ For each item in `plan.components`, in order:
      text.fontName = { family: fontFamilyValue, style: "Medium" };
      text.characters = component.defaultLabel;
      text.setBoundVariable("fontSize", getVar(item.fontSizeVariable)); // `item` === `component` unless an extraAxes option overrides the font size (step 2c)
-     text.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variant.textVariable))];
+     text.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.textVariable))]; // `variantItem` (not `variant`) since Batch 9: a state can override the text colour (Outline/Ghost hover)
      try { text.setBoundVariable("fontFamily", getVar(component.fontFamilyVariable)); } catch (e) {} // real Figma versions support this; wrap anyway
-     if (variant.underline) text.textDecoration = "UNDERLINE";
+     if (variantItem.underline) text.textDecoration = "UNDERLINE"; // `variantItem` since Batch 9 (a state can set `underline`)
      frame.appendChild(text);
      if (variantItem.flankLines) frame.appendChild(makeFlank());
    } else if (!component.fixedSizePx) {
@@ -1761,6 +2103,17 @@ For each item in `plan.components`, in order:
    secondaryText.characters = component.defaultSecondaryLabel;
    secondaryText.setBoundVariable("fontSize", getVar(component.secondaryFontSizeVariable));
    secondaryText.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(component.secondaryTextVariable))];
+   // 2026-10-13 (Alert): `component.inlineLink` = the description ENDS with a link, a styled RANGE inside this
+   // same text layer. Underline it and colour it with `variantItem.linkTextVariable` (a state, e.g. Hover) or, at
+   // rest, the description's own colour (verified live: a range keeps both the underline and a variable-bound fill).
+   // NOTE: a component with `inlineLink` has NO `secondaryLabelPropertyName` (Option A, decided 2026-10-13): step 5 therefore
+   // never binds this node to a TEXT property, which would flatten the range styling and make every instance share one
+   // styled default (found live). Designers edit the description text in place and restyle the link.
+   if (component.inlineLink) {
+     const end = secondaryText.characters.length, start = end - component.inlineLink.text.length;
+     secondaryText.setRangeTextDecoration(start, end, "UNDERLINE");
+     secondaryText.setRangeFills(start, end, [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.linkTextVariable || component.secondaryTextVariable))]);
+   }
    stack.appendChild(secondaryText);
    frame.appendChild(stack); // instead of frame.appendChild(text) directly
    ```
@@ -1830,7 +2183,9 @@ For each item in `plan.components`, in order:
        lineText.fontName = { family: fontFamilyValue, style: line.weight }; // "Medium" or "Regular", per the plan
        lineText.characters = line.defaultLabel;
        lineText.setBoundVariable("fontSize", getVar(line.fontSizeVariable));
-       lineText.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(line.textVariable))];
+       // 2026-10-13 (Field Invalid): a state may recolour ONE named line via `variantItem.textLineOverrides`
+      // (keyed by the line's labelPropertyName); every other line keeps its own colour.
+      lineText.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar((variantItem.textLineOverrides && variantItem.textLineOverrides[line.labelPropertyName] && variantItem.textLineOverrides[line.labelPropertyName].textVariable) || line.textVariable))];
        sectionFrame.appendChild(lineText);
        if (item.widthVariable) {
          // Fixed-width frame (Attachment Vertical): the text fills the section

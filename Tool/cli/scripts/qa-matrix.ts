@@ -1,6 +1,6 @@
 // QA matrix entrypoint. Runs promote()/generate*() directly (in-process,
 // not shelled out) for the 30 seed-based cases, plus real `node src/cli.ts`
-// shell-outs for the 5 CLI-level cases (see qa-matrix/cli-cases.ts).
+// shell-outs for the 6 CLI-level cases (see qa-matrix/cli-cases.ts).
 //
 // Designed to run in slices across multiple turns/sessions, not all at
 // once — see --list/--case/--group/--language/--platform/--batch below.
