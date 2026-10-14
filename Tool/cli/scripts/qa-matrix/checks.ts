@@ -850,6 +850,19 @@ export function checkRnr(tokensDir: string, codeOutDir: string, seed: SeedConfig
   const darkProps = dark ? extractCssProps(dark) : null;
 
   results.push(rootProps.has("radius") ? pass("--radius present in :root", "rnr") : fail("--radius present in :root", "rnr", "present", "missing"));
+  // Fixed 2026-10-14: --radius used to be a hard-coded 0.625rem whatever radius preset was chosen; it is now radius.lg
+  // (the scaffold binds rounded-sm/-md/-xl to their same-named tokens in tailwind.config.js).
+  try {
+    const radiusTokens = (JSON.parse(readFileSync(join(tokensDir, "radius.json"), "utf-8")) as { radius: Record<string, { $value: string }> }).radius;
+    const wantRadius = radiusTokens.lg?.$value ?? radiusTokens.md?.$value;
+    results.push(
+      rootProps.get("radius") === wantRadius
+        ? pass(`--radius is the radius.lg token (${wantRadius})`, "rnr")
+        : fail("--radius is the radius.lg token", "rnr", String(wantRadius), String(rootProps.get("radius"))),
+    );
+  } catch (e) {
+    results.push(fail("radius.json readable for the --radius check", "rnr", "readable", e instanceof Error ? e.message : String(e)));
+  }
 
   const colorBlocks: Array<{ label: string; props: Map<string, string> | null }> = [];
   if (hasLight) colorBlocks.push({ label: ":root", props: rootProps });

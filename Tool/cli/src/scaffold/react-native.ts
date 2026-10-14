@@ -233,10 +233,16 @@ const RN_FONT_SIZE_TARGETS: Record<string, number> = {
   "9xl": 128,
 };
 
-function buildTailwindConfig(hasSecondary: boolean, spacingScale: Record<string, number>, fontSizeScale: Record<string, number>): string {
+function buildTailwindConfig(hasSecondary: boolean, spacingScale: Record<string, number>, fontSizeScale: Record<string, number>, radiusScale: Record<string, number>): string {
   const secondaryBlock = hasSecondary
     ? ["        secondary: {", "          DEFAULT: 'hsl(var(--secondary))',", "          foreground: 'hsl(var(--secondary-foreground))',", "        },"].join("\n")
     : "";
+  const radiusEntries = [
+    ...(radiusScale.sm !== undefined ? [`        sm: '${radiusScale.sm}px',`] : []),
+    ...(radiusScale.md !== undefined ? [`        md: '${radiusScale.md}px',`] : []),
+    "        lg: 'var(--radius)',",
+    ...(radiusScale.xl !== undefined ? [`        xl: '${radiusScale.xl}px',`] : []),
+  ];
   const spacingEntries = Object.entries(spacingScale)
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .map(([key, px]) => `        '${key}': '${px}px',`)
@@ -314,10 +320,11 @@ function buildTailwindConfig(hasSecondary: boolean, spacingScale: Record<string,
     "          foreground: 'hsl(var(--promo-foreground))',",
     "        },",
     "      },",
+    "      // Each class takes the radius token of the SAME name (fixed 2026-10-14; it used to be",
+    "      // lg = --radius, md = -2px, sm = -4px of a hard-coded 10px). lg stays `var(--radius)`, which",
+    "      // global.css sets to radius.lg. 2xl and up keep Tailwind's defaults (no token of their own).",
     "      borderRadius: {",
-    "        lg: 'var(--radius)',",
-    "        md: 'calc(var(--radius) - 2px)',",
-    "        sm: 'calc(var(--radius) - 4px)',",
+    ...radiusEntries,
     "      },",
     "      // Real spacing.json keys/values for this run — see this file's",
     "      // own header for why `extend` (not a full replacement) and why",
@@ -634,7 +641,7 @@ export function scaffoldReactNative(opts: ScaffoldReactNativeOptions): ScaffoldR
   const tokensCssContent = readFileSync(tokensCssPath, "utf-8");
   const spacingScale = readCssScale(tokensCssContent, "spacing");
   const fontSizeScale = readCssScale(tokensCssContent, "typography-primitive-font-size");
-  guarded("tailwind.config.js", buildTailwindConfig(hasSecondary, spacingScale, fontSizeScale));
+  guarded("tailwind.config.js", buildTailwindConfig(hasSecondary, spacingScale, fontSizeScale, readCssScale(tokensCssContent, "radius")));
 
   if (!update) {
     writeMetroConfig(outDir);

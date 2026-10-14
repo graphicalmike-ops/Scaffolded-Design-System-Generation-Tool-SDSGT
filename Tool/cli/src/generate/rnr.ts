@@ -31,7 +31,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { LIGHT_FILE, DARK_FILE, type GenerateResult } from "./index.ts";
-import { readJson, type ColorPrimitivesFile, type SemanticFile } from "./read-tokens.ts";
+import { readJson, type ColorPrimitivesFile, type RadiusFile, type SemanticFile } from "./read-tokens.ts";
 import { resolveShadcnVars } from "./shadcn.ts";
 
 type Rgb = [number, number, number];
@@ -126,7 +126,11 @@ export function generateRnr(tokensDir: string, outDir: string): GenerateResult {
     lightVars = resolveShadcnVars(semanticRoot.semantic, primitives);
     rootLines.push(...varsBlock(lightVars));
   }
-  rootLines.push(`    --radius: 0.625rem;`);
+  // Fixed 2026-10-14: this used to be a hard-coded `0.625rem` (10px) whatever radius preset was chosen, so the project's
+  // radius tokens never reached the components. Now `radius.lg`, the same rule as shadcn.ts; scaffold/react-native.ts
+  // binds `rounded-sm`/`-md`/`-xl` to their same-named tokens in tailwind.config.js, and `rounded-lg` is `var(--radius)`.
+  const { radius } = readJson<RadiusFile>(join(tokensDir, "radius.json"));
+  rootLines.push(`    --radius: ${(radius.lg ?? radius.md).$value};`);
   cssBlocks.push(["  :root {", ...rootLines, "  }"].join("\n"));
 
   if (hasDark) {
