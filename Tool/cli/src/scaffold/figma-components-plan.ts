@@ -179,14 +179,15 @@
 // Badge's anchor-only `[a]:hover:`, and `ring-[3px]` read as a 3px ring width) and
 // are proven live too (36 frames in ~870ms, 20 in ~490ms). Badge Link has no rest
 // underline (Badge-only fix, same as Button). Live finding: Figma draws a drop
-// shadow only for a frame WITH a fill, so the Focus ring does not render on
-// fill-less variants (disclosed; also true of Button's Ghost and Link).
+// shadow only for a frame WITH a fill, so the Focus ring did not render on
+// fill-less variants (2026-10-14: FIXED, the replay gives them an invisible 0.01% fill and turns
+// `showShadowBehindNode` off; see FILL_LESS_RING_DISCLOSURE).
 // Batch 11 (2026-10-09): Input and Textarea (Focus/Disabled/Invalid, 1 variant x 4
 // states = 4 variants each) get States through `buildFormFieldStates`, which feeds
 // their one real `cn("...")` class string to `buildStatesForVariants` via its new
 // optional `singleClassString` (they have no `cva()`), and are proven live too (4
 // frames in ~150ms each). Both are transparent at rest, so their Focus and Invalid
-// rings do not render in Figma (disclosed); Disabled adds the real bg-input/50 fill.
+// rings did not render in Figma at the time (fixed 2026-10-14, see above); Disabled adds the real bg-input/50 fill.
 // Batch 12 (2026-10-09): NativeSelect (Hover/Focus/Disabled/Invalid; Size Default/Sm x 5
 // states = 10 variants) and Item (Hover/Focus; Variant x Size x 3 states = 27) get
 // States through the same builders and are proven live too (10 frames in ~840ms, 27 in
@@ -195,13 +196,13 @@
 // `buildCommonStateDisclosures`); its real source has no non-dark `hover:` class, so Hover
 // is built identical to Default (disclosed). Item's Hover is the anchor-only
 // `[a]:hover:bg-muted` (the Batch 10 `extraPrefixes`); Muted's Hover is identical to rest
-// (disclosed). Neither is filled at rest (Item Muted excepted), so Focus rings do not
-// render on them (disclosed).
+// (disclosed). Neither is filled at rest (Item Muted excepted), so Focus rings did not
+// render on them (fixed 2026-10-14, see above).
 // Batch 13 (2026-10-13): Checkbox and RadioGroup (Focus/Disabled/Invalid x Unchecked/Checked =
 // 8 variants each) get States through `buildCheckableControlStates`. A Checked control keeps
 // its primary border in Focus and Invalid (the real `data-checked:border-primary` is written
 // after the Focus/Invalid border classes in the compiled CSS, so only the ring is added);
-// Unchecked is fill-less at rest, so its rings do not render (disclosed). Proven live 2026-10-13
+// Unchecked is fill-less at rest, so its rings did not render (fixed 2026-10-14). Proven live 2026-10-13
 // (16 frames in ~370ms). Live finding: a ring's alpha and a fill's paint opacity are lost on
 // INSTANCES (batches 9-13); FIXED 2026-10-13 with three tokens (`border.focus-ring`,
 // `status.error-ring`, `action.primary-hover-soft`), swapped in by FADE_FILL_TOKENS /
@@ -987,9 +988,25 @@ function nearestToken(targetPx: number, scale: Record<string, number>, figmaPref
 // classes that AREN'T a direct `var(--radius)` alias (Badge's
 // `rounded-4xl`, a real, separate Tailwind constant unrelated to
 // `--radius`) are unaffected and still correctly use `nearestToken`.
-function exactRadiusMd(radius: Record<string, number>): { figmaName: string; deltaPx: number } {
-  if (radius["md"] === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  return { figmaName: "radius/md", deltaPx: 0 };
+function exactRadiusLg(radius: Record<string, number>): { figmaName: string; deltaPx: number } {
+  return exactRadiusStep(radius, "lg");
+}
+
+// Radius mapping, rewritten 2026-10-14 (bug 3): `generate/shadcn.ts` now binds every Tailwind radius class to the
+// radius token of the SAME NAME (`--radius-sm/md/lg/xl` = radius.sm/md/lg/xl; 2xl, 3xl and 4xl have no token of
+// their own and cap at xl; `--radius` = radius.lg). The comment above (written when `--radius` was radius.md and
+// shadcn derived the other classes by multipliers) describes the OLD mapping: `rounded-lg` is now `radius/lg`,
+// `rounded-md` is `radius/md`, `rounded-sm` is `radius/sm`, `rounded-xl` and `rounded-4xl` are `radius/xl`.
+// Always an exact alias (deltaPx 0), never a nearest guess.
+function exactRadiusStep(radius: Record<string, number>, step: "sm" | "md" | "lg" | "xl"): { figmaName: string; deltaPx: number } {
+  if (radius[step] === undefined) throw new Error(`radius.json has no '${step}' entry — was css/tokens.css written by this pipeline's \`generate\`?`);
+  return { figmaName: `radius/${step}`, deltaPx: 0 };
+}
+
+// The px of a radius step, for the few places that still start from a number.
+function shadcnRadiusPx(radius: Record<string, number>, step: "sm" | "md" | "lg" | "xl"): number {
+  if (radius[step] === undefined) throw new Error(`radius.json has no '${step}' entry — was css/tokens.css written by this pipeline's \`generate\`?`);
+  return radius[step];
 }
 
 function capitalize(s: string): string {
@@ -1020,16 +1037,16 @@ function tailwindClassPx(cls: string): number | null {
 }
 
 // A real Tailwind radius class -> the radius token it should bind to.
-// `rounded-lg` is an EXACT alias of `radius/md` (see `exactRadiusMd`'s own
+// `rounded-lg` is an EXACT alias of `radius/lg` since 2026-10-14 (see `exactRadiusLg`'s own
 // comment). `rounded-[min(var(--radius-md),Npx)]` (Button xs/sm) is the
 // smaller of radius.md and N px, snapped with `nearestToken` — except when
 // that minimum IS radius.md, which stays the exact alias rather than
 // risking a different token that happens to share the value.
 function resolveRadiusClass(cls: string, radius: Record<string, number>): { figmaName: string; deltaPx: number } | null {
-  if (cls === "rounded-lg") return exactRadiusMd(radius);
+  if (cls === "rounded-lg") return exactRadiusLg(radius);
   const m = cls.match(/^rounded-\[min\(var\(--radius-md\),(\d+(?:\.\d+)?)px\)\]$/);
   if (!m) return null;
-  const md = exactRadiusMd(radius);
+  const md = exactRadiusStep(radius, "md"); // `--radius-md` is radius.md under the by-name mapping
   const targetPx = Math.min(radius["md"], parseFloat(m[1]));
   if (targetPx === radius["md"]) return md;
   return nearestToken(targetPx, radius, "radius");
@@ -1567,6 +1584,13 @@ function ringTokenDisclosure(variants: FigmaComponentVariantPlanItem[]): string 
   return `States: the ring colours are the baked tokens ${[...used].join(" and ")}: the real colour with the real transparency already inside the token, so the ring keeps its fade on instances placed in a design (a fade set on the ring effect itself is lost on instances). They are fixed values, not live aliases, so they do not follow later edits to border/focus or status/error.`;
 }
 
+// Ring on fill-less frames (fixed 2026-10-14, proven live on main components and instances): the push draws the ring
+// as a drop shadow with "show shadow behind node" off, and gives a frame with no fill at rest an invisible fill (white,
+// 0.01% opacity) so Figma draws the shadow at all. Shared by every component that has a ring.
+export function FILL_LESS_RING_DISCLOSURE(names: string[], hasInvalid: boolean): string {
+  return `States: the ${hasInvalid ? "Focus and Invalid rings DO" : "Focus ring DOES"} show in Figma on ${names.join(", ")} even though they have no fill at rest. Figma only draws a drop shadow for a frame with a fill, so these frames carry an invisible fill (white at 0.01% opacity, not a design token) and the shadow is drawn only outside the frame ("show shadow behind node" off), leaving the inside transparent. If you give one of these frames a real fill, the ring keeps working.`;
+}
+
 // The generic opening disclosure lines every States-bearing component shares
 // (Batch 10: Toggle and Badge; Button writes its own equivalent lines inline).
 // Returned lines are written to the plan `notes` (prefixed by the caller) and to
@@ -1610,13 +1634,13 @@ function buildCommonStateDisclosures(
     const ringTokenLine = ringTokenDisclosure(variants);
     if (ringTokenLine) lines.push(ringTokenLine);
   }
-  // Live finding (Batch 10, 2026-10-09): Figma draws NO drop shadow for a frame
-  // with no fill (a stroke alone is not enough; a fill with any transparency draws
-  // the shadow through the whole box instead), so the ring can't show on a variant
-  // that is transparent at rest and whose Focus state adds no fill.
-  const ringInvisible = variants.filter((v) => !v.fillVariable && !v.thumb && (v.states ?? []).some((st) => st.focusRing && !st.fillVariable)).map((v) => v.name);
-  if (ringInvisible.length > 0) {
-    lines.push(`States: in Figma a drop shadow is only drawn for a frame that has a fill, so the Focus ring does NOT show on ${ringInvisible.join(", ")} (no fill at rest): there, Focus shows only as the focus-colored border. The real component still shows its ring, and the ring is correctly set on those frames; a fill with any transparency would draw the ring through the whole box instead, so no workaround is used.`);
+  // Live finding (Batch 10, 2026-10-09): Figma draws NO drop shadow for a frame with no fill. FIXED 2026-10-14 (proven
+  // live on main components AND instances): the replay turns `showShadowBehindNode` off on every ring and gives a
+  // fill-less frame a near-invisible fill (white at 0.0001 opacity = 0.01%), which draws a clean ring band with the
+  // inside left transparent. So the ring shows on these variants too; this line says how.
+  const ringOnFillLess = variants.filter((v) => !v.fillVariable && !v.thumb && (v.states ?? []).some((st) => st.focusRing && !st.fillVariable)).map((v) => v.name);
+  if (ringOnFillLess.length > 0) {
+    lines.push(FILL_LESS_RING_DISCLOSURE(ringOnFillLess, stateNames.includes("Invalid")));
   }
   if (stateNames.includes("Disabled")) {
     // Which of the two non-visual disabled classes the real source actually has.
@@ -1679,11 +1703,11 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
   // Real values from shadcn's own current source (see file header for the
   // "one size, exact-token-match only" scope decision): rounded-lg (an
   // EXACT `radius.md` alias, real value 6px for the tailwind preset — see
-  // `exactRadiusMd`'s own comment for the real bug this replaced),
+  // `exactRadiusLg`'s own comment for the real bug this replaced),
   // size.default's h-8 (32px, the one height with an exact spacing-token
   // match), px-2.5 (10px) and implied ~4-6px vertical padding (no exact
   // token for either — nearest real token used, deltaPx noted below).
-  const radiusMatch = exactRadiusMd(radius);
+  const radiusMatch = exactRadiusLg(radius);
   const paddingHMatch = nearestToken(10, spacing, "spacing");
   const paddingVMatch = nearestToken(5, spacing, "spacing");
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
@@ -1761,6 +1785,9 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
     buttonDisclosures.push("States: Disabled is the real disabled:opacity-50 applied to the whole button (50% opacity). The real pointer-events-none has no Figma meaning and is not modeled.");
     const ringTokenLine = ringTokenDisclosure(variants);
     if (ringTokenLine) buttonDisclosures.push(ringTokenLine);
+    // Ghost and Link have no fill at rest; the push gives them the invisible ring fill (2026-10-14).
+    const ringOnFillLess = variants.filter((v) => !v.fillVariable && (v.states ?? []).some((st) => st.focusRing && !st.fillVariable)).map((v) => v.name);
+    if (ringOnFillLess.length > 0) buttonDisclosures.push(FILL_LESS_RING_DISCLOSURE(ringOnFillLess, variants.some((v) => (v.states ?? []).some((st) => st.name === "Invalid" && st.focusRing))));
     const buttonHasTranslucentFill = variants.some((v) => (v.states ?? []).some((st) => st.fillOpacity !== undefined));
     buttonDisclosures.push(`States: ${buttonHasTranslucentFill ? "a state's translucent fill (for example the Default variant's hover:bg-primary/80) is drawn as the fill color at that opacity over whatever sits behind the button. " : "no state fill is drawn translucent (the Default variant's hover:bg-primary/80 is drawn as a solid token instead, see the State Default / Hover line below). "}Where a variant's REST fill already drops its own opacity (Destructive's bg-destructive/10 is drawn solid, to keep white text readable), that variant's state fills drop theirs too, so a state never looks different from the simplified rest just because of an opacity; those cases are listed below.`);
     if (hasDark) {
@@ -1991,7 +2018,7 @@ function buildBadgePlan(tokensCss: string, badgeSource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = nearestToken(32, radius, "radius");
+  const radiusMatch = exactRadiusStep(radius, "xl"); // rounded-4xl: capped at radius.xl by the by-name mapping (2026-10-14); still a full pill at h-5, since every preset has xl >= 10px
   const paddingHMatch = nearestToken(8, spacing, "spacing");
   const paddingVMatch = nearestToken(2, spacing, "spacing");
   const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize");
@@ -2106,7 +2133,7 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius);
+  const radiusMatch = exactRadiusLg(radius);
   const paddingHMatch = nearestToken(10, spacing, "spacing");
   const paddingVMatch = nearestToken(5, spacing, "spacing");
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
@@ -2236,7 +2263,7 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius);
+  const radiusMatch = exactRadiusLg(radius);
   const paddingHMatch = nearestToken(10, spacing, "spacing");
   const paddingVMatch = nearestToken(8, spacing, "spacing");
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
@@ -2404,12 +2431,6 @@ function buildFormFieldStates(
   const disclosures: string[] = [];
   disclosures.push(...buildCommonStateDisclosures(source, variants, stateNames, { hasSizeAxis: false, singleClassString: classString, disabledAsTokens: disabledTokens }));
   disclosures.push(`States: there is no Hover state and no Pressed state (the real ${label} has no hover: or aria-pressed: classes).`);
-  // The shared ring-limit line above speaks of the Focus ring; Invalid has a real
-  // ring too (`aria-invalid:ring-3`), so it hits the same Figma limit.
-  const invalidRingHidden = variants.filter((v) => !v.fillVariable && (v.states ?? []).some((st) => st.name === "Invalid" && st.focusRing && !st.fillVariable)).map((v) => v.name);
-  if (invalidRingHidden.length > 0) {
-    disclosures.push(`States: the same limit applies to the Invalid ring (the real aria-invalid:ring-3 ring-destructive/20): it is set correctly on the frame but does NOT show in Figma on ${invalidRingHidden.join(", ")} (no fill at rest), so Invalid shows only as the red (status/error) border.`);
-  }
   // The Disabled fill: say exactly what was drawn and how the opacity compounds.
   const disabled = variants[0].states?.find((st) => st.name === "Disabled");
   if (disabled?.fillVariable && disabled.fillOpacity !== undefined) {
@@ -2462,7 +2483,7 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius);
+  const radiusMatch = exactRadiusLg(radius);
   const paddingHMatch = nearestToken(10, spacing, "spacing");
   const paddingVMatch = nearestToken(4, spacing, "spacing");
   const fontSizeMatch = nearestToken(16, fontSize, "typography/primitive/fontSize");
@@ -2514,7 +2535,7 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius);
+  const radiusMatch = exactRadiusLg(radius);
   const paddingHMatch = nearestToken(10, spacing, "spacing");
   const paddingVMatch = nearestToken(8, spacing, "spacing");
   const fontSizeMatch = nearestToken(16, fontSize, "typography/primitive/fontSize");
@@ -2570,7 +2591,7 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
 // grows those optional fields.
 //
 // `rounded-xl`: unlike Button/Toggle/Alert/Input/Textarea's `rounded-lg`
-// (a real, EXACT 1:1 alias to `radius.md` — see `exactRadiusMd`'s own
+// (a real, EXACT 1:1 alias to `radius.md` — see `exactRadiusLg`'s own
 // comment for the bug this fixed), shadcn's real `--radius-xl: calc(
 // var(--radius) * 1.4)` is a genuine MULTIPLIER, not a direct alias — so
 // this one correctly uses `nearestToken`, computed from radius.md's own
@@ -2582,7 +2603,7 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
 // same real quantity this pipeline's own `spacing/4` token already
 // represents, so this binds to it DIRECTLY (an exact conceptual match,
 // not a nearest-guess), the same "real alias, not an approximation"
-// treatment as `exactRadiusMd`. Confirmed `spacing.json` has a `"4"` key
+// treatment as `exactRadiusLg`. Confirmed `spacing.json` has a `"4"` key
 // under every preset (bootstrap included, despite its narrower 0-5 key
 // range) before relying on this.
 //
@@ -2614,12 +2635,10 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusTarget = radiusMdPx * 1.4;
+  const radiusTarget = shadcnRadiusPx(radius, "xl");
   const radiusMatch = nearestToken(radiusTarget, radius, "radius");
   if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Card radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 1.4 = ${radiusTarget.toFixed(1)}px).`);
+    notes.push(`Card radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.xl = ${radiusTarget.toFixed(1)}px).`);
   }
 
   const titleFontSize = nearestToken(16, fontSize, "typography/primitive/fontSize");
@@ -2811,7 +2830,7 @@ function buildCardSizeAxis(
 // `rounded-sm` is a genuine MULTIPLIER, not a direct alias — confirmed
 // against this project's own real generated `globals.css`
 // (`--radius-sm: calc(var(--radius) * 0.6)`, same `@theme inline` block
-// `exactRadiusMd`'s own comment already documents for `--radius-lg`) — so
+// `exactRadiusLg`'s own comment already documents for `--radius-lg`) — so
 // this uses `nearestToken` against `radius.md`'s own real resolved value
 // times 0.6, the same discipline `buildCardPlan`'s own `rounded-xl`
 // handling already established, not a hardcoded guess.
@@ -2835,12 +2854,10 @@ function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): Fi
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusTarget = radiusMdPx * 0.6;
+  const radiusTarget = shadcnRadiusPx(radius, "sm");
   const radiusMatch = nearestToken(radiusTarget, radius, "radius");
   if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Kbd radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 0.6 = ${radiusTarget.toFixed(1)}px).`);
+    notes.push(`Kbd radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.sm = ${radiusTarget.toFixed(1)}px).`);
   }
 
   const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize");
@@ -2918,7 +2935,7 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius);
+  const radiusMatch = exactRadiusLg(radius);
   const paddingHMatch = nearestToken(10, spacing, "spacing"); // pl-2.5 — same real target as Input's own horizontal padding
   const paddingVMatch = nearestToken(4, spacing, "spacing"); // py-1
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
@@ -2967,11 +2984,6 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
     if (realHover.length === 0) {
       const darkHover = classMatch[1].split(/\s+/).filter((c) => /^dark:.*hover:/.test(c));
       nsDisclosures.push(`States: the real NativeSelect has no plain hover: class${darkHover.length > 0 ? ` (its only hover class is ${darkHover.join(" ")}, which is dark mode only)` : ""}, so Hover is built identical to Default so every Variant and Size still has the same State values. There is no Pressed state.`);
-    }
-    // The shared ring-limit line speaks of the Focus ring; Invalid has a real ring too.
-    const invalidRingHidden = variants.filter((v) => !v.fillVariable && (v.states ?? []).some((st) => st.name === "Invalid" && st.focusRing && !st.fillVariable)).map((v) => v.name);
-    if (invalidRingHidden.length > 0) {
-      nsDisclosures.push(`States: the same limit applies to the Invalid ring (the real aria-invalid:ring-3 ring-destructive/20): it is set correctly on the frame but does NOT show in Figma on ${invalidRingHidden.join(", ")} (no fill at rest), so Invalid shows only as the red (status/error) border.`);
     }
     nsDisclosures.push("States: the chevron icon is not modeled in any state, as for the rest look (this Figma NativeSelect is the box with its selected text only).");
     const otherUnmodeled = classMatch[1].split(/\s+/).filter((c) => ["transition-colors", "outline-none"].includes(c));
@@ -3103,7 +3115,7 @@ function buildNativeSelectSizeAxis(
 // (not derived from `--radius` via any `calc()` formula the way
 // `rounded-lg`/`rounded-sm`/`rounded-xl` are) — so this binds directly,
 // the same "guaranteed real alias, never a nearest-guess" treatment
-// `exactRadiusMd` already established for `rounded-lg`.
+// `exactRadiusLg` already established for `rounded-lg`.
 function exactRadiusFull(radius: Record<string, number>): { figmaName: string; deltaPx: number } {
   if (radius["full"] === undefined) throw new Error("radius.json has no 'full' entry — was css/tokens.css written by this pipeline's `generate`?");
   return { figmaName: "radius/full", deltaPx: 0 };
@@ -3442,7 +3454,7 @@ function buildLabelStates(
 // is always read from the component's own real class list. Not a claim
 // that Skeleton has a real default size; it doesn't. `radiusVariable`
 // still comes from a real class (`rounded-md`): unlike `rounded-lg`'s
-// direct 1:1 alias (`exactRadiusMd`) or `rounded-xl`'s ×1.4 multiplier
+// direct 1:1 alias (`exactRadiusLg`) or `rounded-xl`'s ×1.4 multiplier
 // (Card), shadcn's real `@theme inline` maps `--radius-md: calc(var(
 // --radius) * 0.8)` — confirmed against this same vendored project's
 // real compiled `globals.css` — so this uses `nearestToken` against
@@ -3456,12 +3468,10 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusTarget = radiusMdPx * 0.8;
+  const radiusTarget = shadcnRadiusPx(radius, "md");
   const radiusMatch = nearestToken(radiusTarget, radius, "radius");
   if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Skeleton radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 0.8 = ${radiusTarget.toFixed(1)}px).`);
+    notes.push(`Skeleton radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md = ${radiusTarget.toFixed(1)}px).`);
   }
 
   // Representative placeholder size — see this function's own comment
@@ -3716,12 +3726,10 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusTarget = radiusMdPx * 1.4;
+  const radiusTarget = shadcnRadiusPx(radius, "xl");
   const radiusMatch = nearestToken(radiusTarget, radius, "radius");
   if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Empty radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md × 1.4 = ${radiusTarget.toFixed(1)}px) — same real rounded-xl formula as Card's own radius.`);
+    notes.push(`Empty radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.xl = ${radiusTarget.toFixed(1)}px) — same real rounded-xl formula as Card's own radius.`);
   }
 
   const paddingHMatch = nearestToken(24, spacing, "spacing"); // real p-6, the only horizontal inset Empty actually has (neither section carries its own)
@@ -4295,7 +4303,7 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
 //
 // Real, load-bearing finding this batch exists to confirm: `rounded-lg`
 // is `item.tsx`'s own real base-class radius, exactly like Toggle/Badge/
-// Input/Textarea/Card before it — bound via `exactRadiusMd`, a real EXACT
+// Input/Textarea/Card before it — bound via `exactRadiusLg`, a real EXACT
 // alias to `radius.md` (see that function's own comment for the 2px
 // mismatch bug this discipline already caught once), never a `nearestToken`
 // guess against a hardcoded target.
@@ -4325,7 +4333,7 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius); // real rounded-lg -> a real EXACT alias to radius.md, not a nearest-value guess — see this function's own comment
+  const radiusMatch = exactRadiusLg(radius); // real rounded-lg -> a real EXACT alias to radius.md, not a nearest-value guess — see this function's own comment
   const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
   const paddingVMatch = nearestToken(10, spacing, "spacing"); // real py-2.5
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // ItemTitle/ItemDescription's real text-sm, shared
@@ -4876,9 +4884,7 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
   // MULTIPLIER (not a direct alias) already documented at buildCardPlan's
   // own comment (`--radius-xl: calc(var(--radius) * 1.4)`), computed from
   // radius.md's own real resolved value, not a hardcoded guess.
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusTarget = radiusMdPx * 1.4;
+  const radiusTarget = shadcnRadiusPx(radius, "xl");
   const radiusMatch = nearestToken(radiusTarget, radius, "radius");
   const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
   const paddingVMatch = nearestToken(8, spacing, "spacing"); // real py-2
@@ -4999,15 +5005,15 @@ function buildProgressPlan(tokensCss: string, progressSource: string, notes: str
 // (this pipeline's own `radius.md`), the exact same category of formula
 // already established for Bubble's own `rounded-xl` (`* 1.4`, see
 // `buildBubblePlan`'s own comment) and Card's `rounded-xl` — never a
-// direct alias the way `rounded-lg` is (`exactRadiusMd`, `* 1.0`). Every
+// direct alias the way `rounded-lg` is (`exactRadiusLg`, `* 1.0`). Every
 // `rounded-md` class in this file before Batch 12 (Tabs' own
 // TabsTrigger, Tooltip's own TooltipContent) is new territory — no
 // earlier component used `rounded-md` specifically, only `rounded-lg`
 // (exact alias) and `rounded-xl` (a different multiplier, 1.4×). Kept as
-// an inline `nearestToken(radiusMdPx * 0.8, ...)` call at each of the two
+// an inline `nearestToken(shadcnRadiusPx(radius, "md"), ...)` call at each of the two
 // real call sites rather than a third named `exactRadius*` helper — this
 // IS a `nearestToken` search (the multiplier only changes the TARGET fed
-// into it, unlike `exactRadiusMd`'s genuinely-exact, delta-always-0
+// into it, unlike `exactRadiusLg`'s genuinely-exact, delta-always-0
 // alias) — extracting a one-line arithmetic expression into its own
 // function would add a name to track without saving anything real.
 
@@ -5215,9 +5221,7 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusMatch = nearestToken(radiusMdPx * 0.8, radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
+  const radiusMatch = nearestToken(shadcnRadiusPx(radius, "md"), radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
   const paddingHMatch = nearestToken(6, spacing, "spacing"); // real px-1.5
   const paddingVMatch = nearestToken(2, spacing, "spacing"); // real py-0.5
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
@@ -5316,8 +5320,9 @@ function buildTabsStates(
     }
   }
 
-  // Ring limit: a Figma drop shadow is only drawn for a frame that has a fill.
-  disclosures.push("States: the Focus ring is set on every Focus frame but shows in Figma only where the tab has a fill: the Default style's Active tab (background/primary). It does NOT show on the Inactive tab (no fill) in either style, nor on the Line style's Active tab (its fill is dropped), so those Focus frames show only the border.");
+  // Ring on fill-less tabs: the Inactive tab (both styles) and the Line style's Active tab have no fill at rest; the
+  // push gives them the invisible ring fill (2026-10-14), see FILL_LESS_RING_DISCLOSURE.
+  disclosures.push("States: the same applies to the Line style's Active tab (its fill is dropped, so it has no fill at rest either): it carries the same invisible ring fill, so the Focus ring shows on every Focus frame of both styles.");
 
   // The Line style's Active bar: the state border replaces it while focused.
   const barVariants = variants.filter((v) => extraAxes.some((axis) => axis.options.some((o) => o.overrides.variantOverrides?.[v.name]?.strokeSides === "bottom")));
@@ -5359,7 +5364,7 @@ function buildTabsStates(
 // for Label/Marker) and NO horizontal padding class at all — genuinely
 // zero, not a gap, the same "computed via nearestToken(0, ...), not a
 // hardcoded literal" discipline Label/Marker's own zero targets already
-// established. `rounded-lg` binds via `exactRadiusMd` (a real EXACT
+// established. `rounded-lg` binds via `exactRadiusLg` (a real EXACT
 // alias, delta always 0) — the same, already-proven pattern Toggle/Badge/
 // Input/Textarea/Card/Item all share, not the NEW `rounded-md` multiplier
 // Tabs/Tooltip need.
@@ -5400,7 +5405,7 @@ function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: s
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusMd(radius); // real rounded-lg -> a real EXACT alias to radius.md, same discipline as Item/Toggle/Badge/Card
+  const radiusMatch = exactRadiusLg(radius); // real rounded-lg -> a real EXACT alias to radius.md, same discipline as Item/Toggle/Badge/Card
   const paddingHMatch = nearestToken(0, spacing, "spacing"); // genuinely no horizontal padding class of its own — see this function's own comment
   const paddingVMatch = nearestToken(10, spacing, "spacing"); // real py-2.5
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
@@ -5529,9 +5534,7 @@ function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: strin
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusMatch = nearestToken(radiusMdPx * 0.8, radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
+  const radiusMatch = nearestToken(shadcnRadiusPx(radius, "md"), radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
   const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
   const paddingVMatch = nearestToken(6, spacing, "spacing"); // real py-1.5
   const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize"); // real text-xs
@@ -5624,12 +5627,6 @@ function buildCheckableControlStates(
     }
   }
 
-  // The Invalid ring has the same Figma limit as the Focus ring: Unchecked has no
-  // fill at rest, so a drop shadow is not drawn for it.
-  const invalidRingHidden = variants.filter((v) => !v.fillVariable && (v.states ?? []).some((st) => st.name === "Invalid" && st.focusRing && !st.fillVariable)).map((v) => v.name);
-  if (invalidRingHidden.length > 0) {
-    disclosures.push(`States: the same limit applies to the Invalid ring (the real aria-invalid:ring-3 ring-destructive/20): it is set correctly on the frame but does NOT show in Figma on ${invalidRingHidden.join(", ")} (no fill at rest), so Invalid shows only as the red (status/error) border. On Checked the ring does show, but the border stays primary.`);
-  }
 
   const fieldContext = allClasses.filter((c) => c.startsWith("group-has-"));
   if (fieldContext.length > 0) {
@@ -5677,7 +5674,7 @@ function buildCheckableControlStates(
 // Real, genuinely new radius finding: `rounded-[4px]` is an ARBITRARY
 // bracket-value class with a literal pixel number — not a named Tailwind
 // radius utility (`rounded-md`/`rounded-lg`/etc.), so none of this file's
-// existing radius helpers (`exactRadiusMd`, the `* 0.8`/`* 1.4`
+// existing radius helpers (`exactRadiusLg`, the `* 0.8`/`* 1.4`
 // multiplier pattern) apply. Extracted via a new, local, one-off regex
 // (`/rounded-\[(\d+(?:\.\d+)?)px\]/`) feeding the literal `4` straight
 // into the existing `nearestToken` — real, confirmed to land EXACTLY on
@@ -5985,7 +5982,7 @@ function buildSwitchStates(switchSource: string, variants: FigmaComponentVariant
       ? `States: Focus (focus-visible:border-ring) and Invalid (aria-invalid:border-destructive) draw the real 1px border (the rest border is the invisible border-transparent) as a 1px stroke inside the track edge, colored border/focus and status/error. Compiling the real classes with the project's Tailwind confirms the state border classes come after border-transparent in the CSS, so they win. The Checked and Unchecked classes (${trackFillClasses.join(" ")}) set only the track fill, never a border, so nothing competes and Focus and Invalid look the same on Checked and Unchecked (unlike Checkbox, whose checked border wins).`
       : `States: Focus and Invalid draw the real 1px border as a 1px stroke inside the track edge. The real ${competing.join(" ")} class(es) also set something other than the track fill and are not modeled, so Checked and Unchecked read the state border the same way.`,
   );
-  disclosures.push("States: the track has a fill at rest (border/default when Unchecked, action/primary when Checked), so the Focus and Invalid rings DO show in Figma on every Switch, unlike the fill-less Input/Checkbox cases.");
+  disclosures.push("States: the track has a fill at rest (border/default when Unchecked, action/primary when Checked), so the Focus and Invalid rings show in Figma on every Switch with no extra fill needed.");
   disclosures.push("States: the thumb looks the same in every state; the real source has no non-dark state classes for it.");
   disclosures.push("States: on Checked, the Focus border (border/focus) is drawn over the action/primary track (and the Invalid border, status/error, the same way). In a project whose focus or error colour is close to its primary colour the border is hard to tell apart from the track, so there the ring carries the state.");
 
@@ -6160,9 +6157,7 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMdPx = radius["md"];
-  if (radiusMdPx === undefined) throw new Error("radius.json has no 'md' entry — was css/tokens.css written by this pipeline's `generate`?");
-  const radiusMatch = nearestToken(radiusMdPx * 1.4, radius, "radius"); // real rounded-xl, same * 1.4 multiplier already established for Card/Bubble
+  const radiusMatch = nearestToken(shadcnRadiusPx(radius, "xl"), radius, "radius"); // real rounded-xl, same * 1.4 multiplier already established for Card/Bubble
   const paddingHMatch = nearestToken(10, spacing, "spacing"); // real has-data-[slot=attachment-content]:px-2.5 ("default" size)
   const paddingVMatch = nearestToken(8, spacing, "spacing"); // real has-data-[slot=attachment-content]:py-2 ("default" size)
   const titleFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm ("default" size)
@@ -6355,7 +6350,7 @@ function buildAttachmentAxes(
       const titleMatch = nearestToken(tailwindClassPx(textClass) as number, fontSize, "typography/primitive/fontSize");
       const roundedClass = classes.find((cls) => cls.startsWith("rounded-"));
       let radiusMatch = baseRadius;
-      if (roundedClass === "rounded-lg") radiusMatch = exactRadiusMd(radius);
+      if (roundedClass === "rounded-lg") radiusMatch = exactRadiusLg(radius);
       else if (roundedClass && roundedClass !== "rounded-xl") {
         disclosures.push(`Size ${label}: radius class ${roundedClass} isn't one this builder understands, so the base rounded-xl radius is kept.`);
       }

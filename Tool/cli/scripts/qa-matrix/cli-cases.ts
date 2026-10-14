@@ -19,12 +19,14 @@ import { dirname, join } from "node:path";
 import type { CaseRunResult, CheckResult } from "./types.ts";
 import { verdictFromChecks } from "./types.ts";
 import { buildFigmaComponentsPushPlan } from "../../src/scaffold/figma-components-plan.ts";
+import { buildFigmaPushPlan } from "../../src/promote/figma-plan.ts";
+import { buildSnapshotFromLive, computeFigmaPull, SNAPSHOT_FILE, type FigmaPullInput } from "../../src/promote/figma-pull.ts";
 
 const CLI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CLI_ENTRY = join(CLI_ROOT, "src", "cli.ts");
 const EXAMPLE_CONFIG = join(CLI_ROOT, "examples", "sample-seed-config.json");
 
-export const CLI_CASE_IDS = ["CLI-1", "CLI-2", "CLI-3", "CLI-4", "CLI-5", "CLI-6"];
+export const CLI_CASE_IDS = ["CLI-1", "CLI-2", "CLI-3", "CLI-4", "CLI-5", "CLI-6", "CLI-7"];
 
 interface RunResult {
   status: number;
@@ -207,12 +209,54 @@ function caseCli6(): CaseRunResult {
   return makeResult("CLI-6", commands, checks, Date.now() - start);
 }
 
+// CLI-7 — figma-pull float32 noise (fixed 2026-10-14). Figma returns 0.05 as 0.0500000007; the exact `===` comparison
+// then reported phantom changes. Numbers from Figma are now rounded to 2 decimals on both sides of every comparison.
+// Uses promote's real output for a real number variable (not a hand-made fixture): a noisy-but-unchanged live value must
+// produce ZERO changes (also against an old, noisy baseline), and a real edit must come back as a clean 2-decimal value.
+function caseCli7(): CaseRunResult {
+  const start = Date.now();
+  const tmp = mkdtempSync(join(tmpdir(), "sdsgt-qa-"));
+  const checks: CheckResult[] = [];
+  const commands = [`node src/cli.ts promote --config ${EXAMPLE_CONFIG}`, "computeFigmaPull (in-process)"];
+  try {
+    const r = runCli(["promote", "--config", EXAMPLE_CONFIG], tmp);
+    expect(checks, "promote exits with code 0", r.status === 0, "0", String(r.status), r.stderr.slice(0, 300));
+    const tokensDir = join(tmp, "out", "DTCG Token spec (non-consumables)");
+    const plan = buildFigmaPushPlan(tokensDir);
+    const target = plan.variables.find((v) => v.type === "FLOAT" && !v.aliasByMode && Object.values(v.valuesByMode).every((x) => typeof x === "number" && Math.abs(x - Math.round(x * 100) / 100) < 1e-9 && x !== 0));
+    expect(checks, "found a plain number variable to test with", target !== undefined, "a FLOAT variable", "none");
+    if (target) {
+      const mode = Object.keys(target.valuesByMode)[0];
+      const clean = target.valuesByMode[mode] as number;
+      const noisy = Math.fround(clean) + (Math.fround(clean) === clean ? 1e-9 : 0); // what a float32 round trip looks like
+      const mk = (value: number): FigmaPullInput => ({ variables: [{ figmaName: target.figmaName, mode, value }] });
+      const snapPath = join(tokensDir, SNAPSHOT_FILE);
+      writeFileSync(snapPath, `${JSON.stringify(buildSnapshotFromLive(mk(clean)), null, 2)}\n`, "utf-8");
+      const same = computeFigmaPull(tokensDir, mk(noisy));
+      expect(checks, "noisy but unchanged live value reports no change", same.changes.length === 0, "0 changes", `${same.changes.length} changes`);
+      writeFileSync(snapPath, `${JSON.stringify({ variables: { [target.figmaName]: { [mode]: noisy } }, textStyles: {}, effectStyles: {} }, null, 2)}\n`, "utf-8");
+      const oldBaseline = computeFigmaPull(tokensDir, mk(clean));
+      expect(checks, "an old noisy baseline compares equal to the clean live value", oldBaseline.changes.length === 0, "0 changes", `${oldBaseline.changes.length} changes`);
+      writeFileSync(snapPath, `${JSON.stringify(buildSnapshotFromLive(mk(clean)), null, 2)}\n`, "utf-8");
+      const edited = computeFigmaPull(tokensDir, mk(Math.fround(clean + 0.07)));
+      const written = edited.changes[0]?.newValue;
+      expect(checks, "a real edit is reported once with a clean 2-decimal value", edited.changes.length === 1 && typeof written !== "undefined" && String(written).replace(/px$/, "") === String(Math.round((clean + 0.07) * 100) / 100), "one change, clean value", JSON.stringify(edited.changes));
+    }
+  } catch (err) {
+    expect(checks, "case ran without throwing", false, "no error", err instanceof Error ? err.message : String(err));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  return makeResult("CLI-7", commands, checks, Date.now() - start);
+}
+
 export function runCliCases(ids: string[]): CaseRunResult[] {
   const results: CaseRunResult[] = [];
   if (ids.includes("CLI-1")) results.push(caseCli1());
   if (ids.includes("CLI-2")) results.push(caseCli2());
   if (ids.includes("CLI-3")) results.push(caseCli3());
   if (ids.includes("CLI-6")) results.push(caseCli6());
+  if (ids.includes("CLI-7")) results.push(caseCli7());
   if (ids.includes("CLI-4") || ids.includes("CLI-5")) {
     const [c4, c5] = caseCli4And5();
     if (ids.includes("CLI-4")) results.push(c4);

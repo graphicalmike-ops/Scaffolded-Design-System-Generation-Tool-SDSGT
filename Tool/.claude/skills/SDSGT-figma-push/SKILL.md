@@ -1156,7 +1156,7 @@ used to (incorrectly) imply was close enough for Badge.
   UNDERLINE, Destructive Hover status/error-bg + status/error, Destructive Focus
   identical to rest, `strokesIncludedInLayout` false on state-added strokes,
   Focus/Invalid widths unchanged). **LIVE FINDING (applies to any component with
-  a Focus ring): Figma draws a drop shadow only for a frame that HAS a fill.** On a
+  a Focus ring): Figma draws a drop shadow only for a frame that HAS a fill. (SUPERSEDED 2026-10-14: `showShadowBehindNode: false` plus a 0.0001-opacity white fill makes the ring draw on fill-less frames too, see the ring block in step 3; the older "does not render" statements below describe what was true before that fix.)** On a
   fill-less frame (Toggle Default/Outline, Badge Outline/Ghost/Link, and Button's
   Ghost/Link) the ring effect is set correctly but nothing renders, even with a
   stroke and `showShadowBehindNode`; a fill with ANY transparency instead draws the
@@ -1808,6 +1808,10 @@ For each item in `plan.components`, in order:
      assign) keeps the binding AND the alpha: a 0.5-alpha bound ring renders as a
      50% band in a screenshot. So the literal-alpha fallback (and its extra
      disclosure) is NOT needed; the ring colour stays variable-bound.
+     (4) *Ring on a fill-less frame (live 2026-10-14, "SDSGT test file", main components AND instances):* no fill, a fill at
+     opacity 0 and a hidden fill draw no ring; a 1% fill with the default settings lets the shadow fill the whole box;
+     `showShadowBehindNode: false` + white at 0.0001 (also 0.004/0.002/0.01 tested) draws a clean ring band with a transparent
+     inside. The ring block in step 3 does this. The existing 125 ring frames (64 fill-less) were patched in place, bindings kept.
      (3) *`strokesIncludedInLayout = false`:* works. A 66x28 hugging frame grows to
      68x30 with a 1px stroke and stays 66x28 with the flag, in either order.
      **Chunking (measured live 2026-10-09).** Chunk by whole Size x State rows
@@ -2000,7 +2004,16 @@ For each item in `plan.components`, in order:
      const ring = variantItem.focusRing;
      const ringEffect = { type: "DROP_SHADOW", color: { r: 0, g: 0, b: 0, a: ring.opacity }, offset: { x: 0, y: 0 }, radius: 0, spread: ring.widthPx, visible: true, blendMode: "NORMAL" };
      frame.effects = [figma.variables.setBoundVariableForEffect(ringEffect, "color", getVar(ring.colorVariable))];
-     const fx = JSON.parse(JSON.stringify(frame.effects)); fx[0].spread = ring.widthPx; fx[0].color.a = ring.opacity; frame.effects = fx;
+     const fx = JSON.parse(JSON.stringify(frame.effects)); fx[0].spread = ring.widthPx; fx[0].color.a = ring.opacity;
+     // RING ON FILL-LESS FRAMES (proven live 2026-10-14, main component AND instances): Figma draws no drop shadow for a
+     // frame with no fill / a 0-opacity fill / a hidden fill, and a tiny-opacity fill lets the shadow show through the whole
+     // box. `showShadowBehindNode: false` + a near-invisible fill (white at 0.0001 = 0.01%) draws a clean ring band with the
+     // inside left transparent. The fill is added ONLY where the frame has no visible fill; the frame must also clip content
+     // (already set by this step's frame setup).
+     fx[0].showShadowBehindNode = false;
+     frame.effects = fx;
+     const hasVisibleFill = frame.fills !== figma.mixed && frame.fills.some(f => f.visible !== false && (f.opacity === undefined || f.opacity > 0));
+     if (!hasVisibleFill) frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, opacity: 0.0001 }];
    }
    ```
    **Icon child — only when `variant.icon` is present** (Checkbox's own

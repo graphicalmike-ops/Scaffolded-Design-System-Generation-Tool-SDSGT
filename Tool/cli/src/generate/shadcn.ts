@@ -261,7 +261,15 @@ export function generateShadcn(tokensDir: string, outDir: string): GenerateResul
     const { color: semanticRoot } = readJson<SemanticFile>(join(tokensDir, LIGHT_FILE));
     rootVars.push(...resolveShadcnVars(semanticRoot.semantic, primitives).map(({ cssVar, hex }) => `  ${cssVar}: ${hex};`));
   }
-  rootVars.push(`  --radius: ${radius.md.$value};`);
+  // Radius (bug 3, fixed 2026-10-14). shadcn derives its whole scale from this ONE variable
+  // (`--radius-sm: calc(var(--radius) * 0.6)`, md 0.8, lg 1.0, xl 1.4, 2xl 1.8, 3xl 2.2, 4xl 2.6, declared in
+  // its own `@theme inline` block), so binding only `--radius` to `radius.md` made `rounded-lg` equal radius.md
+  // and `rounded-xl` only 1.4x of it (8.4px against a 16px radius.xl token with the bootstrap preset): the
+  // vendored components never matched the project's own radius scale. Now each Tailwind class binds to the token
+  // of the SAME NAME in a real `@theme` block below (sm, md, lg, xl; 2xl/3xl/4xl have no token of their own and
+  // cap at xl), and `--radius` itself is radius.lg, since shadcn's own `--radius-lg` is `var(--radius)` and some
+  // component classes use `var(--radius)` directly.
+  rootVars.push(`  --radius: ${(radius.lg ?? radius.md).$value};`);
   // Only emitted when the resolved spacing preset is genuinely linear — see
   // computeLinearSpacingConstant in tailwind.ts and this file's own header.
   // A non-linear preset (currently just "bootstrap") gets the named-per-key
@@ -341,7 +349,12 @@ export function generateShadcn(tokensDir: string, outDir: string): GenerateResul
   // header comment) — Tailwind only scans for new utility-generating theme
   // keys inside an actual @theme block, so both share it rather than
   // emitting two separate blocks for no reason.
-  const themeBlockVars = [...spacingThemeVars, ...shadowThemeVars];
+  const RADIUS_CLASS_TO_TOKEN: Array<[string, string]> = [["sm", "sm"], ["md", "md"], ["lg", "lg"], ["xl", "xl"], ["2xl", "xl"], ["3xl", "xl"], ["4xl", "xl"]];
+  const radiusThemeVars = RADIUS_CLASS_TO_TOKEN.flatMap(([cls, tokenKey]) => {
+    const token = (radius as Record<string, { $value: string } | undefined>)[tokenKey];
+    return token ? [`  --radius-${cls}: ${token.$value};`] : [];
+  });
+  const themeBlockVars = [...radiusThemeVars, ...spacingThemeVars, ...shadowThemeVars];
   if (themeBlockVars.length > 0) {
     blocks.push(["@theme {", ...themeBlockVars, "}"].join("\n"));
   }

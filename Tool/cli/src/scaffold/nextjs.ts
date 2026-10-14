@@ -84,6 +84,7 @@ import {
   guardedBlockReplace,
   SDSGT_BLOCK_START,
   SDSGT_BLOCK_END,
+  ensureThemeImports,
 } from "../shared/scaffold-common.ts";
 import { buildFigmaComponentsPushPlan } from "./figma-components-plan.ts";
 
@@ -466,7 +467,7 @@ export function scaffoldNextjs(opts: ScaffoldNextjsOptions): ScaffoldResult {
     // needs this reapplied too, same as vuejs.ts's own equivalent fix.
     // Naturally idempotent — see patchFontFamilyVars's own comment.
     const globalsPath = join(appDir, "globals.css");
-    writeFileSync(globalsPath, patchFontFamilyVars(readFileSync(globalsPath, "utf-8"), families), "utf-8");
+    writeFileSync(globalsPath, ensureThemeImports(patchFontFamilyVars(readFileSync(globalsPath, "utf-8"), families), hasDark), "utf-8");
 
     // Guarded so a hand-edited override block isn't silently clobbered on
     // `update` — the block itself (not shadcn's own untouched defaults

@@ -63,6 +63,7 @@ import {
   SDSGT_BLOCK_END,
   SDSGT_FONT_BLOCK_START,
   SDSGT_FONT_BLOCK_END,
+  ensureThemeImports,
 } from "../shared/scaffold-common.ts";
 
 export interface ScaffoldVuejsOptions {
@@ -515,6 +516,16 @@ export function scaffoldVuejs(opts: ScaffoldVuejsOptions): ScaffoldResult {
   const { css: fontFaceCss, filesWritten: fontFiles } = buildFontFaces(families, fontsDir, join(outDir, "public", "fonts"));
   filesWritten.push(...fontFiles);
 
+  // The three Tailwind theme files are copied on BOTH paths (the shadcn branch used to skip them, so the semantic
+  // colour/type/spacing/radius tokens never reached Tailwind: same gap as nextjs.ts's, found 2026-10-08, fixed
+  // 2026-10-14). The shadcn branch imports them below via ensureThemeImports.
+  guarded(join("src", "assets", "theme.css"), readFileSync(themeCssPath));
+  guarded(join("src", "assets", "theme-light.css"), readFileSync(themeLightPath));
+  const hasDark = existsSync(themeDarkPath);
+  if (hasDark) {
+    guarded(join("src", "assets", "theme-dark.css"), readFileSync(themeDarkPath));
+  }
+
   if (componentLibrary === "shadcn") {
     if (!update) {
       // shadcn-vue's own init validates that Tailwind v4 is ALREADY working
@@ -546,7 +557,7 @@ export function scaffoldVuejs(opts: ScaffoldVuejsOptions): ScaffoldResult {
     // theme-override block below) so a changed font is a real block
     // REPLACE, not an append next to old, now-orphaned rules.
     const mainCssPath = join(assetsDir, "main.css");
-    let mainCss = patchShadcnDefaultFontVars(stripDefaultGoogleFontsImport(readFileSync(mainCssPath, "utf-8")), families);
+    let mainCss = ensureThemeImports(patchShadcnDefaultFontVars(stripDefaultGoogleFontsImport(readFileSync(mainCssPath, "utf-8")), families), hasDark);
 
     if (fontFaceCss) {
       const fontBlock = buildShadcnFontFaceBlock(fontFaceCss);
@@ -578,12 +589,6 @@ export function scaffoldVuejs(opts: ScaffoldVuejsOptions): ScaffoldResult {
 
     writeFileSync(mainCssPath, mainCss, "utf-8");
   } else {
-    guarded(join("src", "assets", "theme.css"), readFileSync(themeCssPath));
-    guarded(join("src", "assets", "theme-light.css"), readFileSync(themeLightPath));
-    const hasDark = existsSync(themeDarkPath);
-    if (hasDark) {
-      guarded(join("src", "assets", "theme-dark.css"), readFileSync(themeDarkPath));
-    }
     guarded(join("src", "assets", "main.css"), buildMainCss({ hasDark, fontFaceCss }));
   }
 

@@ -188,6 +188,18 @@ function injectBaseSpacingVar(themeCssPath: string, constantPx: number): void {
   writeFileSync(themeCssPath, withBaseVar, "utf-8");
 }
 
+// Tailwind v4 reads the `--opacity-*` theme namespace as PERCENTAGES. This pipeline's opacity tokens are unitless
+// 0-1 numbers (`--opacity-10: 0.1`), which Tailwind pastes straight into `color-mix()` for every colour-opacity
+// class: `bg-primary/10` becomes `color-mix(in srgb, <color> 0.1, transparent)`, invalid CSS (a mix amount needs a
+// `%`), so the browser drops the declaration and the class silently has no effect (real, verified with Tailwind's own
+// compiler 2026-10-14; it also hit every vendored shadcn/ui component using `bg-x/10` or `ring-foreground/10`).
+// Written as percentages in THIS file only (`--opacity-10: 10%`), the same classes compile to valid CSS and
+// `opacity-10` still works (`opacity: 10%` is legal CSS). The unitless 0-1 values stay as they are in the plain CSS
+// platform's tokens.css and the DTCG spec (DTCG `number`). Idempotent: an already-percent line is left alone.
+export function opacityLinesToPercent(css: string): string {
+  return css.replace(/^(\s*--opacity-[\w-]+:\s*)(-?\d*\.?\d+);/gm, (_match, head: string, num: string) => `${head}${+(parseFloat(num) * 100).toFixed(4)}%;`);
+}
+
 async function buildTailwindPlatform(source: string[], buildPath: string, files: FileConfig[]): Promise<void> {
   const sd = new StyleDictionary({
     source,
@@ -278,6 +290,10 @@ export async function generateTailwindTheme(tokensDir: string, outDir: string): 
   const themeCssPath = join(buildPath, "theme.css");
   if (constant !== null && existsSync(themeCssPath)) {
     injectBaseSpacingVar(themeCssPath, constant);
+  }
+  // opacity.json is mode-independent, so it also always lands in theme.css (see above).
+  if (existsSync(themeCssPath)) {
+    writeFileSync(themeCssPath, opacityLinesToPercent(readFileSync(themeCssPath, "utf-8")), "utf-8");
   }
 
   return { filesWritten, spacingBaseVar: { applied: constant !== null, constantPx: constant } };

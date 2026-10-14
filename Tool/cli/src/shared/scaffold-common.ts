@@ -351,3 +351,21 @@ export function buildFontFaces(
   }
   return { css: rules.join("\n\n"), filesWritten };
 }
+
+// The shadcn path keeps shadcn's OWN globals.css (Next.js) / main.css (Vue) (init/add write it) and appends the SDSGT block to it, but nothing
+// ever imported this pipeline's `theme.css` / `theme-light.css` / `theme-dark.css` there (they were copied into
+// src/app and then unused: the semantic type/colour/spacing/radius tokens never reached Tailwind; found 2026-10-08,
+// fixed 2026-10-14). Adds whichever of those imports are missing, right after the LAST top-level `@import` (CSS
+// requires every @import to precede all other rules), or at the very top if the file has none. Idempotent, so it is
+// safe on every scaffold and every `--update`; a hand-added import (single or double quotes) is respected.
+export function ensureThemeImports(globalsCss: string, hasDark: boolean): string {
+  const files = ["theme.css", "theme-light.css", ...(hasDark ? ["theme-dark.css"] : [])];
+  const missing = files.filter((f) => !new RegExp(`@import\\s+(?:url\\()?["']\\./${f.replace(".", "\\.")}["']`).test(globalsCss));
+  if (missing.length === 0) return globalsCss;
+  const lines = missing.map((f) => `@import "./${f}";`).join("\n");
+  const imports = [...globalsCss.matchAll(/^@import\s[^;]*;[ \t]*$/gm)];
+  if (imports.length === 0) return `${lines}\n\n${globalsCss}`;
+  const last = imports[imports.length - 1];
+  const end = (last.index ?? 0) + last[0].length;
+  return `${globalsCss.slice(0, end)}\n${lines}${globalsCss.slice(end)}`;
+}

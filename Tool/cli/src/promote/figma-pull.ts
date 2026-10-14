@@ -228,6 +228,39 @@ function formatShadowLayers(layers: LiveFigmaEffectLayer[]): Array<{ offsetX: st
   return layers.map((l) => ({ offsetX: `${l.offsetX}px`, offsetY: `${l.offsetY}px`, blur: `${l.blur}px`, spread: `${l.spread}px`, color: l.color }));
 }
 
+// Figma stores numbers as 32-bit floats, so a value pushed as 0.05 reads back as 0.0500000007 (found 2026-10-08, Demo
+// run). Exact `===` comparison then reported phantom changes and could write the noisy literal into the token files.
+// Every plain number that comes from Figma (number variables, text-style size fields, shadow offset/blur/spread) is
+// rounded to 2 decimals on BOTH sides of every comparison: the live input, the stored baseline, and the new baseline.
+// No preset value of those kinds needs a third decimal (the only 3-decimal values are shadow colour alphas, which are
+// strings compared by `colorsEqual`'s own 0.001 tolerance and are left untouched).
+export const FLOAT_DECIMALS = 2;
+export function roundFloat(n: number): number {
+  const f = 10 ** FLOAT_DECIMALS;
+  return Math.round((n + Number.EPSILON) * f) / f;
+}
+function roundValue<T extends string | number>(v: T): T {
+  return (typeof v === "number" ? roundFloat(v) : v) as T;
+}
+function roundLayers(layers: LiveFigmaEffectLayer[]): LiveFigmaEffectLayer[] {
+  return layers.map((l) => ({ ...l, offsetX: roundFloat(l.offsetX), offsetY: roundFloat(l.offsetY), blur: roundFloat(l.blur), spread: roundFloat(l.spread) }));
+}
+function roundSnapshot(snap: FigmaSyncSnapshot): FigmaSyncSnapshot {
+  const out = emptySnapshot();
+  for (const [name, modes] of Object.entries(snap.variables)) out.variables[name] = Object.fromEntries(Object.entries(modes).map(([m, v]) => [m, roundValue(v)]));
+  for (const [name, st] of Object.entries(snap.textStyles)) out.textStyles[name] = { ...st, fontWeight: roundFloat(st.fontWeight), fontSize: roundFloat(st.fontSize), lineHeight: roundFloat(st.lineHeight) };
+  for (const [name, layers] of Object.entries(snap.effectStyles)) out.effectStyles[name] = roundLayers(layers);
+  return out;
+}
+function roundInput(input: FigmaPullInput): FigmaPullInput {
+  return {
+    ...input,
+    variables: input.variables.map((v) => ({ ...v, value: roundValue(v.value) })),
+    textStyles: input.textStyles?.map((t) => ({ ...t, fontWeight: roundFloat(t.fontWeight), fontSize: roundFloat(t.fontSize), lineHeight: roundFloat(t.lineHeight) })),
+    effectStyles: input.effectStyles?.map((e) => ({ ...e, layers: roundLayers(e.layers) })),
+  };
+}
+
 function emptySnapshot(): FigmaSyncSnapshot {
   return { variables: {}, textStyles: {}, effectStyles: {} };
 }
@@ -243,7 +276,8 @@ export function writeInitialSnapshot(tokensDir: string, input: FigmaPullInput): 
   return snapshot;
 }
 
-export function computeFigmaPull(tokensDir: string, input: FigmaPullInput): FigmaPullResult {
+export function computeFigmaPull(tokensDir: string, rawInput: FigmaPullInput): FigmaPullResult {
+  const input = roundInput(rawInput);
   const snapshotPath = join(tokensDir, SNAPSHOT_FILE);
   if (!existsSync(snapshotPath)) {
     throw new Error(
@@ -255,7 +289,7 @@ export function computeFigmaPull(tokensDir: string, input: FigmaPullInput): Figm
   // pre-existing project's first pull after this upgrade just treats
   // every style as "new since last sync" instead of erroring out.
   const rawSnapshot = readJsonRaw(snapshotPath);
-  const snapshot: FigmaSyncSnapshot = { variables: rawSnapshot.variables ?? {}, textStyles: rawSnapshot.textStyles ?? {}, effectStyles: rawSnapshot.effectStyles ?? {} };
+  const snapshot: FigmaSyncSnapshot = roundSnapshot({ variables: rawSnapshot.variables ?? {}, textStyles: rawSnapshot.textStyles ?? {}, effectStyles: rawSnapshot.effectStyles ?? {} });
 
   const plan = buildFigmaPushPlan(tokensDir);
   const allVars: FigmaVariablePlanItem[] = [
@@ -422,7 +456,8 @@ export function computeFigmaPull(tokensDir: string, input: FigmaPullInput): Figm
   return { changes, unmapped, updatedSnapshot };
 }
 
-export function buildSnapshotFromLive(input: FigmaPullInput): FigmaSyncSnapshot {
+export function buildSnapshotFromLive(rawInput: FigmaPullInput): FigmaSyncSnapshot {
+  const input = roundInput(rawInput);
   const snapshot = emptySnapshot();
   for (const v of input.variables) {
     if (!snapshot.variables[v.figmaName]) snapshot.variables[v.figmaName] = {};

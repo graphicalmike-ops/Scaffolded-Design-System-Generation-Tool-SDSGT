@@ -207,6 +207,15 @@ export function checkTailwind(tokensDir: string, codeOutDir: string, seed: SeedC
   results.push(bal === 0 ? pass("theme.css braces balanced", "tailwind") : fail("theme.css braces balanced", "tailwind", "0", String(bal)));
 
   const themeProps = extractCssProps(theme);
+  // Bug 2 (fixed 2026-10-14): Tailwind v4 reads the --opacity-* namespace as PERCENTAGES; a unitless 0.1 turns every
+  // colour-opacity class (bg-primary/10) into invalid color-mix() CSS and the class silently does nothing.
+  const opacityEntries = [...themeProps.entries()].filter(([k]) => k.startsWith("opacity-"));
+  const badOpacity = opacityEntries.filter(([, v]) => !/^\d+(\.\d+)?%$/.test(v));
+  results.push(
+    opacityEntries.length > 0 && badOpacity.length === 0
+      ? pass("every --opacity-* in theme.css is a percentage (Tailwind v4 reads that namespace as percentages)", "tailwind")
+      : fail("every --opacity-* in theme.css is a percentage (Tailwind v4 reads that namespace as percentages)", "tailwind", "all N%", badOpacity.map(([k, v]) => `--${k}: ${v}`).join(", ") || "no --opacity-* entries found"),
+  );
   const impossibleKeyFound = [...themeProps.keys()].find((k) => IMPOSSIBLE_POST_RELABEL_KEY.test(k));
   results.push(
     impossibleKeyFound
@@ -722,6 +731,28 @@ export function checkShadcn(tokensDir: string, codeOutDir: string, seed: SeedCon
       ? pass("--radius present in :root", "shadcn")
       : fail("--radius present in :root", "shadcn", "present", "missing"),
   );
+
+  // Bug 3 (fixed 2026-10-14): every Tailwind radius class binds to the radius token of the SAME NAME (sm, md, lg, xl;
+  // 2xl/3xl/4xl cap at xl) and --radius is radius.lg, so vendored shadcn components land on the project's own scale.
+  try {
+    const radiusTokens = (JSON.parse(readFileSync(join(tokensDir, "radius.json"), "utf-8")) as { radius: Record<string, { $value: string }> }).radius;
+    const allProps = extractCssProps(css);
+    const expectedRadius: Array<[string, string | undefined]> = [
+      ["radius", radiusTokens.lg?.$value ?? radiusTokens.md?.$value],
+      ["radius-sm", radiusTokens.sm?.$value], ["radius-md", radiusTokens.md?.$value], ["radius-lg", radiusTokens.lg?.$value], ["radius-xl", radiusTokens.xl?.$value],
+      ["radius-2xl", radiusTokens.xl?.$value], ["radius-3xl", radiusTokens.xl?.$value], ["radius-4xl", radiusTokens.xl?.$value],
+    ];
+    for (const [key, want] of expectedRadius) {
+      if (want === undefined) continue;
+      results.push(
+        allProps.get(key) === want
+          ? pass(`--${key} is the same-named radius token (${want})`, "shadcn")
+          : fail(`--${key} is the same-named radius token`, "shadcn", want, String(allProps.get(key))),
+      );
+    }
+  } catch (e) {
+    results.push(fail("radius.json readable for the radius-by-name check", "shadcn", "readable", e instanceof Error ? e.message : String(e)));
+  }
 
   // :root only carries color values when a light mode exists (see
   // generate/shadcn.ts's file header) — a dark-only project's :root
