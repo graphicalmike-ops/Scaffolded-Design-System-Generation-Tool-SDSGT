@@ -240,6 +240,9 @@
 // `buildFigmaComponentsPushPlanWithSources` returns the plan plus `figma-components-sources.json`'s
 // content: one record per variable binding the SDSGT-figma-push replay applies, per Figma variant
 // combination. Check with `scripts/check-components-sources.ts`.
+// Step 1b (2026-10-15): every value with a class origin is READ from that class (`tokenFromClass`,
+// `colorFromClass`), so a pull's class edit is picked up by the next push. Check with
+// `scripts/check-components-roundtrip.ts`.
 //
 // The shadcn CSS-var -> SDSGT semantic path table below is the exact
 // mapping contracts-and-seeds.md's "shadcn/ui theming" section documents
@@ -1067,7 +1070,8 @@ function tailwindClassPx(cls: string): number | null {
 // that minimum IS radius.md, which stays the exact alias rather than
 // risking a different token that happens to share the value.
 function resolveRadiusClass(cls: string, radius: Record<string, number>): { figmaName: string; deltaPx: number } | null {
-  if (cls === "rounded-lg") return exactRadiusLg(radius);
+  // Step 1b: every named radius class maps by name (was `rounded-lg` only).
+  if (CLASS_KIND_PATTERN.radius.test(cls)) return radiusClassToken(cls, radius);
   const m = cls.match(/^rounded-\[min\(var\(--radius-md\),(\d+(?:\.\d+)?)px\)\]$/);
   if (!m) return null;
   const md = exactRadiusStep(radius, "md"); // `--radius-md` is radius.md under the by-name mapping
@@ -1081,6 +1085,99 @@ function resolveRadiusClass(cls: string, radius: Record<string, number>): { figm
 function radiusSnapOf(cls: string, match: { figmaName: string }, radius: Record<string, number>): { classPx: number; tokenPx: number } | undefined {
   const m = cls.match(/^rounded-\[min\(var\(--radius-md\),(\d+(?:\.\d+)?)px\)\]$/);
   return m ? snapOf(Math.min(radius["md"], parseFloat(m[1])), match, radius) : undefined;
+}
+
+// Component pull, step 1b (2026-10-15): read a value from the class of a given KIND in a real
+// class string ("the px-* class in Badge's cva base"), instead of from a class name and px number
+// typed into the builder. A pull that rewrites `px-2` to `px-3` in the code is then picked up by
+// the next push, and the recorded class origin follows it (pipeline-plan.md, component pull step
+// 1b). `fallbackClass` is the class the builder was written against: it is used, with a note,
+// only when the code has no class of that kind any more (vendored source changed shape).
+type ClassKind = "paddingX" | "paddingY" | "paddingLeft" | "padding" | "gap" | "height" | "fontSize" | "radius";
+const CLASS_KIND_PATTERN: Record<ClassKind, RegExp> = {
+  paddingX: /^px-(\d+(?:\.\d+)?)$/,
+  paddingY: /^py-(\d+(?:\.\d+)?)$/,
+  paddingLeft: /^pl-(\d+(?:\.\d+)?)$/,
+  padding: /^p-(\d+(?:\.\d+)?)$/,
+  gap: /^gap-(\d+(?:\.\d+)?)$/,
+  height: /^h-(\d+(?:\.\d+)?)$/,
+  fontSize: /^text-(?:xs|sm|base|lg|\[\d*\.?\d+rem\])(?:\/[a-z0-9.]+)?$/, // optional `/leading` (text-sm/relaxed)
+  radius: /^rounded-(?:none|sm|md|lg|xl|2xl|3xl|4xl|full)$/,
+};
+interface TokenScales {
+  spacing: Record<string, number>;
+  radius: Record<string, number>;
+  fontSize: Record<string, number>;
+}
+
+// A named Tailwind radius class -> its radius token, by name (the 2026-10-14 mapping, see
+// `exactRadiusStep`): 2xl-4xl cap at xl, `rounded-full` is radius/full, `rounded-none` the 0px token.
+function radiusClassToken(cls: string, radius: Record<string, number>): { figmaName: string; deltaPx: number } {
+  const step = cls.slice("rounded-".length);
+  if (step === "full") return exactRadiusFull(radius);
+  if (step === "none") return nearestToken(0, radius, "radius");
+  if (step === "2xl" || step === "3xl" || step === "4xl") return exactRadiusStep(radius, "xl");
+  return exactRadiusStep(radius, step as "sm" | "md" | "lg" | "xl");
+}
+
+// The token (and the class's own px, for snapped spacing / font sizes) of one class of `kind`.
+function classKindToken(cls: string, kind: ClassKind, scales: TokenScales): { figmaName: string; deltaPx: number; px?: number; scale?: Record<string, number> } {
+  if (kind === "radius") return radiusClassToken(cls, scales.radius);
+  if (kind === "fontSize") {
+    const px = tailwindClassPx(cls.replace(/\/[a-z0-9.]+$/, "")) as number;
+    return { ...nearestToken(px, scales.fontSize, "typography/primitive/fontSize"), px, scale: scales.fontSize };
+  }
+  const px = parseFloat((cls.match(CLASS_KIND_PATTERN[kind]) as RegExpMatchArray)[1]) * 4;
+  return { ...nearestToken(px, scales.spacing, "spacing"), px, scale: scales.spacing };
+}
+
+// Reads the first class of `kind` in `classString` (only classes written as `<prefix><class>`;
+// with no prefix, prefixed classes such as `hover:px-2` or `md:text-sm` never match) and returns
+// its token plus its class origin.
+function tokenFromClass(
+  classString: string,
+  kind: ClassKind,
+  fallbackClass: string,
+  scales: TokenScales,
+  notes: string[],
+  label: string,
+  prefix: string = "",
+): { figmaName: string; deltaPx: number; origin: FigmaSourceOrigin; cls: string; px?: number } {
+  const found = classString
+    .split(/\s+/)
+    .filter((t) => t.startsWith(prefix))
+    .map((t) => t.slice(prefix.length))
+    .find((t) => CLASS_KIND_PATTERN[kind].test(t));
+  const cls = found ?? fallbackClass;
+  if (!found) notes.push(`${label}: no ${prefix}${kind} class found in the real class string, so the value of ${prefix}${fallbackClass} (the class this builder was written against) was used — real vendored source may have changed shape.`);
+  const match = classKindToken(cls, kind, scales);
+  const origin = found
+    ? classOrigin(prefix + cls, classString, match.px !== undefined && match.scale ? snapOf(match.px, match, match.scale) : undefined)
+    : derivedOrigin(`no ${prefix}${kind} class in the source; the value of ${prefix}${fallbackClass} was assumed`);
+  return { figmaName: match.figmaName, deltaPx: match.deltaPx, origin, cls: prefix + cls, px: match.px };
+}
+
+// The colour counterpart of `tokenFromClass`: the first `<prefix>bg-*` / `text-*` / `border-*`
+// class in `classString` that resolves to a colour variable, with its origin; null when there is none.
+function colorFromClass(
+  classString: string,
+  kind: "fill" | "text" | "border",
+  prefix: string = "",
+  locationSuffix?: string,
+): { cls: string; variable: string; opacity?: number; origin: FigmaSourceOrigin } | null {
+  for (const t of classString.split(/\s+/)) {
+    if (!t.startsWith(prefix) || t.slice(prefix.length).includes(":")) continue; // only `<prefix><class>`, no further variant
+    const parsed = classToFigmaVariable(t.slice(prefix.length));
+    if (parsed && parsed.kind === kind) return { cls: t, variable: parsed.variable, opacity: parsed.opacity, origin: classOrigin(t, classString, undefined, locationSuffix) };
+  }
+  return null;
+}
+
+// `colorFromClass` for a colour the component's shape requires: throws when no class of that kind is left.
+function requireColorFromClass(component: string, part: string, classString: string, kind: "fill" | "text" | "border", prefix: string = ""): { cls: string; variable: string; opacity?: number; origin: FigmaSourceOrigin } {
+  const found = colorFromClass(classString, kind, prefix);
+  if (!found) throw new Error(`${component}'s real ${part} has no ${prefix}${kind === "fill" ? "bg" : kind}-<colour> class any more — shadcn/ui's real ${component} has likely changed shape since its builder was written. Re-verify against the current vendored source before trusting this plan.`);
+  return found;
 }
 
 // Lists Size-style axis options whose resolved overrides came out IDENTICAL
@@ -1151,6 +1248,8 @@ function buildVariantsFromCva(
       // the plain class is the one that really colours this element.
       const field = parsed.kind === "fill" ? "fillVariable" : parsed.kind === "text" ? "textVariable" : "strokeVariable";
       const current = parsed.kind === "fill" ? fillVariable : parsed.kind === "text" ? textVariable : strokeVariable;
+      // Step 1b: a `*:`-prefixed class styles a CHILD, so it never overrides this element's own plain class.
+      if (cls.startsWith("*:") && current !== undefined) continue;
       const repeatsPlainClass = SELECTOR_PREFIX_PATTERN.test(cls) && current === parsed.variable && origins[field] !== undefined;
       if (!repeatsPlainClass) origins[field] = classOrigin(cls, classString, undefined, `variants.${axisName}.${name}`);
       if (parsed.kind === "fill") fillVariable = parsed.variable;
@@ -2125,10 +2224,15 @@ function buildBadgePlan(tokensCss: string, badgeSource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusStep(radius, "xl"); // rounded-4xl: capped at radius.xl by the by-name mapping (2026-10-14); still a full pill at h-5, since every preset has xl >= 10px
-  const paddingHMatch = nearestToken(8, spacing, "spacing");
-  const paddingVMatch = nearestToken(2, spacing, "spacing");
-  const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize");
+  // Read from the real cva base classes (component pull step 1b): rounded-4xl caps at radius.xl by
+  // the by-name mapping (2026-10-14) and is still a full pill at h-5, since every preset has xl >= 10px;
+  // px-2, py-0.5 and text-xs snap to the nearest token.
+  const badgeBase = cvaBase(badgeSource);
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(badgeBase, "radius", "rounded-4xl", scales, notes, "Badge radius");
+  const paddingHMatch = tokenFromClass(badgeBase, "paddingX", "px-2", scales, notes, "Badge horizontal padding");
+  const paddingVMatch = tokenFromClass(badgeBase, "paddingY", "py-0.5", scales, notes, "Badge vertical padding");
+  const fontSizeMatch = tokenFromClass(badgeBase, "fontSize", "text-xs", scales, notes, "Badge font size");
 
   for (const [label, match] of [
     ["radius", radiusMatch],
@@ -2214,14 +2318,11 @@ function buildBadgePlan(tokensCss: string, badgeSource: string, notes: string[])
     defaultLabel: "New",
     ...(hasStates ? { statePropertyName: "State" as const, disclosures: badgeDisclosures } : {}),
   };
-  // Component pull step 1: Badge's hardcoded targets are the real cva base classes (rounded-4xl
-  // caps at radius/xl by name; py-0.5's 2px snaps to the nearest spacing token).
-  const badgeBase = cvaBase(badgeSource);
   tagFields(badge, {
-    radiusVariable: classOrigin("rounded-4xl", badgeBase),
-    paddingHorizontalVariable: classOrigin("px-2", badgeBase, snapOf(8, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-0.5", badgeBase, snapOf(2, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-xs", badgeBase, snapOf(12, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return badge;
 }
@@ -2392,10 +2493,16 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusLg(radius);
-  const paddingHMatch = nearestToken(10, spacing, "spacing");
-  const paddingVMatch = nearestToken(8, spacing, "spacing");
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
+  // Read from the real cva base / AlertDescription classes (component pull step 1b).
+  const alertBase = cvaBase(alertSource);
+  const alertDescriptionClasses = alertSource.match(/function AlertDescription[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(alertBase, "radius", "rounded-lg", scales, notes, "Alert radius");
+  const paddingHMatch = tokenFromClass(alertBase, "paddingX", "px-2.5", scales, notes, "Alert horizontal padding");
+  const paddingVMatch = tokenFromClass(alertBase, "paddingY", "py-2", scales, notes, "Alert vertical padding");
+  const fontSizeMatch = tokenFromClass(alertBase, "fontSize", "text-sm", scales, notes, "Alert font size");
+  const descFontSizeMatch = tokenFromClass(alertDescriptionClasses, "fontSize", "text-sm", scales, notes, "Alert description font size");
+  const descColor = colorFromClass(alertDescriptionClasses, "text");
 
   for (const [label, match] of [
     ["horizontal padding", paddingHMatch],
@@ -2411,16 +2518,17 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
   // (`[&_a]:hover:text-foreground`). The placeholder description therefore ENDS with an inline link ("Learn more"),
   // underlined in the description's colour, and Hover recolours only that link range to text.primary. A designer
   // who replaces the description text restyles the link in the same text box.
-  const alertLinkHover = classesInSource(alertSource, ["[&_a]:hover:text-foreground"]);
+  // Step 1b: the hover colour is read from AlertDescription's own `[&_a]:hover:text-*` class.
+  const alertLinkHoverColor = colorFromClass(alertDescriptionClasses, "text", "[&_a]:hover:");
+  const alertLinkHover = alertLinkHoverColor ? [alertLinkHoverColor.cls] : [];
   const alertLinkUnderline = classesInSource(alertSource, ["[&_a]:underline"]);
-  const alertLinkColor = alertLinkHover.length > 0 ? classToFigmaVariable("text-foreground") : null;
-  const alertLinkBuilt = alertLinkHover.length > 0 && alertLinkUnderline.length > 0 && alertLinkColor !== null && alertLinkColor.kind === "text";
+  const alertLinkColor = alertLinkHoverColor ? { variable: alertLinkHoverColor.variable } : null;
+  const alertLinkBuilt = alertLinkHover.length > 0 && alertLinkUnderline.length > 0 && alertLinkColor !== null;
   const ALERT_LINK_TEXT = "Learn more";
-  const alertDescriptionClasses = alertSource.match(/function AlertDescription[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
   if (alertLinkBuilt) {
     for (const v of variants) {
       v.states = [{ name: "Hover", linkTextVariable: alertLinkColor!.variable }];
-      tag(v.states[0], "linkTextVariable", classOrigin(alertLinkHover[0], alertDescriptionClasses));
+      tag(v.states[0], "linkTextVariable", alertLinkHoverColor!.origin);
     }
   }
   const alertLinkDisclosures: string[] = [];
@@ -2448,8 +2556,8 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     labelPropertyName: "Label",
     defaultLabel: "Heads up!",
-    secondaryTextVariable: sdsgtPathToFigmaName("text.secondary"),
-    secondaryFontSizeVariable: fontSizeMatch.figmaName,
+    secondaryTextVariable: descColor?.variable ?? sdsgtPathToFigmaName("text.secondary"),
+    secondaryFontSizeVariable: descFontSizeMatch.figmaName,
     // With the inline link the Description is NOT exposed as a TEXT property (Option A, user decision 2026-10-13):
     // binding the node to a property flattens the link's range styling and makes every instance share one styled
     // default, so a per-variant link colour (Hover) would not survive. The real AlertDescription is a free-form
@@ -2459,17 +2567,13 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
     ...(alertLinkBuilt ? { inlineLink: { text: ALERT_LINK_TEXT }, statePropertyName: "State" as const, disclosures: alertLinkDisclosures } : {}),
     ...(alertSkipDisclosures.length > 0 ? { disclosures: alertSkipDisclosures } : {}),
   };
-  // Component pull step 1: the hardcoded targets are the real cva base / AlertDescription classes.
-  const alertBase = cvaBase(alertSource);
   tagFields(alert, {
-    radiusVariable: classOrigin("rounded-lg", alertBase),
-    paddingHorizontalVariable: classOrigin("px-2.5", alertBase, snapOf(10, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-2", alertBase, snapOf(8, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-sm", alertBase, snapOf(14, fontSizeMatch, fontSize)),
-    secondaryTextVariable: classToFigmaVariable("text-muted-foreground")?.variable === alert.secondaryTextVariable
-      ? classOrigin("text-muted-foreground", alertDescriptionClasses)
-      : derivedOrigin("hardcoded description colour, not read from a class"),
-    secondaryFontSizeVariable: classOrigin("text-sm", alertDescriptionClasses, snapOf(14, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
+    secondaryTextVariable: descColor?.origin ?? derivedOrigin("AlertDescription has no text colour class; drawn text.secondary as a fallback"),
+    secondaryFontSizeVariable: descFontSizeMatch.origin,
   });
   if (alert.inlineLink) {
     tag(alert.inlineLink, "textVariable", derivedOrigin("the inline link has no colour class of its own at rest: it inherits the whole description's colour (text-muted-foreground in AlertDescription), so a link-only colour change has no single class to edit"));
@@ -2536,6 +2640,7 @@ function scanClassesForColors(classString: string, fallbackTextPath: string = "t
     if (!parsed) continue;
     const field = parsed.kind === "fill" ? "fillVariable" : parsed.kind === "text" ? "textVariable" : "strokeVariable";
     const current = parsed.kind === "fill" ? fillVariable : parsed.kind === "text" ? textVariable : strokeVariable;
+    if (cls.startsWith("*:") && current !== undefined) continue; // styles a child (step 1b)
     if (!(SELECTOR_PREFIX_PATTERN.test(cls) && current === parsed.variable && origins[field] !== undefined)) origins[field] = classOrigin(cls, classString);
     if (parsed.kind === "fill") fillVariable = parsed.variable;
     else if (parsed.kind === "text") textVariable = parsed.variable;
@@ -2659,10 +2764,13 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusLg(radius);
-  const paddingHMatch = nearestToken(10, spacing, "spacing");
-  const paddingVMatch = nearestToken(4, spacing, "spacing");
-  const fontSizeMatch = nearestToken(16, fontSize, "typography/primitive/fontSize");
+  // Read from the real className string (component pull step 1b).
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(classMatch[1], "radius", "rounded-lg", scales, notes, "Input radius");
+  const paddingHMatch = tokenFromClass(classMatch[1], "paddingX", "px-2.5", scales, notes, "Input horizontal padding");
+  const paddingVMatch = tokenFromClass(classMatch[1], "paddingY", "py-1", scales, notes, "Input vertical padding");
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-base", scales, notes, "Input font size");
+  const placeholderColor = colorFromClass(classMatch[1], "text", "placeholder:");
 
   for (const [label, match] of [
     ["horizontal padding", paddingHMatch],
@@ -2673,9 +2781,9 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
       notes.push(`Input ${label}: nearest real token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
     }
   }
-  notes.push("Input: represented showing its placeholder text (color/semantic/text/secondary), not typed content — an at-rest Input has no typed value to show, and this is the real color shadcn's own `placeholder:text-muted-foreground` class targets.");
+  notes.push(`Input: represented showing its placeholder text (${placeholderColor?.variable ?? colors.textVariable}), not typed content — an at-rest Input has no typed value to show, and this is the real color shadcn's own \`${placeholderColor?.cls ?? "placeholder:text-*"}\` class targets.`);
 
-  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") })];
+  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: placeholderColor?.variable ?? colors.textVariable })];
   tag(variants[0], "textVariable", placeholderTextOrigin(classMatch[1], variants[0].textVariable as string));
   // Batch 11: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildFormFieldStates("Input", inputSource, classMatch[1], variants, notes);
@@ -2695,10 +2803,10 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
   tagFields(input, {
-    radiusVariable: classOrigin("rounded-lg", classMatch[1]),
-    paddingHorizontalVariable: classOrigin("px-2.5", classMatch[1], snapOf(10, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-1", classMatch[1], snapOf(4, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-base", classMatch[1], snapOf(16, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return input;
 }
@@ -2719,10 +2827,13 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusLg(radius);
-  const paddingHMatch = nearestToken(10, spacing, "spacing");
-  const paddingVMatch = nearestToken(8, spacing, "spacing");
-  const fontSizeMatch = nearestToken(16, fontSize, "typography/primitive/fontSize");
+  // Read from the real className string (component pull step 1b).
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(classMatch[1], "radius", "rounded-lg", scales, notes, "Textarea radius");
+  const paddingHMatch = tokenFromClass(classMatch[1], "paddingX", "px-2.5", scales, notes, "Textarea horizontal padding");
+  const paddingVMatch = tokenFromClass(classMatch[1], "paddingY", "py-2", scales, notes, "Textarea vertical padding");
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-base", scales, notes, "Textarea font size");
+  const placeholderColor = colorFromClass(classMatch[1], "text", "placeholder:");
 
   for (const [label, match] of [
     ["horizontal padding", paddingHMatch],
@@ -2733,9 +2844,9 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
       notes.push(`Textarea ${label}: nearest real token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
     }
   }
-  notes.push("Textarea: represented showing its placeholder text (color/semantic/text/secondary), not typed content — same real reason as Input's own note.");
+  notes.push(`Textarea: represented showing its placeholder text (${placeholderColor?.variable ?? colors.textVariable}), not typed content — same real reason as Input's own note.`);
 
-  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") })];
+  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: placeholderColor?.variable ?? colors.textVariable })];
   tag(variants[0], "textVariable", placeholderTextOrigin(classMatch[1], variants[0].textVariable as string));
   // Batch 11: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildFormFieldStates("Textarea", textareaSource, classMatch[1], variants, notes);
@@ -2755,10 +2866,10 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
   tagFields(textarea, {
-    radiusVariable: classOrigin("rounded-lg", classMatch[1]),
-    paddingHorizontalVariable: classOrigin("px-2.5", classMatch[1], snapOf(10, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-2", classMatch[1], snapOf(8, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-base", classMatch[1], snapOf(16, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return textarea;
 }
@@ -2791,13 +2902,11 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
 // radius bug fix above re-established.
 //
 // `--card-spacing: --spacing(4)`: Tailwind v4's own arbitrary-value
-// function syntax for "4 units of the base spacing scale" — the exact
-// same real quantity this pipeline's own `spacing/4` token already
-// represents, so this binds to it DIRECTLY (an exact conceptual match,
-// not a nearest-guess), the same "real alias, not an approximation"
-// treatment as `exactRadiusLg`. Confirmed `spacing.json` has a `"4"` key
-// under every preset (bootstrap included, despite its narrower 0-5 key
-// range) before relying on this.
+// function syntax for "4 units of Tailwind's base spacing step" (4 x 4px =
+// 16px in every preset). Binds to the spacing token NEAREST that px
+// (changed 2026-10-15, user decision): it used to bind to the token NAMED
+// `spacing/4`, which matches in the linear presets but is 24px in
+// bootstrap's uneven scale, where the browser still draws 16px.
 //
 // `ring-1 ring-foreground/10`: not a standard `border-*` class at all —
 // Figma has no native "ring" concept, and this parser has no way to bind
@@ -2818,23 +2927,46 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   // that no longer matches reality. Guarded here with a structural sanity
   // check instead of trusting the hardcoded values blindly — fails
   // loudly, doesn't silently drift.
-  for (const marker of ["rounded-xl", "bg-card", "ring-1", "function CardHeader", "function CardTitle", "function CardDescription", "function CardContent"]) {
+  // Step 1b: the shape check is by KIND (a radius class, a fill class on the root), not exact classes,
+  // so a pull that changes `rounded-xl` to `rounded-lg` doesn't break the next push.
+  for (const marker of ["ring-1", "function CardHeader", "function CardTitle", "function CardDescription", "function CardContent"]) {
     if (!cardSource.includes(marker)) {
       throw new Error(`Card's real source no longer contains "${marker}" — shadcn/ui's real Card has likely changed shape since buildCardPlan was written. Re-verify against the current vendored card.tsx before trusting this plan.`);
     }
   }
+  const cardRoot = cardSource.match(/function Card\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  if (!cardRoot.split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error(`Card's real root has no rounded-* class any more — shadcn/ui's real Card has likely changed shape since buildCardPlan was written. Re-verify against the current vendored card.tsx before trusting this plan.`);
+  }
+  const cardFill = requireColorFromClass("Card", "root", cardRoot, "fill");
+  const cardText = requireColorFromClass("Card", "root", cardRoot, "text");
 
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+  const spacing = readCssScale(tokensCss, "spacing");
+  const cardTitleClasses = cardSource.match(/data-slot="card-title"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const cardDescriptionClasses = cardSource.match(/data-slot="card-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const scales = { spacing, radius, fontSize };
 
-  const radiusTarget = shadcnRadiusPx(radius, "xl");
-  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
-  if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Card radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.xl = ${radiusTarget.toFixed(1)}px).`);
+  // Read from the real classes (component pull step 1b).
+  const radiusMatch = tokenFromClass(cardRoot, "radius", "rounded-xl", scales, notes, "Card radius");
+  const titleFontSize = tokenFromClass(cardTitleClasses, "fontSize", "text-base", scales, notes, "Card title font size");
+  const descriptionFontSize = tokenFromClass(cardDescriptionClasses, "fontSize", "text-sm", scales, notes, "Card description font size");
+  const bodyFontSize = tokenFromClass(cardRoot, "fontSize", "text-sm", scales, notes, "Card content font size"); // Content inherits the root's text-*
+  const descriptionColor = colorFromClass(cardDescriptionClasses, "text");
+  // The root's `[--card-spacing:--spacing(N)]` (N * 4px): padding and gap of every part.
+  const cardSpacingClass = cardRoot.split(/\s+/).find((t) => /^\[--card-spacing:--spacing\(\d+(?:\.\d+)?\)\]$/.test(t));
+  if (!cardSpacingClass) {
+    throw new Error(`Card's real root has no [--card-spacing:--spacing(N)] class any more — shadcn/ui's real Card has likely changed shape since buildCardPlan was written. Re-verify against the current vendored card.tsx before trusting this plan.`);
   }
-
-  const titleFontSize = nearestToken(16, fontSize, "typography/primitive/fontSize");
-  const bodyFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize");
+  // `--spacing(N)` is N x Tailwind's base step, 4px in every preset (the linear ones inject a 4px
+  // `--spacing`; Bootstrap's uneven scale injects none, so Tailwind's own 4px applies). It binds to the
+  // token NEAREST that px, like the Size options below — not to the token named spacing/N, which in
+  // Bootstrap is 24px while the browser draws 16px (user decision, 2026-10-15).
+  const cardSpacingN = (cardSpacingClass.match(/\((\d+(?:\.\d+)?)\)/) as RegExpMatchArray)[1];
+  const cardSpacingPx = parseFloat(cardSpacingN) * 4;
+  const cardSpacingMatch = nearestToken(cardSpacingPx, spacing, "spacing");
+  if (cardSpacingMatch.deltaPx > 0) notes.push(`Card --card-spacing: ${cardSpacingPx}px snapped to ${cardSpacingMatch.figmaName}, ${cardSpacingMatch.deltaPx}px off — no exact spacing token.`);
 
   notes.push("Card: only its real Header (Title + Description) and Content sections are modeled — its real Footer (a separate background/border treatment) isn't, a real, narrower scope than the actual 6-part compound component.");
   notes.push("Card: its real `ring-1 ring-foreground/10` border is approximated as border.subtle, the nearest real semantic token — this parser can't bind a partially-transparent ring effect.");
@@ -2842,26 +2974,23 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   // Component-variations plan, Batch 5 (2026-10-08): the `Size` axis. Default
   // is exactly the values above; each other size comes from the real
   // `data-[size=X]:` / `group-data-[size=X]/card:` classes.
-  // Component pull step 1: the real class strings the hardcoded values above come from.
-  const cardRoot = cardSource.match(/function Card\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
-  const cardTitleClasses = cardSource.match(/data-slot="card-title"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
-  const cardDescriptionClasses = cardSource.match(/data-slot="card-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
-  // Title and Content have no colour class of their own: they inherit the Card root's text-card-foreground.
-  const inheritedCardText = classOrigin("text-card-foreground", cardRoot);
-  const descriptionCardText = classOrigin("text-muted-foreground", cardDescriptionClasses);
+  // Title and Content have no colour class of their own: they inherit the Card root's text-* colour.
+  const inheritedCardText = cardText.origin;
+  const descriptionCardText = descriptionColor?.origin ?? derivedOrigin("CardDescription has no text colour class; drawn text.secondary as a fallback");
+  const descriptionTextVariable = descriptionColor?.variable ?? sdsgtPathToFigmaName("text.secondary");
   const buildSections = (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string, origins?: CardSectionOrigins): FigmaComponentSectionPlanItem[] => {
     const sections: FigmaComponentSectionPlanItem[] = [
       {
         paddingHorizontalVariable: spacingVar,
         textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Card Title" },
-          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Card description goes here." },
+          { textVariable: cardText.variable, fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Card Title" },
+          { textVariable: descriptionTextVariable, fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Card description goes here." },
         ],
       },
       {
         paddingHorizontalVariable: spacingVar,
         textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: contentFontVar, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the card's main content." },
+          { textVariable: cardText.variable, fontSizeVariable: contentFontVar, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the card's main content." },
         ],
       },
     ];
@@ -2877,16 +3006,16 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
     return sections;
   };
   const defaultCardOrigins: CardSectionOrigins = {
-    spacing: classOrigin("[--card-spacing:--spacing(4)]", cardRoot),
-    title: classOrigin("text-base", cardTitleClasses, snapOf(16, titleFontSize, fontSize)),
-    description: classOrigin("text-sm", cardDescriptionClasses, snapOf(14, bodyFontSize, fontSize)),
-    content: classOrigin("text-sm", cardRoot, snapOf(14, bodyFontSize, fontSize)), // Content inherits the root's text-sm
+    spacing: classOrigin(cardSpacingClass, cardRoot, spacing[cardSpacingN] !== undefined ? undefined : snapOf(cardSpacingPx, cardSpacingMatch, spacing)),
+    title: titleFontSize.origin,
+    description: descriptionFontSize.origin,
+    content: bodyFontSize.origin,
   };
-  const sizeAxis = buildCardSizeAxis(cardSource, buildSections, titleFontSize.figmaName, bodyFontSize.figmaName, readCssScale(tokensCss, "spacing"), fontSize, notes, defaultCardOrigins);
+  const sizeAxis = buildCardSizeAxis(cardSource, buildSections, cardSpacingMatch.figmaName, titleFontSize.figmaName, descriptionFontSize.figmaName, bodyFontSize.figmaName, spacing, fontSize, notes, defaultCardOrigins);
 
-  const cardVariant: FigmaComponentVariantPlanItem = { name: "Default", fillVariable: sdsgtPathToFigmaName("background.surface"), textVariable: sdsgtPathToFigmaName("text.on-surface"), strokeVariable: sdsgtPathToFigmaName("border.subtle"), underline: false };
+  const cardVariant: FigmaComponentVariantPlanItem = { name: "Default", fillVariable: cardFill.variable, textVariable: cardText.variable, strokeVariable: sdsgtPathToFigmaName("border.subtle"), underline: false };
   tagFields(cardVariant, {
-    fillVariable: classOrigin("bg-card", cardRoot),
+    fillVariable: cardFill.origin,
     textVariable: inheritedCardText,
     strokeVariable: derivedOrigin("approximation: the real outline is ring-1 ring-foreground/10 (a translucent ring, not a border colour), drawn as the nearest semantic token border.subtle; no class names this token"),
   });
@@ -2897,12 +3026,12 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
-    sectionGapVariable: "spacing/4",
-    sections: buildSections("spacing/4", titleFontSize.figmaName, bodyFontSize.figmaName, bodyFontSize.figmaName, defaultCardOrigins),
+    sectionGapVariable: cardSpacingMatch.figmaName,
+    sections: buildSections(cardSpacingMatch.figmaName, titleFontSize.figmaName, descriptionFontSize.figmaName, bodyFontSize.figmaName, defaultCardOrigins),
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
   tagFields(card, {
-    radiusVariable: classOrigin("rounded-xl", cardRoot, snapOf(radiusTarget, radiusMatch, radius)),
+    radiusVariable: radiusMatch.origin,
     sectionGapVariable: defaultCardOrigins.spacing, // gap-(--card-spacing) and py-(--card-spacing): both the root's --card-spacing
   });
   return card;
@@ -2936,7 +3065,9 @@ interface CardSectionOrigins {
 function buildCardSizeAxis(
   cardSource: string,
   buildSections: (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string, origins?: CardSectionOrigins) => FigmaComponentSectionPlanItem[],
+  defaultSpacingVar: string,
   defaultTitleFontVar: string,
+  defaultDescriptionFontVar: string,
   defaultBodyFontVar: string,
   spacing: Record<string, number>,
   fontSize: Record<string, number>,
@@ -2977,7 +3108,7 @@ function buildCardSizeAxis(
   const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
   const disclosures: string[] = [];
 
-  const defaultOverrides: FigmaComponentLayoutOverrides = { sectionGapVariable: "spacing/4", sections: buildSections("spacing/4", defaultTitleFontVar, defaultBodyFontVar, defaultBodyFontVar, defaultOrigins) };
+  const defaultOverrides: FigmaComponentLayoutOverrides = { sectionGapVariable: defaultSpacingVar, sections: buildSections(defaultSpacingVar, defaultTitleFontVar, defaultDescriptionFontVar, defaultBodyFontVar, defaultOrigins) };
   tag(defaultOverrides, "sectionGapVariable", defaultOrigins.spacing);
   options.push({ name: "Default", overrides: defaultOverrides });
 
@@ -3009,7 +3140,7 @@ function buildCardSizeAxis(
       return match.figmaName;
     };
     const titleVar = fontVar(titlePx, defaultTitleFontVar, "Title");
-    const descriptionVar = fontVar(descriptionPx, defaultBodyFontVar, "Description");
+    const descriptionVar = fontVar(descriptionPx, defaultDescriptionFontVar, "Description");
     const contentVar = fontVar(contentPx, defaultBodyFontVar, "Content");
 
     // Component pull step 1: this size's own class where it has one, else the default's.
@@ -3099,15 +3230,13 @@ function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): Fi
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusTarget = shadcnRadiusPx(radius, "sm");
-  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
-  if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Kbd radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.sm = ${radiusTarget.toFixed(1)}px).`);
-  }
-
-  const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize");
-  const paddingHMatch = nearestToken(4, spacing, "spacing");
-  const paddingVTarget = (20 - 12) / 2; // real h-5 (20px) minus text-xs (12px), halved — no real vertical-padding class to read
+  // Read from the real className (component pull step 1b); rounded-sm maps to radius/sm by name.
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(classMatch[1], "radius", "rounded-sm", scales, notes, "Kbd radius");
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-xs", scales, notes, "Kbd font size");
+  const paddingHMatch = tokenFromClass(classMatch[1], "paddingX", "px-1", scales, notes, "Kbd horizontal padding");
+  const kbdHeight = tokenFromClass(classMatch[1], "height", "h-5", scales, notes, "Kbd height");
+  const paddingVTarget = ((kbdHeight.px as number) - (fontSizeMatch.px as number)) / 2; // real h-N minus the text size, halved — no real vertical-padding class to read
   const paddingVMatch = nearestToken(paddingVTarget, spacing, "spacing");
 
   for (const [label, match] of [
@@ -3134,10 +3263,10 @@ function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): Fi
     defaultLabel: "⌘",
   };
   tagFields(kbd, {
-    radiusVariable: classOrigin("rounded-sm", classMatch[1], snapOf(radiusTarget, radiusMatch, radius)),
-    paddingHorizontalVariable: classOrigin("px-1", classMatch[1], snapOf(4, paddingHMatch, spacing)),
-    paddingVerticalVariable: derivedOrigin(`computed, not a class: Kbd has no vertical padding class; ${paddingVTarget}px is (h-5 height 20px - text-xs 12px) / 2`),
-    fontSizeVariable: classOrigin("text-xs", classMatch[1], snapOf(12, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: derivedOrigin(`computed, not a class: Kbd has no vertical padding class; ${paddingVTarget}px is (${kbdHeight.cls} height ${kbdHeight.px}px - ${fontSizeMatch.cls} ${fontSizeMatch.px}px) / 2`),
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return kbd;
 }
@@ -3187,10 +3316,12 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusLg(radius);
-  const paddingHMatch = nearestToken(10, spacing, "spacing"); // pl-2.5 — same real target as Input's own horizontal padding
-  const paddingVMatch = nearestToken(4, spacing, "spacing"); // py-1
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
+  // Read from the real <select> classes (component pull step 1b). The text-side pl-* is used for both sides.
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(classMatch[1], "radius", "rounded-lg", scales, notes, "NativeSelect radius");
+  const paddingHMatch = tokenFromClass(classMatch[1], "paddingLeft", "pl-2.5", scales, notes, "NativeSelect horizontal padding");
+  const paddingVMatch = tokenFromClass(classMatch[1], "paddingY", "py-1", scales, notes, "NativeSelect vertical padding");
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-sm", scales, notes, "NativeSelect font size");
 
   for (const [label, match] of [
     ["horizontal padding", paddingHMatch],
@@ -3200,7 +3331,8 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
       notes.push(`NativeSelect ${label}: nearest real token is ${match.deltaPx}px off shadcn's own exact Tailwind value.`);
     }
   }
-  notes.push("NativeSelect: real horizontal padding is asymmetric (pl-2.5 text-side, pr-8 reserved for its chevron icon, which isn't drawn) — this plan uses the text-side value (pl-2.5) for both sides, the same single-shared-padding shape every other box component in this file uses.");
+  const nsRightPad = classMatch[1].split(/\s+/).find((t) => /^pr-\d/.test(t)) ?? "pr-8";
+  notes.push(`NativeSelect: real horizontal padding is asymmetric (${paddingHMatch.cls} text-side, ${nsRightPad} reserved for its chevron icon, which isn't drawn) — this plan uses the text-side value (${paddingHMatch.cls}) for both sides, the same single-shared-padding shape every other box component in this file uses.`);
   notes.push("NativeSelect: represented in color/semantic/text/primary, not text/secondary — unlike Input/Textarea's own placeholder representation, a native <select> always shows a real selected option's text (no placeholder state exists for this element), inheriting shadcn's own base `text-foreground` layer.");
 
   const sizeAxis = buildNativeSelectSizeAxis(classMatch[1], spacing, radius, notes);
@@ -3262,11 +3394,11 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
     ...(nsHasStates ? { statePropertyName: "State" as const, disclosures: nsDisclosures } : {}),
   };
   tagFields(nativeSelect, {
-    radiusVariable: classOrigin("rounded-lg", classMatch[1]),
-    // pl-2.5 is the text-side padding; the plan uses it for both sides (pr-8 makes room for the chevron).
-    paddingHorizontalVariable: classOrigin("pl-2.5", classMatch[1], snapOf(10, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-1", classMatch[1], snapOf(4, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-sm", classMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    // The text-side pl-* padding; the plan uses it for both sides (pr-* makes room for the chevron).
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return nativeSelect;
 }
@@ -3439,26 +3571,30 @@ function exactRadiusFull(radius: Record<string, number>): { figmaName: string; d
 // than a parsed match, the same treatment `buildAlertPlan` already uses
 // for its own `border.default` case.
 function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["group/avatar", "size-8", "function AvatarFallback", "rounded-full", "bg-muted"]) {
+  // Step 1b: exact classes (size-8, rounded-full, bg-muted) are no longer required; their KIND is, below.
+  for (const marker of ["group/avatar", "function AvatarFallback"]) {
     if (!avatarSource.includes(marker)) {
       throw new Error(`Avatar's real source no longer contains "${marker}" — shadcn/ui's real Avatar has likely changed shape since buildAvatarPlan was written. Re-verify against the current vendored avatar.tsx before trusting this plan.`);
     }
   }
   const fallbackMatch = avatarSource.match(/function AvatarFallback[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
   if (!fallbackMatch) throw new Error("Could not find AvatarFallback's own className string — real vendored source may have changed shape since this parser was written.");
+  requireColorFromClass("Avatar", "AvatarFallback", fallbackMatch[1], "fill");
+  if (!fallbackMatch[1].split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("AvatarFallback's real class string has no rounded-* class any more — shadcn/ui's real Avatar has likely changed shape since buildAvatarPlan was written. Re-verify against the current vendored avatar.tsx before trusting this plan.");
+  }
   const colors = scanClassesForColors(fallbackMatch[1]);
-  colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // see file header — real ring lives on Avatar's own after:border-border pseudo-element, not AvatarFallback's own class list
-  // Component pull step 1: the ring's colour class is on the Avatar root's after: pseudo-element.
+  // See file header — the real ring lives on the Avatar root's after:border-* pseudo-element, not AvatarFallback's own class list (read from there, step 1b).
   const avatarRootClasses = avatarSource.match(/function Avatar\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
-  tag(colors, "strokeVariable", avatarRootClasses.split(/\s+/).includes("after:border-border")
-    ? classOrigin("after:border-border", avatarRootClasses)
-    : derivedOrigin("hardcoded border.default ring, not read from a class"));
+  const avatarRing = colorFromClass(avatarRootClasses, "border", "after:");
+  colors.strokeVariable = avatarRing?.variable ?? sdsgtPathToFigmaName("border.default");
+  tag(colors, "strokeVariable", avatarRing?.origin ?? derivedOrigin("hardcoded border.default ring, not read from a class"));
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusFull(radius);
+  const radiusMatch = tokenFromClass(fallbackMatch[1], "radius", "rounded-full", { spacing, radius, fontSize }, notes, "Avatar radius"); // read by name (step 1b)
   const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // text-sm, the "default" size's real font size
   const paddingTarget = (32 - 14) / 2; // real size-8 (32px) minus text-sm (14px), halved — Avatar has no real padding class of its own to read (see file header)
   const paddingMatch = nearestToken(paddingTarget, spacing, "spacing");
@@ -3487,7 +3623,7 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
   };
   const paddingOrigin = derivedOrigin(`computed, not a class: AvatarFallback has no padding class; ${paddingTarget}px is (size-8 32px - text-sm 14px) / 2, only used when Avatar has no Size axis`);
   tagFields(avatar, {
-    radiusVariable: classOrigin("rounded-full", fallbackMatch[1]),
+    radiusVariable: radiusMatch.origin,
     paddingHorizontalVariable: paddingOrigin,
     paddingVerticalVariable: paddingOrigin,
     fontSizeVariable: classOrigin("text-sm", fallbackMatch[1], snapOf(14, fontSizeMatch, fontSize)),
@@ -3640,7 +3776,7 @@ function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[])
   const radiusMatch = nearestToken(0, radius, "radius");
   const paddingHMatch = nearestToken(0, spacing, "spacing");
   const paddingVMatch = nearestToken(0, spacing, "spacing");
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize");
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-sm", { spacing, radius, fontSize }, notes, "Label font size"); // read (step 1b)
 
   notes.push("Label: has no padding/radius/fill/border class of its own at all in its real source — represented as a bare text node (0px padding, radius/none, no fill, no stroke), not approximated into a box that doesn't exist.");
   notes.push("Label: its real text color isn't set by any class of its own — inherited from shadcn's own generated `body { @apply text-foreground }` base rule, the same class of finding as Alert's own border.default fallback — bound to text.primary via scanClassesForColors's new fallbackTextPath default.");
@@ -3667,7 +3803,7 @@ function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[])
     radiusVariable: derivedOrigin("Label has no radius class at all; drawn as the 0px token (a bare text label), so there is no class to edit"),
     paddingHorizontalVariable: derivedOrigin("Label has no padding class at all; drawn as the 0px token (a bare text label), so there is no class to edit"),
     paddingVerticalVariable: derivedOrigin("Label has no padding class at all; drawn as the 0px token (a bare text label), so there is no class to edit"),
-    fontSizeVariable: classOrigin("text-sm", classMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return label;
 }
@@ -3754,11 +3890,8 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
 
-  const radiusTarget = shadcnRadiusPx(radius, "md");
-  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
-  if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Skeleton radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.md = ${radiusTarget.toFixed(1)}px).`);
-  }
+  // Read from the real class, by name (step 1b): rounded-md is radius/md.
+  const radiusMatch = tokenFromClass(classMatch[1], "radius", "rounded-md", { spacing, radius, fontSize: {} }, notes, "Skeleton radius");
 
   // Representative placeholder size — see this function's own comment
   // above for why: Skeleton's real source has no padding/sizing class of
@@ -3772,7 +3905,7 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
   const skeletonVariant: FigmaComponentVariantPlanItem = { name: "Default", fillVariable: colors.fillVariable, underline: false };
   copyTags(colors, skeletonVariant);
   const skeletonOrigins = {
-    radiusVariable: classOrigin("rounded-md", classMatch[1], snapOf(radiusTarget, radiusMatch, radius)),
+    radiusVariable: radiusMatch.origin,
     paddingHorizontalVariable: derivedOrigin("representative stand-in: Skeleton has no padding or size class (every real use sets its own size), so a placeholder ~96px-wide box is drawn; no class to edit"),
     paddingVerticalVariable: derivedOrigin("representative stand-in: Skeleton has no padding or size class (every real use sets its own size), so a placeholder ~24px-tall box is drawn; no class to edit"),
   };
@@ -3874,9 +4007,10 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
   const radiusMatch = nearestToken(0, radius, "radius"); // real <nav> has no radius class of its own at all
-  const itemGapMatch = nearestToken(6, spacing, "spacing"); // BreadcrumbList's real gap-1.5
+  // BreadcrumbList's real gap-* and text-* (shared by every item), read from the code (step 1b).
+  const itemGapMatch = tokenFromClass(listMatch[1], "gap", "gap-1.5", { spacing, radius, fontSize }, notes, "Breadcrumb item gap");
   const itemPaddingMatch = nearestToken(0, spacing, "spacing"); // BreadcrumbItem has no horizontal padding of its own (inline-flex items-center gap-1 — a gap, not a padding)
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // BreadcrumbList's real text-sm, shared by every item — no item overrides its own font size
+  const fontSizeMatch = tokenFromClass(listMatch[1], "fontSize", "text-sm", { spacing, radius, fontSize }, notes, "Breadcrumb font size");
 
   for (const [label, match] of [
     ["radius", radiusMatch],
@@ -3941,9 +4075,9 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
   // Component pull step 1. Every item's text size is BreadcrumbList's text-sm (inherited).
   tagFields(breadcrumb, {
     radiusVariable: derivedOrigin("the <nav> root has no radius class at all; drawn as the 0px token, so there is no class to edit"),
-    sectionGapVariable: classOrigin("gap-1.5", listMatch[1], snapOf(6, itemGapMatch, spacing)),
+    sectionGapVariable: itemGapMatch.origin,
   });
-  const listFontOrigin = classOrigin("text-sm", listMatch[1], snapOf(14, fontSizeMatch, fontSize));
+  const listFontOrigin = fontSizeMatch.origin;
   for (const section of breadcrumb.sections ?? []) {
     tag(section, "paddingHorizontalVariable", derivedOrigin("BreadcrumbItem has no padding class (its gap-1 is a gap between its own children); drawn as the 0px token, so there is no class to edit"));
     for (const line of section.textLines) {
@@ -4026,7 +4160,8 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
 // between Header and Content being approximated up to 24px; disclosed via
 // `notes`, not silently picked.
 function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["rounded-xl", "border-dashed", "function EmptyHeader", "function EmptyTitle", "function EmptyDescription", "function EmptyContent"]) {
+  // Step 1b: rounded-xl is checked by kind below (any rounded-* on the root), not as an exact class.
+  for (const marker of ["border-dashed", "function EmptyHeader", "function EmptyTitle", "function EmptyDescription", "function EmptyContent"]) {
     if (!emptySource.includes(marker)) {
       throw new Error(`Empty's real source no longer contains "${marker}" — shadcn/ui's real Empty has likely changed shape since buildEmptyPlan was written. Re-verify against the current vendored empty.tsx before trusting this plan.`);
     }
@@ -4036,23 +4171,25 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusTarget = shadcnRadiusPx(radius, "xl");
-  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
-  if (radiusMatch.deltaPx > 0.01) {
-    notes.push(`Empty radius: nearest real token is ${radiusMatch.deltaPx.toFixed(1)}px off shadcn's own exact computed value (radius.xl = ${radiusTarget.toFixed(1)}px) — same real rounded-xl formula as Card's own radius.`);
+  const emptyRoot = emptySource.match(/function Empty\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const emptyClasses = (slot: string) => emptySource.match(new RegExp(`data-slot="${slot}"[\\s\\S]*?cn\\(\\s*"([^"]*)"`))?.[1] ?? "";
+  if (!emptyRoot.split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("Empty's real root has no rounded-* class any more — shadcn/ui's real Empty has likely changed shape since buildEmptyPlan was written. Re-verify against the current vendored empty.tsx before trusting this plan.");
   }
-
-  const paddingHMatch = nearestToken(24, spacing, "spacing"); // real p-6, the only horizontal inset Empty actually has (neither section carries its own)
-  const sectionGapMatch = nearestToken(24, spacing, "spacing"); // see file header — bound to the real OUTER padding value, not the real (smaller) inter-section gap-4
-  const titleFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // EmptyTitle's real text-sm
-  const bodyFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // EmptyDescription/EmptyContent's real text-sm
+  // Read from the real classes (component pull step 1b).
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(emptyRoot, "radius", "rounded-xl", scales, notes, "Empty radius");
+  const paddingHMatch = tokenFromClass(emptyRoot, "padding", "p-6", scales, notes, "Empty padding"); // the root's p-*, the only inset Empty has (neither section carries its own)
+  const sectionGapMatch = paddingHMatch; // see file header — bound to the real OUTER padding value, not the real (smaller) inter-section gap-*
+  const emptyGap = tokenFromClass(emptyRoot, "gap", "gap-4", scales, [], "Empty gap"); // only for the notes below
+  const titleFontSize = tokenFromClass(emptyClasses("empty-title"), "fontSize", "text-sm", scales, notes, "Empty title font size");
+  const descriptionFontSize = tokenFromClass(emptyClasses("empty-description"), "fontSize", "text-sm/relaxed", scales, notes, "Empty description font size");
+  const bodyFontSize = tokenFromClass(emptyClasses("empty-content"), "fontSize", "text-sm", scales, notes, "Empty content font size");
+  const descriptionColor = colorFromClass(emptyClasses("empty-description"), "text");
 
   notes.push("Empty: only its real Header (Title + Description) and Content sections are modeled — EmptyMedia (an icon slot) isn't, the same declared-out-of-scope NEEDS-ICON reason as Checkbox/Switch/etc. (figma-remaining-components-plan.md).");
   notes.push("Empty: its real border-dashed class has no accompanying border-width utility of its own — Tailwind's own preflight reset leaves border-width at 0 absent one, so a real unstyled Empty has NO visible border despite border-dashed being present. Represented with no stroke.");
-  notes.push("Empty: two different real vertical-spacing values (a 24px outer p-6 and a 16px inter-section gap-4) collapse onto this schema's one shared sectionGapVariable — bound to the larger, outer-padding value (spacing/6, 24px) to preserve Empty's own defining generous-whitespace look; its real, smaller 16px inter-section gap is approximated up to 24px as a result.");
-
-  const emptyRoot = emptySource.match(/function Empty\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
-  const emptyClasses = (slot: string) => emptySource.match(new RegExp(`data-slot="${slot}"[\\s\\S]*?cn\\(\\s*"([^"]*)"`))?.[1] ?? "";
+  notes.push(`Empty: two different real vertical-spacing values (a ${paddingHMatch.px}px outer ${paddingHMatch.cls} and a ${emptyGap.px}px inter-section ${emptyGap.cls}) collapse onto this schema's one shared sectionGapVariable — bound to the larger, outer-padding value (${sectionGapMatch.figmaName}, ${paddingHMatch.px}px) to preserve Empty's own defining generous-whitespace look; its real, smaller ${emptyGap.px}px inter-section gap is approximated up to ${paddingHMatch.px}px as a result.`);
   const empty: FigmaComponentPlanItem = {
     name: "Empty",
     variantPropertyName: "Variant",
@@ -4068,7 +4205,7 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
         paddingHorizontalVariable: paddingHMatch.figmaName,
         textLines: [
           { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: titleFontSize.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "No results found" },
-          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: bodyFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Try adjusting your search or filters." },
+          { textVariable: descriptionColor?.variable ?? sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Try adjusting your search or filters." },
         ],
       },
       {
@@ -4081,19 +4218,19 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
   };
   // Component pull step 1. `sectionGapVariable` is both the outer padding (the real p-6) and the
   // gap between Header and Content (really gap-4, approximated to p-6's value).
-  const emptyPadding = classOrigin("p-6", emptyRoot, snapOf(24, paddingHMatch, spacing));
+  const emptyPadding = paddingHMatch.origin;
   tagFields(empty, {
-    radiusVariable: classOrigin("rounded-xl", emptyRoot, snapOf(radiusTarget, radiusMatch, radius)),
-    "sectionGapVariable@paddingVertical": classOrigin("p-6", emptyRoot, snapOf(24, sectionGapMatch, spacing)),
-    "sectionGapVariable@itemSpacing": derivedOrigin("approximation: the real gap between Header and Content is gap-4 (16px), but this schema shares one value for the outer padding and that gap, so it is drawn with p-6's value (24px)"),
+    radiusVariable: radiusMatch.origin,
+    "sectionGapVariable@paddingVertical": paddingHMatch.origin,
+    "sectionGapVariable@itemSpacing": derivedOrigin(`approximation: the real gap between Header and Content is ${emptyGap.cls} (${emptyGap.px}px), but this schema shares one value for the outer padding and that gap, so it is drawn with ${paddingHMatch.cls}'s value (${paddingHMatch.px}px)`),
   });
   const inheritedText = derivedOrigin("no text colour class of its own; the text colour is inherited (shadcn's base text-foreground), drawn as text.primary");
   for (const section of empty.sections ?? []) {
     tag(section, "paddingHorizontalVariable", emptyPadding); // the root's p-6: neither section has padding of its own
     for (const line of section.textLines) {
-      if (line.labelPropertyName === "Title") tagFields(line, { textVariable: inheritedText, fontSizeVariable: classOrigin("text-sm", emptyClasses("empty-title"), snapOf(14, titleFontSize, fontSize)) });
-      if (line.labelPropertyName === "Description") tagFields(line, { textVariable: classOrigin("text-muted-foreground", emptyClasses("empty-description")), fontSizeVariable: classOrigin("text-sm/relaxed", emptyClasses("empty-description"), snapOf(14, bodyFontSize, fontSize)) });
-      if (line.labelPropertyName === "Content") tagFields(line, { textVariable: inheritedText, fontSizeVariable: classOrigin("text-sm", emptyClasses("empty-content"), snapOf(14, bodyFontSize, fontSize)) });
+      if (line.labelPropertyName === "Title") tagFields(line, { textVariable: inheritedText, fontSizeVariable: titleFontSize.origin });
+      if (line.labelPropertyName === "Description") tagFields(line, { textVariable: descriptionColor?.origin ?? derivedOrigin("EmptyDescription has no text colour class; drawn text.secondary as a fallback"), fontSizeVariable: descriptionFontSize.origin });
+      if (line.labelPropertyName === "Content") tagFields(line, { textVariable: inheritedText, fontSizeVariable: bodyFontSize.origin });
     }
   }
   return empty;
@@ -4195,8 +4332,12 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
 
   const paddingHMatch = nearestToken(0, spacing, "spacing"); // real, genuine zero — see file header
   const radiusMatch = nearestToken(0, radius, "radius"); // real, genuine zero — see file header
-  const sectionGapMatch = nearestToken(8, spacing, "spacing"); // real gap-2 — see file header for its dual role
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // all three sub-parts are real text-sm
+  // Read from the real classes (component pull step 1b). The Label line's size lives in label.tsx, so it stays 14px (derived).
+  const scales = { spacing, radius, fontSize };
+  const sectionGapMatch = tokenFromClass(cvaBase(fieldSource), "gap", "gap-2", scales, notes, "Field gap"); // see file header for its dual role
+  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // the Label line: Label's text-sm (label.tsx)
+  const descriptionFontSize = tokenFromClass(descriptionMatch[1], "fontSize", "text-sm", scales, notes, "Field description font size");
+  const errorFontSize = tokenFromClass(errorMatch[1], "fontSize", "text-sm", scales, notes, "Field error font size");
 
   notes.push("Field: only its real FieldLabel/FieldDescription/FieldError are modeled — FieldSeparator isn't (a genuinely new shape, tracked as its own later batch). Field's own real orientation axis (vertical/horizontal; responsive is skipped) is modeled as an Orientation property — see the `Field Orientation ...` notes below for what it does and doesn't change.");
   notes.push("Field: FieldLabel/Field/FieldError/FieldDescription have no real padding or radius class of their own at all — represented as bare text rows (0px padding, radius/none, no fill, no stroke), the same 'bare text node' treatment buildLabelPlan already established, not approximated into boxes that don't exist.");
@@ -4213,8 +4354,8 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
       textVariable: getTag(labelColors, "textVariable") as FigmaSourceOrigin,
       fontSizeVariable: derivedOrigin("FieldLabel renders the Label component, whose text-sm lives in label.tsx (not in field.tsx), so there is no class in this file to edit"),
     },
-    Description: { textVariable: getTag(descriptionColors, "textVariable") as FigmaSourceOrigin, fontSizeVariable: classOrigin("text-sm", descriptionMatch[1], snapOf(14, fontSizeMatch, fontSize)) },
-    Error: { textVariable: getTag(errorColors, "textVariable") as FigmaSourceOrigin, fontSizeVariable: classOrigin("text-sm", errorMatch[1], snapOf(14, fontSizeMatch, fontSize)) },
+    Description: { textVariable: getTag(descriptionColors, "textVariable") as FigmaSourceOrigin, fontSizeVariable: descriptionFontSize.origin },
+    Error: { textVariable: getTag(errorColors, "textVariable") as FigmaSourceOrigin, fontSizeVariable: errorFontSize.origin },
   };
   const tagFieldSections = (sections: FigmaComponentSectionPlanItem[]): FigmaComponentSectionPlanItem[] => {
     for (const section of sections) {
@@ -4237,14 +4378,14 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
         paddingHorizontalVariable: paddingHMatch.figmaName,
         ...dir,
         textLines: [
-          { textVariable: descriptionColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "We'll never share your email." },
+          { textVariable: descriptionColors.textVariable, fontSizeVariable: descriptionFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "We'll never share your email." },
         ],
       },
       {
         paddingHorizontalVariable: paddingHMatch.figmaName,
         ...dir,
         textLines: [
-          { textVariable: errorColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Error", defaultLabel: "This field is required." },
+          { textVariable: errorColors.textVariable, fontSizeVariable: errorFontSize.figmaName, weight: "Regular", labelPropertyName: "Error", defaultLabel: "This field is required." },
         ],
       },
     ]);
@@ -4254,15 +4395,17 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
 
   // Batch 15 triage: no State property (see the disclosure lines). Each class is named only if the
   // real vendored source still contains it.
-  const fieldInvalid = classesInSource(fieldSource, ["data-[invalid=true]:text-destructive"]);
+  // Step 1b: the Invalid colour is read from the root's `data-[invalid=true]:text-*` class.
+  const fieldInvalidColor = colorFromClass(cvaBase(fieldSource), "text", "data-[invalid=true]:");
+  const fieldInvalid = fieldInvalidColor ? [fieldInvalidColor.cls] : [];
   // Invalid (2026-10-13, user decision): the real root class `data-[invalid=true]:text-destructive` recolours
   // every text part that has NO colour class of its own. FieldLabel/FieldTitle have none (they inherit), the
   // description has its own `text-muted-foreground`, the error line is already `text-destructive`. So Invalid =
   // the Label line turns the destructive colour (status.error), via a per-line state override.
   const fieldLabelClassStrings = [...fieldSource.matchAll(/data-slot="field-(?:label|title)"[\s\S]*?className=\{cn\(([\s\S]*?)\)\}/g)].map((m) => m[1]).join(" ");
   const labelOwnColor = /text-(?:foreground|muted-foreground|destructive|primary|secondary|card-foreground)\b/.test(fieldLabelClassStrings);
-  const invalidColor = classToFigmaVariable("text-destructive");
-  const invalidBuilt = fieldInvalid.length > 0 && !labelOwnColor && invalidColor !== null && invalidColor.kind === "text";
+  const invalidColor = fieldInvalidColor;
+  const invalidBuilt = fieldInvalid.length > 0 && !labelOwnColor && invalidColor !== null;
   const fieldDisabled = classesInSource(fieldSource, ["group-data-[disabled=true]/field:opacity-50"]);
   const disabledBuilt = fieldDisabled.length > 0 && !labelOwnColor && projectHasToken(FIELD_LABEL_DISABLED_TOKEN.cssVar);
   const fieldStates: FigmaComponentStatePlanItem[] = [
@@ -4273,7 +4416,7 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
     const labelOverride = st.textLineOverrides?.Label;
     if (!labelOverride) continue;
     tag(labelOverride, "textVariable", st.name === "Invalid"
-      ? classOrigin(fieldInvalid[0], cvaBase(fieldSource)) // on the Field root; the label inherits it
+      ? fieldInvalidColor!.origin // on the Field root; the label inherits it
       : derivedOrigin(`user decision (2026-10-13): Disabled is drawn with the solid token ${labelOverride.textVariable} instead of the real ${fieldDisabled[0]} (a 50% fade of the label), so no class names this token`));
   }
   const fieldCardLabel = classesInSource(fieldSource, [
@@ -4334,7 +4477,7 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
   // schema also draws as the outer frame's top/bottom padding (Field's root has none).
   tagFields(field, {
     radiusVariable: derivedOrigin("Field has no radius class at all; drawn as the 0px token, so there is no class to edit"),
-    "sectionGapVariable@itemSpacing": classOrigin("gap-2", cvaBase(fieldSource), snapOf(8, sectionGapMatch, spacing)),
+    "sectionGapVariable@itemSpacing": sectionGapMatch.origin,
     "sectionGapVariable@paddingVertical": derivedOrigin("Field's root has no padding; this schema shares one value for the outer padding and the gap between rows, so gap-2's value is drawn as top/bottom padding too"),
   });
   return field;
@@ -4435,7 +4578,7 @@ function buildFieldOrientationAxis(
 // 1px-thick line; Batch 7 added the vertical one as an `Orientation` axis
 // (see `buildSeparatorAxes`).
 function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ['data-slot="separator"', "bg-border", "data-horizontal:h-px"]) {
+  for (const marker of ['data-slot="separator"', "data-horizontal:h-px"]) { // the colour is checked by kind below (step 1b)
     if (!separatorSource.includes(marker)) {
       throw new Error(`Separator's real source no longer contains "${marker}" — shadcn/ui's real Separator has likely changed shape since buildSeparatorPlan was written. Re-verify against the current vendored separator.tsx before trusting this plan.`);
     }
@@ -4589,24 +4732,28 @@ function buildSeparatorAxes(
 // landing on a real exact match (`spacing/2` = 8px in the tailwind
 // preset).
 function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ['data-slot="field-separator"', 'data-slot="field-separator-content"', "bg-background", "text-muted-foreground"]) {
+  for (const marker of ['data-slot="field-separator"', 'data-slot="field-separator-content"']) { // classes are read by kind below (step 1b)
     if (!fieldSource.includes(marker)) {
       throw new Error(`FieldSeparator's real source no longer contains "${marker}" — shadcn/ui's real field.tsx has likely changed shape since buildFieldSeparatorPlan was written. Re-verify against the current vendored field.tsx before trusting this plan.`);
     }
   }
-  const labelClassMatch = fieldSource.match(/className="([^"]*bg-background[^"]*)"/);
+  const labelClassMatch = fieldSource.match(/<span\s+className="([^"]*)"\s+data-slot="field-separator-content"/) ?? fieldSource.match(/data-slot="field-separator-content"\s+className="([^"]*)"/);
   if (!labelClassMatch) throw new Error("Could not find FieldSeparator's own label <span> className string — real vendored source may have changed shape since this parser was written.");
+  requireColorFromClass("FieldSeparator", "label span", labelClassMatch[1], "text");
   const labelColors = scanClassesForColors(labelClassMatch[1]);
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
+  const fieldSeparatorRoot = fieldSource.match(/function FieldSeparator[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
 
   const radiusMatch = nearestToken(0, radius, "radius"); // a bare line has no real corner radius of its own
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // text-sm, the label span's own real size
-  const gapMatch = nearestToken(8, spacing, "spacing"); // px-2, the label span's own real horizontal padding — the gap between it and each flanking line segment
+  // Read from the real classes (step 1b): the root's text-* (the span inherits it) and the span's own px-*,
+  // its side padding = the gap between it and each flanking line segment.
+  const fontSizeMatch = tokenFromClass(fieldSeparatorRoot, "fontSize", "text-sm", { spacing, radius, fontSize }, notes, "FieldSeparator font size");
+  const gapMatch = tokenFromClass(labelClassMatch[1], "paddingX", "px-2", { spacing, radius, fontSize }, notes, "FieldSeparator gap");
   if (gapMatch.deltaPx > 0) {
-    notes.push(`FieldSeparator gap: nearest real spacing token is ${gapMatch.deltaPx}px off shadcn's own exact Tailwind value (px-2, 8px).`);
+    notes.push(`FieldSeparator gap: nearest real spacing token is ${gapMatch.deltaPx}px off shadcn's own exact Tailwind value (${gapMatch.cls}, ${gapMatch.px}px).`);
   }
 
   notes.push("FieldSeparator: pushed WITH its optional centered label present (a real, confirmed feature of this component — passing children renders a centered span over the line, e.g. a login form's 'OR CONTINUE WITH' divider), not its label-less default state, specifically to exercise this batch's new centerLabel path. Bare Separator itself never supports a label at all — confirmed against its own real source, not assumed.");
@@ -4634,13 +4781,12 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
     },
   };
   // Component pull step 1.
-  const fieldSeparatorRoot = fieldSource.match(/function FieldSeparator[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
   const line = fieldSeparator.line!;
   tag(line, "colorVariable", derivedOrigin("the line is the nested <Separator> component, whose colour class (bg-border) lives in separator.tsx, not in field.tsx"));
   tagLike(line.centerLabel!, "textVariable", labelColors, "textVariable");
   tagFields(line.centerLabel!, {
-    fontSizeVariable: classOrigin("text-sm", fieldSeparatorRoot, snapOf(14, fontSizeMatch, fontSize)), // on the FieldSeparator root; the label span inherits it
-    gapVariable: classOrigin("px-2", labelClassMatch[1], snapOf(8, gapMatch, spacing)), // the label span's own side padding = the gap to each line segment
+    fontSizeVariable: fontSizeMatch.origin, // on the FieldSeparator root; the label span inherits it
+    gapVariable: gapMatch.origin, // the label span's own side padding = the gap to each line segment
   });
   tag(fieldSeparator, "radiusVariable", derivedOrigin("a line has no radius class; drawn as the 0px token, so there is no class to edit"));
   return fieldSeparator;
@@ -4710,10 +4856,17 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusLg(radius); // real rounded-lg -> a real EXACT alias to radius.md, not a nearest-value guess — see this function's own comment
+  // Radius and the Title/Description text read from the real classes (component pull step 1b). The top-level
+  // padding is replaced by every Size option (each reads its own px-*/py-*).
+  const itemTitleClasses = itemSource.match(/data-slot="item-title"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const itemDescriptionClasses = itemSource.match(/data-slot="item-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(cvaBase(itemSource), "radius", "rounded-lg", scales, notes, "Item radius");
   const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
   const paddingVMatch = nearestToken(10, spacing, "spacing"); // real py-2.5
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // ItemTitle/ItemDescription's real text-sm, shared
+  const fontSizeMatch = tokenFromClass(itemTitleClasses, "fontSize", "text-sm", scales, notes, "Item title font size");
+  const descriptionFontSize = tokenFromClass(itemDescriptionClasses, "fontSize", "text-sm", scales, notes, "Item description font size");
+  const descriptionColor = colorFromClass(itemDescriptionClasses, "text");
 
   for (const [label, match] of [
     ["horizontal padding", paddingHMatch],
@@ -4728,20 +4881,16 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   // Size option can change (horizontal padding, Description font size); the
   // base plan and every Size option build theirs through this one function.
   // Component pull step 1: the real classes behind the section values.
-  const itemTitleClasses = itemSource.match(/data-slot="item-title"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
-  const itemDescriptionClasses = itemSource.match(/data-slot="item-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
   const itemTitleText = derivedOrigin("ItemTitle has no text colour class of its own; the text colour is inherited (shadcn's base text-foreground), drawn as text.primary");
-  const itemTitleFont = classOrigin("text-sm", itemTitleClasses, snapOf(14, fontSizeMatch, fontSize));
-  const itemDescriptionText = classToFigmaVariable("text-muted-foreground")?.variable === sdsgtPathToFigmaName("text.secondary")
-    ? classOrigin("text-muted-foreground", itemDescriptionClasses)
-    : derivedOrigin("hardcoded description colour, not read from a class");
+  const itemTitleFont = fontSizeMatch.origin;
+  const itemDescriptionText = descriptionColor?.origin ?? derivedOrigin("ItemDescription has no text colour class; drawn text.secondary as a fallback");
   const buildSections = (paddingHVar: string, descriptionFontVar: string, origins?: { padding: FigmaSourceOrigin; descriptionFont: FigmaSourceOrigin }): FigmaComponentSectionPlanItem[] => {
     const sections: FigmaComponentSectionPlanItem[] = [
       {
         paddingHorizontalVariable: paddingHVar,
         textLines: [
           { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Item title" },
-          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
+          { textVariable: descriptionColor?.variable ?? sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
         ],
       },
     ];
@@ -4755,13 +4904,13 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   };
   const itemDefaultOrigins = {
     padding: classOrigin("px-3", undefined, snapOf(12, paddingHMatch, spacing), "variants.size.default"),
-    descriptionFont: classOrigin("text-sm", itemDescriptionClasses, snapOf(14, fontSizeMatch, fontSize)),
+    descriptionFont: descriptionFontSize.origin,
   };
 
   notes.push("Item: only its real outer frame and ItemTitle/ItemDescription are modeled — ItemMedia (an icon/image slot) and ItemActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons named in figma-remaining-components-plan.md. Its real size axis (default/sm/xs) is modeled as a Size property — see the `Item Size ...` notes below for what it does and doesn't change.");
   notes.push("Item: ItemContent's real gap-1 (4px) between Title and Description has no home in this schema's sections/textLines shape — the two lines stack directly adjacent in the replay, relying only on each line's own line-height for visual separation, not a bound 4px gap.");
 
-  const sizeAxis = buildItemSizeAxis(itemSource, spacing, fontSize, notes, buildSections, itemDefaultOrigins.descriptionFont);
+  const sizeAxis = buildItemSizeAxis(itemSource, spacing, fontSize, notes, buildSections, itemDefaultOrigins.descriptionFont, descriptionFontSize.px as number);
 
   // Batch 12: interaction states, read from the real class strings. Item has
   // Hover (written `[a]:hover:bg-muted`, so only when the Item is rendered as a
@@ -4805,12 +4954,12 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: paddingVMatch.figmaName,
-    sections: buildSections(paddingHMatch.figmaName, fontSizeMatch.figmaName, itemDefaultOrigins),
+    sections: buildSections(paddingHMatch.figmaName, descriptionFontSize.figmaName, itemDefaultOrigins),
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
     ...(itemHasStates ? { statePropertyName: "State" as const, disclosures: itemDisclosures } : {}),
   };
   tagFields(item, {
-    radiusVariable: classOrigin("rounded-lg", cvaBase(itemSource)),
+    radiusVariable: radiusMatch.origin,
     "sectionGapVariable@paddingVertical": classOrigin("py-2.5", undefined, snapOf(10, paddingVMatch, spacing), "variants.size.default"),
     "sectionGapVariable@itemSpacing": ITEM_SINGLE_SECTION_GAP,
   });
@@ -4844,6 +4993,7 @@ function buildItemSizeAxis(
   notes: string[],
   buildSections: (paddingHVar: string, descriptionFontVar: string, origins?: { padding: FigmaSourceOrigin; descriptionFont: FigmaSourceOrigin }) => FigmaComponentSectionPlanItem[],
   defaultDescriptionFontOrigin: FigmaSourceOrigin,
+  baseFontPx: number, // ItemDescription's own real text-* px, read by the base plan
 ): FigmaComponentAxisPlanItem | undefined {
   let sizeEntries: Array<[string, string]>;
   try {
@@ -4858,7 +5008,6 @@ function buildItemSizeAxis(
   const descriptionClasses = (itemSource.match(/data-slot="item-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "").split(/\s+/).filter(Boolean);
   const descriptionBySize = parseDataSizeClasses(descriptionClasses.join(" "));
   const allBySize = parseDataSizeClasses(itemSource.replace(/["'`,]/g, " "));
-  const baseFontPx = 14; // ItemTitle/ItemDescription's own real text-sm, same as the base plan
 
   const options: FigmaComponentAxisPlanItem["options"] = [];
   const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
@@ -5107,7 +5256,7 @@ function buildMarkerStyleVariants(
 }
 
 function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function Marker(", "markerVariants = cva(", "text-muted-foreground"]) {
+  for (const marker of ["function Marker(", "markerVariants = cva("]) { // the text colour is read by kind (step 1b)
     if (!markerSource.includes(marker)) {
       throw new Error(`Marker's real source no longer contains "${marker}" — shadcn/ui's real marker.tsx has likely changed shape since buildMarkerPlan was written. Re-verify against the current vendored marker.tsx before trusting this plan.`);
     }
@@ -5132,7 +5281,7 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
   const radiusMatch = nearestToken(0, radius, "radius"); // genuinely no rounded-* class anywhere in real source — see this function's own comment
   const paddingHMatch = nearestToken(0, spacing, "spacing"); // genuinely no padding class of its own — see this function's own comment
   const paddingVMatch = nearestToken(0, spacing, "spacing");
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-sm", { spacing, radius, fontSize }, notes, "Marker font size"); // read (step 1b)
 
   if (fontSizeMatch.deltaPx > 0) {
     notes.push(`Marker font size: nearest real token is ${fontSizeMatch.deltaPx}px off shadcn's own exact Tailwind value.`);
@@ -5175,7 +5324,7 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
     radiusVariable: zeroMarker("radius"),
     paddingHorizontalVariable: zeroMarker("padding"),
     paddingVerticalVariable: zeroMarker("padding"),
-    fontSizeVariable: classOrigin("text-sm", classMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return marker;
 }
@@ -5327,11 +5476,13 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
   // MULTIPLIER (not a direct alias) already documented at buildCardPlan's
   // own comment (`--radius-xl: calc(var(--radius) * 1.4)`), computed from
   // radius.md's own real resolved value, not a hardcoded guess.
-  const radiusTarget = shadcnRadiusPx(radius, "xl");
-  const radiusMatch = nearestToken(radiusTarget, radius, "radius");
-  const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
-  const paddingVMatch = nearestToken(8, spacing, "spacing"); // real py-2
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+  // Step 1b: all four are read from BubbleContent's real classes (radius by name).
+  const bubbleContentClasses = bubbleSource.match(/function BubbleContent[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(bubbleContentClasses, "radius", "rounded-xl", scales, notes, "Bubble radius");
+  const paddingHMatch = tokenFromClass(bubbleContentClasses, "paddingX", "px-3", scales, notes, "Bubble horizontal padding");
+  const paddingVMatch = tokenFromClass(bubbleContentClasses, "paddingY", "py-2", scales, notes, "Bubble vertical padding");
+  const fontSizeMatch = tokenFromClass(bubbleContentClasses, "fontSize", "text-sm", scales, notes, "Bubble font size");
 
   for (const [label, match] of [
     ["radius", radiusMatch],
@@ -5366,7 +5517,6 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
   }
   const bubbleSkipDisclosures = bubbleSkipLines.length > 0 ? skippedStatesDisclosure("Bubble", bubbleSkipLines, notes) : [];
 
-  const bubbleContentClasses = bubbleSource.match(/function BubbleContent[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
   const bubble: FigmaComponentPlanItem = {
     name: "Bubble",
     variantPropertyName: "Variant",
@@ -5384,10 +5534,10 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
   };
   // Component pull step 1: the box is BubbleContent's (Ghost's own rounded-none/p-0 is not modeled, see the notes).
   tagFields(bubble, {
-    radiusVariable: classOrigin("rounded-xl", bubbleContentClasses, snapOf(radiusTarget, radiusMatch, radius)),
-    paddingHorizontalVariable: classOrigin("px-3", bubbleContentClasses, snapOf(12, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-2", bubbleContentClasses, snapOf(8, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-sm", bubbleContentClasses, snapOf(14, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return bubble;
 }
@@ -5403,7 +5553,8 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
 // "modeled subset of a real multi-part component" disclosure Card's own
 // CardFooter and Avatar's own AvatarImage already established.
 function buildProgressPlan(tokensCss: string, progressSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ['data-slot="progress-track"', 'data-slot="progress-indicator"', "rounded-full", "bg-muted", "bg-primary", "h-full"]) {
+  // Step 1b: rounded-full / bg-muted / bg-primary are checked by kind below, not as exact classes.
+  for (const marker of ['data-slot="progress-track"', 'data-slot="progress-indicator"', "h-full"]) {
     if (!progressSource.includes(marker)) {
       throw new Error(`Progress's real source no longer contains "${marker}" — shadcn/ui's real Progress has likely changed shape since buildProgressPlan was written. Re-verify against the current vendored progress.tsx before trusting this plan.`);
     }
@@ -5422,10 +5573,15 @@ function buildProgressPlan(tokensCss: string, progressSource: string, notes: str
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
 
-  const radiusMatch = exactRadiusFull(radius); // real rounded-lg -> a real EXACT alias to radius.full, same discipline as Avatar's own case
-  const heightMatch = nearestToken(4, spacing, "spacing"); // real h-1
+  if (!trackMatch[1].split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("ProgressTrack's real class string has no rounded-* class any more — shadcn/ui's real Progress has likely changed shape since buildProgressPlan was written. Re-verify against the current vendored progress.tsx before trusting this plan.");
+  }
+  // Read from the track's real classes (step 1b): rounded-full is radius/full by name.
+  const scales = { spacing, radius, fontSize: {} };
+  const radiusMatch = tokenFromClass(trackMatch[1], "radius", "rounded-full", scales, notes, "Progress radius");
+  const heightMatch = tokenFromClass(trackMatch[1], "height", "h-1", scales, notes, "Progress height");
   if (heightMatch.deltaPx > 0) {
-    notes.push(`Progress height: nearest real spacing token is ${heightMatch.deltaPx}px off shadcn's own exact Tailwind value (h-1, 4px).`);
+    notes.push(`Progress height: nearest real spacing token is ${heightMatch.deltaPx}px off shadcn's own exact Tailwind value (${heightMatch.cls}, ${heightMatch.px}px).`);
   }
 
   notes.push("Progress: only ProgressTrack/ProgressIndicator are modeled — ProgressLabel/ProgressValue (a real optional text pair, e.g. a percentage readout) aren't, the same disclosed scope cut as Card's own CardFooter.");
@@ -5453,10 +5609,10 @@ function buildProgressPlan(tokensCss: string, progressSource: string, notes: str
   tagLike(bar, "trackColorVariable", trackColors, "fillVariable");
   tagLike(bar, "indicatorColorVariable", indicatorColors, "fillVariable");
   tagFields(bar, {
-    radiusVariable: classOrigin("rounded-full", trackMatch[1]),
-    heightVariable: classOrigin("h-1", trackMatch[1], snapOf(4, heightMatch, spacing)),
+    radiusVariable: radiusMatch.origin,
+    heightVariable: heightMatch.origin,
   });
-  tag(progress, "radiusVariable", classOrigin("rounded-full", trackMatch[1]));
+  tag(progress, "radiusVariable", radiusMatch.origin);
   return progress;
 }
 
@@ -5660,7 +5816,9 @@ function buildTabsStyleAxis(tabsSource: string, triggerTokens: string[], baseIna
 }
 
 function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function TabsTrigger", "data-active:bg-background", "data-active:text-foreground", "rounded-md", "text-foreground/60"]) {
+  // Step 1b: the exact classes (data-active:bg-background, rounded-md, text-foreground/60, ...) are no longer
+  // required; the KIND checks below (an Active fill, a radius class) replace them.
+  for (const marker of ["function TabsTrigger"]) {
     if (!tabsSource.includes(marker)) {
       throw new Error(`Tabs's real source no longer contains "${marker}" — shadcn/ui's real Tabs has likely changed shape since buildTabsPlan was written. Re-verify against the current vendored tabs.tsx before trusting this plan.`);
     }
@@ -5676,26 +5834,32 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
 
   const inactiveColors = scanClassesForColors(baseClasses);
   const activeColors = scanClassesForColors(activeClasses);
+  if (!activeColors.fillVariable) throw new Error("TabsTrigger's real classes have no data-active:bg-<colour> class any more — shadcn/ui's real Tabs has likely changed shape since buildTabsPlan was written. Re-verify against the current vendored tabs.tsx before trusting this plan.");
+  if (!baseClasses.split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) throw new Error("TabsTrigger's real classes have no rounded-* class any more — shadcn/ui's real Tabs has likely changed shape since buildTabsPlan was written. Re-verify against the current vendored tabs.tsx before trusting this plan.");
   // Component pull step 1: the Active colours are the real `data-active:` classes (scanned with the prefix stripped).
   for (const cls of activeClasses.split(/\s+/).filter(Boolean)) {
     const parsed = classToFigmaVariable(cls);
     if (parsed) tag(activeColors, parsed.kind === "fill" ? "fillVariable" : parsed.kind === "text" ? "textVariable" : "strokeVariable", classOrigin(`data-active:${cls}`, fullClassString));
   }
-  // The Inactive tab's resting text as a solid token (see TAB_INACTIVE_TOKEN), when the project has it.
-  const tabInactiveToken = baseClasses.split(/\s+/).includes("text-foreground/60") && projectHasToken(TAB_INACTIVE_TOKEN.cssVar);
+  // The Inactive tab's resting text as a solid token (see TAB_INACTIVE_TOKEN), when the project has it. Keyed by
+  // pattern (step 1b): any translucent text-foreground/NN; a different, solid text class is read as-is instead.
+  const inactiveFadeClass = baseClasses.split(/\s+/).find((t) => /^text-foreground\/\d+$/.test(t));
+  const tabInactiveToken = inactiveFadeClass !== undefined && projectHasToken(TAB_INACTIVE_TOKEN.cssVar);
   if (tabInactiveToken) {
     inactiveColors.textVariable = sdsgtPathToFigmaName(TAB_INACTIVE_TOKEN.token);
-    tag(inactiveColors, "textVariable", derivedOrigin(`solid-token substitution by the user's decision (2026-10-13): the real text-foreground/60 (60% text colour) is drawn as the solid token ${inactiveColors.textVariable}, because a colour's transparency is lost on Figma instances; no class names this token`));
+    tag(inactiveColors, "textVariable", derivedOrigin(`solid-token substitution by the user's decision (2026-10-13): the real ${inactiveFadeClass} (${inactiveFadeClass.split("/")[1]}% text colour) is drawn as the solid token ${inactiveColors.textVariable}, because a colour's transparency is lost on Figma instances; no class names this token`));
   }
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = nearestToken(shadcnRadiusPx(radius, "md"), radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
-  const paddingHMatch = nearestToken(6, spacing, "spacing"); // real px-1.5
-  const paddingVMatch = nearestToken(2, spacing, "spacing"); // real py-0.5
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+  // Read from the trigger's real (unprefixed) classes (step 1b); rounded-md is radius/md by name.
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(fullClassString, "radius", "rounded-md", scales, notes, "Tabs radius");
+  const paddingHMatch = tokenFromClass(fullClassString, "paddingX", "px-1.5", scales, notes, "Tabs horizontal padding");
+  const paddingVMatch = tokenFromClass(fullClassString, "paddingY", "py-0.5", scales, notes, "Tabs vertical padding");
+  const fontSizeMatch = tokenFromClass(fullClassString, "fontSize", "text-sm", scales, notes, "Tabs font size");
 
   for (const [label, match] of [
     ["radius", radiusMatch],
@@ -5736,10 +5900,10 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
   tagFields(tabs, {
-    radiusVariable: classOrigin("rounded-md", fullClassString, snapOf(shadcnRadiusPx(radius, "md"), radiusMatch, radius)),
-    paddingHorizontalVariable: classOrigin("px-1.5", fullClassString, snapOf(6, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-0.5", fullClassString, snapOf(2, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-sm", fullClassString, snapOf(14, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return tabs;
 }
@@ -5869,7 +6033,7 @@ function buildTabsStates(
 // same disclosed-omission treatment Tooltip's own Arrow and Avatar's own
 // AvatarImage already receive.
 function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function AccordionTrigger", "rounded-lg", "py-2.5", "ChevronDownIcon"]) {
+  for (const marker of ["function AccordionTrigger", "ChevronDownIcon"]) { // rounded-*/py-* are checked by kind below (step 1b)
     if (!accordionSource.includes(marker)) {
       throw new Error(`Accordion's real source no longer contains "${marker}" — shadcn/ui's real Accordion has likely changed shape since buildAccordionPlan was written. Re-verify against the current vendored accordion.tsx before trusting this plan.`);
     }
@@ -5883,13 +6047,20 @@ function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: s
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = exactRadiusLg(radius); // real rounded-lg -> a real EXACT alias to radius.md, same discipline as Item/Toggle/Badge/Card
+  for (const kind of ["radius", "paddingY"] as const) {
+    if (!triggerMatch[1].split(/\s+/).some((t) => CLASS_KIND_PATTERN[kind].test(t))) {
+      throw new Error(`AccordionTrigger's real class string has no ${kind === "radius" ? "rounded-*" : "py-*"} class any more — shadcn/ui's real Accordion has likely changed shape since buildAccordionPlan was written. Re-verify against the current vendored accordion.tsx before trusting this plan.`);
+    }
+  }
+  // Read from the real trigger classes (step 1b).
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(triggerMatch[1], "radius", "rounded-lg", scales, notes, "Accordion radius");
   const paddingHMatch = nearestToken(0, spacing, "spacing"); // genuinely no horizontal padding class of its own — see this function's own comment
-  const paddingVMatch = nearestToken(10, spacing, "spacing"); // real py-2.5
-  const fontSizeMatch = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm
+  const paddingVMatch = tokenFromClass(triggerMatch[1], "paddingY", "py-2.5", scales, notes, "Accordion vertical padding");
+  const fontSizeMatch = tokenFromClass(triggerMatch[1], "fontSize", "text-sm", scales, notes, "Accordion font size");
 
   if (paddingVMatch.deltaPx > 0) {
-    notes.push(`Accordion vertical padding: nearest real spacing token is ${paddingVMatch.deltaPx}px off shadcn's own exact Tailwind value (py-2.5, 10px).`);
+    notes.push(`Accordion vertical padding: nearest real spacing token is ${paddingVMatch.deltaPx}px off shadcn's own exact Tailwind value (${paddingVMatch.cls}, ${paddingVMatch.px}px).`);
   }
   notes.push("Accordion: only AccordionTrigger's own label is modeled, as a flat single-text box — its real trailing chevron icon (ChevronDownIcon/ChevronUpIcon) is NOT represented, a disclosed scope cut narrower than a literal 'chevron + label' reading, since the existing sections/textLineDirection mechanism that could place a trailing glyph beside a label has no field for this component's own real vertical padding (see this function's own comment for the full reasoning). AccordionContent (the expandable panel) isn't modeled at all — arbitrary caller-supplied children with no fixed shape, the same reason chart.tsx is permanently out of scope.");
   notes.push("Accordion: has no horizontal padding class of its own in real source (confirmed: no px-* class anywhere on AccordionTrigger) — represented as a real, computed 0px via nearestToken, the same 'genuinely zero, not a gap' discipline already established for Label/Marker.");
@@ -5913,10 +6084,10 @@ function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: s
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
   tagFields(accordion, {
-    radiusVariable: classOrigin("rounded-lg", triggerMatch[1]),
+    radiusVariable: radiusMatch.origin,
     paddingHorizontalVariable: derivedOrigin("AccordionTrigger has no horizontal padding class; drawn as the 0px token, so there is no class to edit"),
-    paddingVerticalVariable: classOrigin("py-2.5", triggerMatch[1], snapOf(10, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-sm", triggerMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return accordion;
 }
@@ -6004,7 +6175,7 @@ function buildAccordionStates(
 // components have no hover/focus state axis at all (rest states only,
 // per this file's own header).
 function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ['data-slot="tooltip-content"', "bg-foreground", "text-background", "rounded-md"]) {
+  for (const marker of ['data-slot="tooltip-content"']) { // colours and radius are checked by kind below (step 1b)
     if (!tooltipSource.includes(marker)) {
       throw new Error(`Tooltip's real source no longer contains "${marker}" — shadcn/ui's real Tooltip has likely changed shape since buildTooltipPlan was written. Re-verify against the current vendored tooltip.tsx before trusting this plan.`);
     }
@@ -6014,15 +6185,21 @@ function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: strin
   if (!classMatch) throw new Error("Could not find TooltipContent's own className string — real vendored source may have changed shape since this parser was written.");
   const colors = scanClassesForColors(classMatch[1]);
   if (!colors.fillVariable) throw new Error("TooltipContent's own bg-foreground class didn't resolve to a fill variable — real vendored source may have changed shape since this parser was written.");
+  requireColorFromClass("Tooltip", "TooltipContent", classMatch[1], "text");
+  if (!classMatch[1].split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("TooltipContent's real class string has no rounded-* class any more — shadcn/ui's real Tooltip has likely changed shape since buildTooltipPlan was written. Re-verify against the current vendored tooltip.tsx before trusting this plan.");
+  }
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = nearestToken(shadcnRadiusPx(radius, "md"), radius, "radius"); // real rounded-md: calc(var(--radius) * 0.8) — see this file's own comment above `COMPONENT_BUILDERS`
-  const paddingHMatch = nearestToken(12, spacing, "spacing"); // real px-3
-  const paddingVMatch = nearestToken(6, spacing, "spacing"); // real py-1.5
-  const fontSizeMatch = nearestToken(12, fontSize, "typography/primitive/fontSize"); // real text-xs
+  // Read from TooltipContent's real classes (step 1b); rounded-md is radius/md by name.
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(classMatch[1], "radius", "rounded-md", scales, notes, "Tooltip radius");
+  const paddingHMatch = tokenFromClass(classMatch[1], "paddingX", "px-3", scales, notes, "Tooltip horizontal padding");
+  const paddingVMatch = tokenFromClass(classMatch[1], "paddingY", "py-1.5", scales, notes, "Tooltip vertical padding");
+  const fontSizeMatch = tokenFromClass(classMatch[1], "fontSize", "text-xs", scales, notes, "Tooltip font size");
 
   for (const [label, match] of [
     ["radius", radiusMatch],
@@ -6052,10 +6229,10 @@ function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: strin
     defaultLabel: "Add to library",
   };
   tagFields(tooltip, {
-    radiusVariable: classOrigin("rounded-md", classMatch[1], snapOf(shadcnRadiusPx(radius, "md"), radiusMatch, radius)),
-    paddingHorizontalVariable: classOrigin("px-3", classMatch[1], snapOf(12, paddingHMatch, spacing)),
-    paddingVerticalVariable: classOrigin("py-1.5", classMatch[1], snapOf(6, paddingVMatch, spacing)),
-    fontSizeVariable: classOrigin("text-xs", classMatch[1], snapOf(12, fontSizeMatch, fontSize)),
+    radiusVariable: radiusMatch.origin,
+    paddingHorizontalVariable: paddingHMatch.origin,
+    paddingVerticalVariable: paddingVMatch.origin,
+    fontSizeVariable: fontSizeMatch.origin,
   });
   return tooltip;
 }
@@ -6194,7 +6371,8 @@ function buildCheckableControlStates(
 // child-selector sizing the real `CheckIcon`) sets the icon's real target
 // render size to 14px.
 function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function Checkbox", "data-checked:bg-primary", "data-checked:text-primary-foreground", "rounded-[4px]", "size-4", "CheckIcon", "[&>svg]:size-3.5"]) {
+  // Step 1b: the data-checked: colours and the radius are checked by kind below, not as exact classes.
+  for (const marker of ["function Checkbox", "size-4", "CheckIcon", "[&>svg]:size-3.5"]) {
     if (!checkboxSource.includes(marker)) {
       throw new Error(`Checkbox's real source no longer contains "${marker}" — shadcn/ui's real Checkbox has likely changed shape since buildCheckboxPlan was written. Re-verify against the current vendored checkbox.tsx before trusting this plan.`);
     }
@@ -6211,15 +6389,18 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
 
   const uncheckedColors = scanClassesForColors(baseClasses);
   const checkedColors = scanClassesForColors(checkedClasses);
+  if (!checkedColors.fillVariable) throw new Error("Checkbox's real classes have no data-checked:bg-<colour> class any more — shadcn/ui's real Checkbox has likely changed shape since buildCheckboxPlan was written. Re-verify against the current vendored checkbox.tsx before trusting this plan.");
+  const checkedIconColor = colorFromClass(checkedClasses, "text"); // the icon's text-current inherits it
 
-  const radiusMatch_ = baseClasses.match(/rounded-\[(\d+(?:\.\d+)?)px\]/);
-  if (!radiusMatch_) throw new Error("Could not find Checkbox's own rounded-[Npx] arbitrary-value radius class — real vendored source may have changed shape since this parser was written.");
-  const radiusTargetPx = parseFloat(radiusMatch_[1]);
-
+  // The radius: the real arbitrary rounded-[Npx] (nearest token), or a named rounded-* class (by name) (step 1b).
   const radius = readCssScale(tokensCss, "radius");
-  const radiusMatch = nearestToken(radiusTargetPx, radius, "radius");
+  const radiusClass = baseClasses.split(/\s+/).find((t) => /^rounded-\[\d+(?:\.\d+)?px\]$/.test(t) || CLASS_KIND_PATTERN.radius.test(t));
+  if (!radiusClass) throw new Error("Could not find Checkbox's own rounded-* radius class — real vendored source may have changed shape since this parser was written.");
+  const radiusArbitrary = radiusClass.match(/^rounded-\[(\d+(?:\.\d+)?)px\]$/);
+  const radiusTargetPx = radiusArbitrary ? parseFloat(radiusArbitrary[1]) : undefined;
+  const radiusMatch = radiusTargetPx !== undefined ? nearestToken(radiusTargetPx, radius, "radius") : radiusClassToken(radiusClass, radius);
   if (radiusMatch.deltaPx > 0) {
-    notes.push(`Checkbox radius: nearest real token is ${radiusMatch.deltaPx}px off shadcn's own exact literal value (rounded-[${radiusTargetPx}px]).`);
+    notes.push(`Checkbox radius: nearest real token is ${radiusMatch.deltaPx}px off shadcn's own exact literal value (${radiusClass}).`);
   }
 
   notes.push("Checkbox: fixed at a literal 16×16px square (real size-4, unconditional) — the first component in this file using fixedSizePx instead of a hug-content-plus-padding approximation, since its real size is exactly known rather than computed.");
@@ -6230,9 +6411,9 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
     {
       name: "Checked",
       fillVariable: checkedColors.fillVariable,
-      strokeVariable: checkedColors.fillVariable, // real, confirmed: border-primary and bg-primary resolve to the exact same action.primary value — not a mismatch
+      strokeVariable: checkedColors.strokeVariable ?? checkedColors.fillVariable, // the real data-checked:border-* (read, step 1b); the fill colour if there is none
       underline: false,
-      icon: { viewBox: LUCIDE_ICONS.check.viewBox, pathData: LUCIDE_ICONS.check.pathData, sizePx: 14, colorVariable: sdsgtPathToFigmaName("text.on-primary") },
+      icon: { viewBox: LUCIDE_ICONS.check.viewBox, pathData: LUCIDE_ICONS.check.pathData, sizePx: 14, colorVariable: checkedIconColor?.variable ?? sdsgtPathToFigmaName("text.on-primary") },
     },
   ];
   tagCheckedControl(variants[1], classMatch[1], "the check icon (text-current)");
@@ -6249,7 +6430,7 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
-  tag(checkbox, "radiusVariable", classOrigin(`rounded-[${radiusMatch_[1]}px]`, classMatch[1], snapOf(radiusTargetPx, radiusMatch, radius)));
+  tag(checkbox, "radiusVariable", classOrigin(radiusClass, classMatch[1], radiusTargetPx !== undefined ? snapOf(radiusTargetPx, radiusMatch, radius) : undefined));
   return checkbox;
 }
 
@@ -6352,14 +6533,23 @@ function buildSpinnerPlan(tokensCss: string, spinnerSource: string, notes: strin
 // (correctly none, not a missed case — confirmed by the real rendered
 // result having no visible track outline).
 function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function Switch", "data-checked:bg-primary", "data-unchecked:bg-input", "data-[size=default]:h-[18.4px]", "data-[size=default]:w-[32px]", "group-data-[size=default]/switch:size-4", "translate-x-[calc(100%-2px)]"]) {
+  // Step 1b: the track/thumb colours and the radius are read by kind below, not required as exact classes.
+  for (const marker of ["function Switch", "data-[size=default]:h-[18.4px]", "data-[size=default]:w-[32px]", "group-data-[size=default]/switch:size-4", "translate-x-[calc(100%-2px)]"]) {
     if (!switchSource.includes(marker)) {
       throw new Error(`Switch's real source no longer contains "${marker}" — shadcn/ui's real Switch has likely changed shape since buildSwitchPlan was written. Re-verify against the current vendored switch.tsx before trusting this plan.`);
     }
   }
 
   const radius = readCssScale(tokensCss, "radius");
-  const radiusMatch = exactRadiusFull(radius); // real rounded-full on both track and thumb
+  const switchRoot = switchSource.match(/className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const switchThumbClasses = switchSource.match(/data-slot="switch-thumb"[\s\S]*?className="([^"]+)"/)?.[1] ?? "";
+  const checkedTrack = requireColorFromClass("Switch", "root", switchRoot, "fill", "data-checked:");
+  const uncheckedTrack = requireColorFromClass("Switch", "root", switchRoot, "fill", "data-unchecked:");
+  const thumbFill = requireColorFromClass("Switch", "thumb", switchThumbClasses, "fill");
+  if (!switchRoot.split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("Switch's real root has no rounded-* class any more — shadcn/ui's real Switch has likely changed shape since buildSwitchPlan was written. Re-verify against the current vendored switch.tsx before trusting this plan.");
+  }
+  const radiusMatch = tokenFromClass(switchRoot, "radius", "rounded-full", { spacing: {}, radius, fontSize: {} }, notes, "Switch radius"); // real rounded-full on both track and thumb, read from the root
 
   // Component-variations plan, Batch 4 (2026-10-08): every size's track and
   // thumb dims are read from the real `data-[size=X]:` / `group-data-[size=X]/switch:`
@@ -6388,17 +6578,10 @@ function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[
   // trackWidth - thumbSize - borderInset (real translate-x-[calc(100%-2px)]),
   // unchecked = borderInset (real translate-x-0). Key order matters (the
   // Default size must serialize byte-identically to the pre-axis plan).
-  // Component pull step 1: the real track / thumb classes behind the hardcoded colours.
-  const switchRoot = switchSource.match(/className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
-  const switchThumbClasses = switchSource.match(/data-slot="switch-thumb"[\s\S]*?className="([^"]+)"/)?.[1] ?? "";
-  const switchClassOrigin = (cls: string, within: string, variable: string): FigmaSourceOrigin =>
-    within.split(/\s+/).includes(cls) && classToFigmaVariable(cls.replace(/^data-(?:checked|unchecked):/, ""))?.variable === variable
-      ? classOrigin(cls, within)
-      : derivedOrigin(`hardcoded ${variable}; the expected class ${cls} was not found`);
   const makeThumb = (state: "Unchecked" | "Checked", dims: { trackWidthPx: number; trackHeightPx: number; thumbSizePx: number }): NonNullable<FigmaComponentVariantPlanItem["thumb"]> => {
     const thumb = {
-      trackColorVariable: sdsgtPathToFigmaName(state === "Checked" ? "action.primary" : "border.default"),
-      thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
+      trackColorVariable: (state === "Checked" ? checkedTrack : uncheckedTrack).variable,
+      thumbColorVariable: thumbFill.variable,
       trackWidthPx: dims.trackWidthPx,
       trackHeightPx: dims.trackHeightPx,
       thumbSizePx: dims.thumbSizePx,
@@ -6406,9 +6589,9 @@ function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[
       radiusVariable: radiusMatch.figmaName,
     };
     tagFields(thumb, {
-      trackColorVariable: switchClassOrigin(state === "Checked" ? "data-checked:bg-primary" : "data-unchecked:bg-input", switchRoot, thumb.trackColorVariable),
-      thumbColorVariable: switchClassOrigin("bg-background", switchThumbClasses, thumb.thumbColorVariable),
-      radiusVariable: classOrigin("rounded-full", switchRoot),
+      trackColorVariable: (state === "Checked" ? checkedTrack : uncheckedTrack).origin,
+      thumbColorVariable: thumbFill.origin,
+      radiusVariable: radiusMatch.origin,
     });
     return thumb;
   };
@@ -6557,7 +6740,8 @@ function buildSwitchStates(switchSource: string, variants: FigmaComponentVariant
 // icon binds to, for the same real reason (both represent "the color that
 // contrasts against a primary-filled background").
 function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function RadioGroupItem", "data-checked:bg-primary", "data-checked:text-primary-foreground", "rounded-full", "size-4", "bg-primary-foreground"]) {
+  // Step 1b: the colours and the radius are checked by kind below, not required as exact classes.
+  for (const marker of ["function RadioGroupItem", "size-4"]) {
     if (!radioSource.includes(marker)) {
       throw new Error(`RadioGroup's real source no longer contains "${marker}" — shadcn/ui's real RadioGroup has likely changed shape since buildRadioGroupPlan was written. Re-verify against the current vendored radio-group.tsx before trusting this plan.`);
     }
@@ -6574,9 +6758,15 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
 
   const uncheckedColors = scanClassesForColors(baseClasses);
   const checkedColors = scanClassesForColors(checkedClasses);
+  if (!checkedColors.fillVariable) throw new Error("RadioGroupItem's real classes have no data-checked:bg-<colour> class any more — shadcn/ui's real RadioGroup has likely changed shape since buildRadioGroupPlan was written. Re-verify against the current vendored radio-group.tsx before trusting this plan.");
+  const dotClasses = radioSource.match(/function RadioGroupItem[\s\S]*?<span className="([^"]*)"/)?.[1] ?? "";
+  const dotColor = requireColorFromClass("RadioGroup", "center dot <span>", dotClasses, "fill");
 
   const radius = readCssScale(tokensCss, "radius");
-  const radiusMatch = exactRadiusFull(radius);
+  if (!baseClasses.split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("RadioGroupItem's real classes have no rounded-* class any more — shadcn/ui's real RadioGroup has likely changed shape since buildRadioGroupPlan was written. Re-verify against the current vendored radio-group.tsx before trusting this plan.");
+  }
+  const radiusMatch = tokenFromClass(baseClasses, "radius", "rounded-full", { spacing: {}, radius, fontSize: {} }, notes, "RadioGroup radius");
 
   notes.push("RadioGroup: needs no icon capability at all — its real checked indicator is a plain solid <span> circle, not an SVG (confirmed against real source, not assumed from Checkbox's own shape).");
 
@@ -6585,17 +6775,14 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
     {
       name: "Checked",
       fillVariable: checkedColors.fillVariable,
-      strokeVariable: checkedColors.fillVariable, // real, confirmed same-color fill+stroke — same finding as Checkbox
+      strokeVariable: checkedColors.strokeVariable ?? checkedColors.fillVariable, // the real data-checked:border-* (read, step 1b); the fill colour if there is none
       underline: false,
-      centerDot: { sizePx: 8, colorVariable: sdsgtPathToFigmaName("text.on-primary") }, // real size-2 (8px), real bg-primary-foreground
+      centerDot: { sizePx: 8, colorVariable: dotColor.variable }, // real size-2 (8px), the dot's real bg-* (read, step 1b)
     },
   ];
   copyTags(uncheckedColors, variants[0]);
   tagCheckedControl(variants[1], itemMatch[1], "the center dot");
-  const dotClasses = radioSource.match(/<span className="([^"]*bg-primary-foreground[^"]*)"/)?.[1] ?? "";
-  tag(variants[1].centerDot!, "colorVariable", classToFigmaVariable("bg-primary-foreground")?.variable === variants[1].centerDot!.colorVariable
-    ? classOrigin("bg-primary-foreground", dotClasses)
-    : derivedOrigin("hardcoded center-dot colour, not read from a class"));
+  tag(variants[1].centerDot!, "colorVariable", dotColor.origin);
   // Batch 13: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildCheckableControlStates("RadioGroup", radioSource, itemMatch[1], variants, notes);
 
@@ -6609,7 +6796,7 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
-  tag(radioGroup, "radiusVariable", classOrigin("rounded-full", itemMatch[1]));
+  tag(radioGroup, "radiusVariable", radiusMatch.origin);
   return radioGroup;
 }
 
@@ -6656,7 +6843,8 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
 // `text-card-foreground` resolves to), not routed through
 // `scanClassesForColors`'s own generic fallback parameter.
 function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes: string[]): FigmaComponentPlanItem {
-  for (const marker of ["function Attachment(", "function AttachmentTitle", "function AttachmentDescription", "attachmentVariants = cva(", "rounded-xl", "bg-card", "text-card-foreground"]) {
+  // Step 1b: rounded-xl / bg-card / text-card-foreground are checked by kind below, not as exact classes.
+  for (const marker of ["function Attachment(", "function AttachmentTitle", "function AttachmentDescription", "attachmentVariants = cva("]) {
     if (!attachmentSource.includes(marker)) {
       throw new Error(`Attachment's real source no longer contains "${marker}" — shadcn/ui's real Attachment has likely changed shape since buildAttachmentPlan was written. Re-verify against the current vendored attachment.tsx before trusting this plan.`);
     }
@@ -6682,6 +6870,11 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     .split(/\s+/)
     .filter((t) => !t.includes(":"))
     .join(" ");
+  requireColorFromClass("Attachment", "root", baseClasses, "fill");
+  const attachmentText = requireColorFromClass("Attachment", "root", baseClasses, "text"); // AttachmentTitle inherits it
+  if (!baseClasses.split(/\s+/).some((t) => CLASS_KIND_PATTERN.radius.test(t))) {
+    throw new Error("Attachment's real root has no rounded-* class any more — shadcn/ui's real Attachment has likely changed shape since buildAttachmentPlan was written. Re-verify against the current vendored attachment.tsx before trusting this plan.");
+  }
   const colors = scanClassesForColors(baseClasses);
   if (!colors.strokeVariable) {
     colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // bare `border`, no dash-suffix — see this function's own comment
@@ -6696,11 +6889,14 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
   const radius = readCssScale(tokensCss, "radius");
   const fontSize = readCssScale(tokensCss, "typography-primitive-font-size");
 
-  const radiusMatch = nearestToken(shadcnRadiusPx(radius, "xl"), radius, "radius"); // real rounded-xl, same * 1.4 multiplier already established for Card/Bubble
+  // Radius and the Description size are read from the real classes (step 1b, radius by name). The top-level
+  // padding / Title size are replaced by every Size option (each reads its own classes).
+  const scales = { spacing, radius, fontSize };
+  const radiusMatch = tokenFromClass(baseClasses, "radius", "rounded-xl", scales, notes, "Attachment radius");
   const paddingHMatch = nearestToken(10, spacing, "spacing"); // real has-data-[slot=attachment-content]:px-2.5 ("default" size)
   const paddingVMatch = nearestToken(8, spacing, "spacing"); // real has-data-[slot=attachment-content]:py-2 ("default" size)
   const titleFontSize = nearestToken(14, fontSize, "typography/primitive/fontSize"); // real text-sm ("default" size)
-  const descFontSize = nearestToken(12, fontSize, "typography/primitive/fontSize"); // real text-xs (AttachmentDescription's own explicit class)
+  const descFontSize = tokenFromClass(descMatch[1], "fontSize", "text-xs", scales, notes, "Attachment description font size"); // AttachmentDescription's own explicit class
 
   for (const [label, match] of [
     ["radius", radiusMatch],
@@ -6716,14 +6912,14 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
   // Size/Orientation option can change (horizontal padding, Title font size);
   // the base plan and every axis option build theirs through this function.
   // Component pull step 1: Title inherits the root's text-card-foreground; Description has its own classes.
-  const attachmentTitleText = classOrigin("text-card-foreground", baseMatch[1]);
-  const attachmentDescFont = classOrigin("text-xs", descMatch[1], snapOf(12, descFontSize, fontSize));
+  const attachmentTitleText = attachmentText.origin;
+  const attachmentDescFont = descFontSize.origin;
   const buildSections = (paddingHVar: string, titleFontVar: string, origins?: AttachmentSectionOrigins): FigmaComponentSectionPlanItem[] => {
     const sections: FigmaComponentSectionPlanItem[] = [
       {
         paddingHorizontalVariable: paddingHVar,
         textLines: [
-          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
+          { textVariable: attachmentText.variable, fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
           { textVariable: descColors.textVariable, fontSizeVariable: descFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "2.4 MB" },
         ],
       },
@@ -6741,12 +6937,12 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     padding: classOrigin("has-data-[slot=attachment-content]:px-2.5", undefined, snapOf(10, paddingHMatch, spacing), "variants.size.default"),
     titleFont: classOrigin("text-sm", undefined, snapOf(14, titleFontSize, fontSize), "variants.size.default"),
   };
-  const attachmentRadiusOrigin = classOrigin("rounded-xl", baseMatch[1], snapOf(shadcnRadiusPx(radius, "xl"), radiusMatch, radius));
+  const attachmentRadiusOrigin = radiusMatch.origin;
 
   notes.push("Attachment: only the outer frame and AttachmentTitle/AttachmentDescription are modeled — AttachmentMedia (a real icon/image slot, always caller-supplied, never a default the component ships with) and AttachmentActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons already named in [Legacy] figma-remaining-components-plan.md and established by Item's own ItemMedia/ItemActions exclusion. Only its 'done' state (the component's own real default) is modeled — the real idle/uploading/processing/error states aren't. Its real size (default/sm/xs) and orientation (horizontal/vertical) axes are modeled as Size and Orientation properties — see the `Attachment Size ...`/`Attachment Orientation ...` notes below for what they do and don't change.");
   notes.push("Attachment: AttachmentTitle has no explicit color class of its own — it inherits from Attachment's own text-card-foreground, NOT the global body's text-foreground this file's usual fallback assumes, so it's hardcoded to text.on-surface directly rather than routed through scanClassesForColors's own generic fallback default, which would have been wrong here.");
 
-  const extraAxes = buildAttachmentAxes(attachmentSource, spacing, radius, fontSize, radiusMatch, notes, buildSections, attachmentRadiusOrigin);
+  const extraAxes = buildAttachmentAxes(attachmentSource, spacing, radius, fontSize, radiusMatch, notes, buildSections, attachmentRadiusOrigin, `${descFontSize.cls} (${descFontSize.px}px)`);
   const attachmentVariants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false })];
   // Batch 15: interaction states (Hover, Focus) from the real root classes.
   const stateDisclosures = buildAttachmentStates(attachmentSource, baseMatch[1], attachmentVariants, notes);
@@ -6878,6 +7074,7 @@ function buildAttachmentAxes(
   notes: string[],
   buildSections: (paddingHVar: string, titleFontVar: string, origins?: AttachmentSectionOrigins) => FigmaComponentSectionPlanItem[],
   baseRadiusOrigin: FigmaSourceOrigin,
+  descriptionFontLabel: string, // e.g. "text-xs (12px)", the class read for the notes
 ): FigmaComponentAxisPlanItem[] {
   const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
   const axes: FigmaComponentAxisPlanItem[] = [];
@@ -6919,10 +7116,11 @@ function buildAttachmentAxes(
       const padYMatch = nearestToken(padY.px, spacing, "spacing");
       const titleMatch = nearestToken(tailwindClassPx(textClass) as number, fontSize, "typography/primitive/fontSize");
       const roundedClass = classes.find((cls) => cls.startsWith("rounded-"));
+      const ownRadius = roundedClass !== undefined && CLASS_KIND_PATTERN.radius.test(roundedClass); // a named class, by name (step 1b)
       let radiusMatch = baseRadius;
-      if (roundedClass === "rounded-lg") radiusMatch = exactRadiusLg(radius);
-      else if (roundedClass && roundedClass !== "rounded-xl") {
-        disclosures.push(`Size ${label}: radius class ${roundedClass} isn't one this builder understands, so the base rounded-xl radius is kept.`);
+      if (ownRadius) radiusMatch = radiusClassToken(roundedClass as string, radius);
+      else if (roundedClass) {
+        disclosures.push(`Size ${label}: radius class ${roundedClass} isn't one this builder understands, so the base radius is kept.`);
       }
 
       // Default's own snaps are already disclosed by the base plan's notes.
@@ -6948,14 +7146,14 @@ function buildAttachmentAxes(
         sections: buildSections(padXMatch.figmaName, titleMatch.figmaName, sizeOrigins),
       };
       tagFields(sizeOverrides, {
-        radiusVariable: roundedClass === "rounded-lg" ? classOrigin("rounded-lg", classString, undefined, at) : baseRadiusOrigin,
+        radiusVariable: ownRadius ? classOrigin(roundedClass as string, classString, undefined, at) : baseRadiusOrigin,
         "sectionGapVariable@paddingVertical": classOrigin(padY.cls, classString, snapOf(padY.px, padYMatch, spacing), at),
         "sectionGapVariable@itemSpacing": ITEM_SINGLE_SECTION_GAP,
       });
       options.push({ name: label, overrides: sizeOverrides });
     }
     if (options.length > 0) {
-      disclosures.push("Size: AttachmentDescription keeps its own explicit text-xs (12px) in every size, and the media part's per-size classes (group-data-[size=X]/attachment: width, radius, icon size on AttachmentMedia) aren't modeled — Media isn't part of this Figma Attachment.");
+      disclosures.push(`Size: AttachmentDescription keeps its own explicit ${descriptionFontLabel} in every size, and the media part's per-size classes (group-data-[size=X]/attachment: width, radius, icon size on AttachmentMedia) aren't modeled — Media isn't part of this Figma Attachment.`);
       disclosures.push(...describeIdenticalOptions("Size", options));
       if (skippedOptions.length > 0) disclosures.push(`Size options not built: ${skippedOptions.map((o) => `${o.name} (${o.reason})`).join(", ")}.`);
       axes.push({ propertyName: "Size", options, skippedOptions, disclosures });

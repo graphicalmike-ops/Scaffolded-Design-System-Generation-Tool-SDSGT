@@ -146,6 +146,12 @@ that location.
 no ambiguous or not-found classes; sources output deterministic (two runs byte-identical); QA case CLI-6
 passes (25/25). File size ~945 KB for the Demo project.
 
+## Follow-up: step 1b (2026-10-15)
+
+Step 1b made every `"class"` record's value READ from that class (so push and pull agree), and added
+`npm run check:components-roundtrip`, which proves it: it edits each recorded class in a scratch copy
+and checks the plan and the source records follow. Build log: `docs/component-pull-step1b-progress.md`.
+
 ## How to resume
 
 1. Read this file, then `cli/src/scaffold/figma-components-sources.ts` (schema, helpers, walker).
