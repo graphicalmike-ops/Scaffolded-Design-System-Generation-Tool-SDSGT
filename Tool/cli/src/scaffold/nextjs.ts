@@ -86,7 +86,8 @@ import {
   SDSGT_BLOCK_END,
   ensureThemeImports,
 } from "../shared/scaffold-common.ts";
-import { buildFigmaComponentsPushPlan } from "./figma-components-plan.ts";
+import { buildFigmaComponentsPushPlanWithSources } from "./figma-components-plan.ts";
+import { serializeFigmaComponentsSources } from "./figma-components-sources.ts";
 
 export interface ScaffoldNextjsOptions {
   codeDir: string; // output of `generate --tailwind [--shadcn] --framework nextjs`
@@ -452,9 +453,16 @@ export function scaffoldNextjs(opts: ScaffoldNextjsOptions): ScaffoldResult {
       // nothing either way. See scaffold/figma-components-plan.ts. Not
       // recomputed on `update` — the vendored component set itself isn't
       // touched by this pathway, so the existing plan is still accurate.
-      const componentsPlan = buildFigmaComponentsPushPlan(codeDir, join(outDir, "src", "components", "ui"));
+      // figma-components-sources.json (component pull step 1, 2026-10-15) is
+      // written beside it: the code origin (file + class + location, or a
+      // "derived" reason) of every variable binding in the plan, for a later
+      // Figma -> code component pull. A separate file so the plan the
+      // SDSGT-figma-push skill reads is unchanged.
+      const { plan: componentsPlan, sources: componentsSources } = buildFigmaComponentsPushPlanWithSources(codeDir, join(outDir, "src", "components", "ui"));
       writeFileSync(join(outDir, "figma-components-push-plan.json"), `${JSON.stringify(componentsPlan, null, 2)}\n`, "utf-8");
       filesWritten.push("figma-components-push-plan.json");
+      writeFileSync(join(outDir, "figma-components-sources.json"), serializeFigmaComponentsSources(componentsSources), "utf-8");
+      filesWritten.push("figma-components-sources.json");
     }
 
     // The real font fix — see the file header for why the fontOverride

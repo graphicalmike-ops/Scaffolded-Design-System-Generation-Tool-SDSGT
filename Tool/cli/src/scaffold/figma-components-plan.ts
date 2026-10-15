@@ -233,6 +233,14 @@
 // `disclosures` + notes naming the exact classes: link/button children or element-conditional selectors the
 // Figma component does not model). Proven live 2026-10-13 (24 frames in ~760ms, no replay change).
 //
+// Component pull, step 1 (2026-10-15): every builder also TAGS the plan objects it creates with
+// each value's code origin (the exact class and where it sits in the vendored file, or a
+// "derived" reason when no single class can be edited to reproduce it). Tags live outside the
+// objects (figma-components-sources.ts), so this plan's JSON is unchanged.
+// `buildFigmaComponentsPushPlanWithSources` returns the plan plus `figma-components-sources.json`'s
+// content: one record per variable binding the SDSGT-figma-push replay applies, per Figma variant
+// combination. Check with `scripts/check-components-sources.ts`.
+//
 // The shadcn CSS-var -> SDSGT semantic path table below is the exact
 // mapping contracts-and-seeds.md's "shadcn/ui theming" section documents
 // for generate/shadcn.ts, applied in the OPPOSITE direction (there: SDSGT
@@ -252,6 +260,22 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+import {
+  classOrigin,
+  clearSourceContext,
+  collectFigmaComponentSources,
+  copyTags,
+  derivedOrigin,
+  getTag,
+  setSourceAlias,
+  setSourceContext,
+  snapOf,
+  tag,
+  type FigmaComponentsSources,
+  type FigmaSourceOrigin,
+  type UnrecordedBinding,
+} from "./figma-components-sources.ts";
 
 // A real, LUCIDE-specific icon shape, added 2026-09-22 (icon-support work,
 // following on from `figma-remaining-components-plan.md`'s own NEEDS-ICON
@@ -1052,6 +1076,13 @@ function resolveRadiusClass(cls: string, radius: Record<string, number>): { figm
   return nearestToken(targetPx, radius, "radius");
 }
 
+// Component pull step 1: the `snapped` detail for a radius class `resolveRadiusClass` snapped
+// (only the `rounded-[min(var(--radius-md),Npx)]` form can snap; the named classes are exact aliases).
+function radiusSnapOf(cls: string, match: { figmaName: string }, radius: Record<string, number>): { classPx: number; tokenPx: number } | undefined {
+  const m = cls.match(/^rounded-\[min\(var\(--radius-md\),(\d+(?:\.\d+)?)px\)\]$/);
+  return m ? snapOf(Math.min(radius["md"], parseFloat(m[1])), match, radius) : undefined;
+}
+
 // Lists Size-style axis options whose resolved overrides came out IDENTICAL
 // to an earlier option (e.g. Button Sm == Xs and Lg == Default after
 // snapping to the token scale). All of them are still created so Figma's
@@ -1108,10 +1139,20 @@ function buildVariantsFromCva(
     let fillVariable: string | undefined;
     let textVariable: string | undefined;
     let strokeVariable: string | undefined;
+    // Component pull step 1: the class each value came from (see figma-components-sources.ts).
+    const origins: Record<string, FigmaSourceOrigin> = {};
 
     for (const cls of classes) {
       const parsed = classToFigmaVariable(cls);
       if (!parsed) continue;
+      // The origin follows the value, except that a selector-prefixed class (e.g. Alert's
+      // `*:data-[slot=alert-description]:text-destructive/90`, which styles a CHILD) that only
+      // repeats the value an earlier plain class already set does not take the origin over:
+      // the plain class is the one that really colours this element.
+      const field = parsed.kind === "fill" ? "fillVariable" : parsed.kind === "text" ? "textVariable" : "strokeVariable";
+      const current = parsed.kind === "fill" ? fillVariable : parsed.kind === "text" ? textVariable : strokeVariable;
+      const repeatsPlainClass = SELECTOR_PREFIX_PATTERN.test(cls) && current === parsed.variable && origins[field] !== undefined;
+      if (!repeatsPlainClass) origins[field] = classOrigin(cls, classString, undefined, `variants.${axisName}.${name}`);
       if (parsed.kind === "fill") fillVariable = parsed.variable;
       else if (parsed.kind === "text") textVariable = parsed.variable;
       else if (parsed.kind === "border") strokeVariable = parsed.variable;
@@ -1145,12 +1186,16 @@ function buildVariantsFromCva(
     // cause. Caught by inspecting the real generated plan JSON before any
     // live push, not assumed safe from the code alone.
     if (name === "destructive" && fillVariable === sdsgtPathToFigmaName("status.error")) {
+      origins.textVariable = derivedOrigin(`the real text class (${classes.find((c) => classToFigmaVariable(c)?.kind === "text") ?? "text-destructive"}) is the same colour as the fill this plan draws solid (status/error), which would make the text invisible, so the text is drawn ${sdsgtPathToFigmaName("text.on-primary")} instead (a fixed readability fix, not a class)`);
       textVariable = sdsgtPathToFigmaName("text.on-primary");
     }
     // No recognized color classes at all (e.g. "ghost"/"link" — genuinely
     // no bg-*/border-* in shadcn's own real source, real transparent
     // variants, not a parse failure) still needs a real text fallback.
-    if (!textVariable) textVariable = sdsgtPathToFigmaName(name === "link" ? "action.primary" : "text.primary");
+    if (!textVariable) {
+      textVariable = sdsgtPathToFigmaName(name === "link" ? "action.primary" : "text.primary");
+      origins.textVariable = derivedOrigin(`this variant has no text colour class of its own; the text colour is inherited (shadcn's base text-foreground), drawn as ${textVariable}`);
+    }
 
     if (classString.includes("bg-secondary") || classString.includes("text-secondary-foreground")) {
       skippedVariants.push({
@@ -1211,13 +1256,15 @@ function buildVariantsFromCva(
       continue;
     }
 
-    variants.push({
+    const built: FigmaComponentVariantPlanItem = {
       name: capitalize(name),
       fillVariable,
       textVariable,
       strokeVariable,
       underline: name === "link",
-    });
+    };
+    for (const [field, origin] of Object.entries(origins)) tag(built, field, origin);
+    variants.push(built);
   }
 
   return { variants, skippedVariants };
@@ -1408,6 +1455,8 @@ function buildStatesForVariants(
     }
   }
   const classStringByVariant = new Map(entries.map(([name, classString]) => [capitalize(name), classString]));
+  // Component pull step 1: a class read from a variant's own cva entry is located by that entry's key.
+  const cvaKeyByVariant = new Map(entries.map(([name]) => [capitalize(name), name]));
   const baseClassString = singleClassString ?? source.match(/cva\(\s*"([^"]*)"/)?.[1] ?? "";
   // Classes that change nothing a Figma frame can show (not a design token):
   // `pointer-events-none` and the mouse cursor (`cursor-not-allowed`).
@@ -1427,6 +1476,8 @@ function buildStatesForVariants(
       let fillClass = "";
       let text: ReturnType<typeof classToFigmaVariable> = null;
       let border: ReturnType<typeof classToFigmaVariable> = null;
+      // Component pull step 1: the full class (and the class string it sits in) behind each value.
+      const from: Record<"fill" | "text" | "border" | "ring", { cls: string; within: string; suffix?: string } | undefined> = { fill: undefined, text: undefined, border: undefined, ring: undefined };
       let ringWidth: number | undefined;
       let ringColor: { variable: string; opacity?: number } | undefined;
       let nodeOpacity: number | undefined;
@@ -1437,6 +1488,7 @@ function buildStatesForVariants(
       for (const prefix of allPrefixes) {
         for (const classSource of [baseClassString, variantClassString]) {
           const { classes, dropped } = extractStateClassesDetailed(classSource, prefix);
+          const at = { within: classSource, suffix: singleClassString === undefined && classSource === variantClassString && classSource !== baseClassString ? `variants.${axisName}.${cvaKeyByVariant.get(variant.name)}` : undefined };
           for (const d of dropped) {
             if (!reasons.some((r) => r.includes(d))) reasons.push(`real class '${d}' uses an arbitrary Tailwind value with no design token to bind to, so it was not applied (this state falls back to the rest look for it)`);
           }
@@ -1446,15 +1498,16 @@ function buildStatesForVariants(
             const ring = parseRingClass(cls);
             const opacityMatch = cls.match(/^opacity-(\d+)$/);
             if (parsed) {
-              if (parsed.kind === "fill") { fill = parsed; fillClass = full; }
-              else if (parsed.kind === "text") text = parsed;
-              else border = parsed;
+              if (parsed.kind === "fill") { fill = parsed; fillClass = full; from.fill = { cls: full, ...at }; }
+              else if (parsed.kind === "text") { text = parsed; from.text = { cls: full, ...at }; }
+              else { border = parsed; from.border = { cls: full, ...at }; }
               used.push(full);
             } else if (ring && "widthPx" in ring) {
               ringWidth = ring.widthPx;
               used.push(full);
             } else if (ring) {
               ringColor = ring;
+              from.ring = { cls: full, ...at };
               used.push(full);
             } else if (opacityMatch) {
               nodeOpacity = parseInt(opacityMatch[1], 10) / 100;
@@ -1506,6 +1559,12 @@ function buildStatesForVariants(
       }
       if (unmodeled.length > 0) reasons.push(`classes not modeled: ${unmodeled.join(" ")}`);
 
+      // Component pull step 1: tag each value with the real class it was read from.
+      if (item.fillVariable && from.fill) tag(item, "fillVariable", classOrigin(from.fill.cls, from.fill.within, undefined, from.fill.suffix));
+      if (item.textVariable && from.text) tag(item, "textVariable", classOrigin(from.text.cls, from.text.within, undefined, from.text.suffix));
+      if (item.strokeVariable && from.border) tag(item, "strokeVariable", classOrigin(from.border.cls, from.border.within, undefined, from.border.suffix));
+      if (item.focusRing && from.ring) tag(item.focusRing, "colorVariable", classOrigin(from.ring.cls, from.ring.within, undefined, from.ring.suffix));
+
       // Fade tokens (see FADE_FILL_TOKENS above): swap a (colour, opacity) pair for the
       // token that carries the fade itself, when this project has it.
       if (item.fillVariable && item.fillOpacity !== undefined) {
@@ -1514,12 +1573,14 @@ function buildStatesForVariants(
           disclosures.push(`State ${variant.name} / ${stateName}: the fill (${fillClass}) is ${fade.note}.`);
           item.fillVariable = sdsgtPathToFigmaName(fade.token);
           delete item.fillOpacity;
+          tag(item, "fillVariable", derivedOrigin(`solid-token substitution: the real ${fillClass} (a translucent fill) is drawn as the solid token ${item.fillVariable}, because a fill's transparency is lost on Figma instances; no class names this token`));
         }
       }
       if (item.focusRing) {
         const fade = FADE_RING_TOKENS[`${item.focusRing.colorVariable}@${item.focusRing.opacity}`];
         if (fade && projectHasToken(fade.cssVar)) {
           item.focusRing = { ...item.focusRing, colorVariable: sdsgtPathToFigmaName(fade.token) }; // opacity stays equal to the token's alpha
+          tag(item.focusRing, "colorVariable", derivedOrigin(`baked ring token: the real ${from.ring?.cls ?? "ring colour class"} (a colour at a set transparency) is drawn as the token ${item.focusRing.colorVariable}, which carries that transparency itself (it is lost on Figma instances otherwise); no class names this token`));
         }
       }
 
@@ -1531,6 +1592,9 @@ function buildStatesForVariants(
         Object.assign(item, stateOverride.item);
         reasons.length = 0;
         disclosures.push(`State ${variant.name} / ${stateName}: ${stateOverride.note}`);
+        const decided = derivedOrigin(`user decision for ${variant.name} / ${stateName}: ${stateOverride.note.replace(/\.$/, "")}`);
+        for (const key of ["fillVariable", "textVariable", "strokeVariable", "linkTextVariable"]) if (key in stateOverride.item) tag(item, key, decided);
+        if (item.focusRing) tag(item.focusRing, "colorVariable", decided);
       }
 
       // A stroke drawn in the very colour of the fill it sits on is invisible
@@ -1693,6 +1757,23 @@ function classesInSource(source: string, candidates: string[]): string[] {
   return candidates.filter((c) => tokens.has(c));
 }
 
+// Component pull step 1: tags several fields of one plan object at once.
+function tagFields(obj: object, origins: Record<string, FigmaSourceOrigin>): void {
+  for (const [field, origin] of Object.entries(origins)) tag(obj, field, origin);
+}
+
+// Component pull step 1: `to[toField]` gets the tag `from[fromField]` carries (for a value copied
+// out of a `scanClassesForColors` result into a hand-built plan object).
+function tagLike(to: object, toField: string, from: object, fromField: string): void {
+  const origin = getTag(from, fromField);
+  if (origin) tag(to, toField, origin);
+}
+
+// The cva base class string of a component source (the first `cva("...")` literal), for `classOrigin`'s `within`.
+function cvaBase(source: string): string {
+  return source.match(/cva\(\s*"([^"]*)"/)?.[1] ?? "";
+}
+
 function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[]): FigmaComponentPlanItem {
   const { variants, skippedVariants } = buildVariantsFromCva(buttonSource, "variant");
 
@@ -1797,7 +1878,7 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
     for (const line of buttonDisclosures) notes.push(`Button ${line}`);
   }
 
-  return {
+  const button: FigmaComponentPlanItem = {
     name: "Button",
     variantPropertyName: "Variant",
     variants,
@@ -1812,6 +1893,15 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
     ...(hasStates ? { statePropertyName: "State" as const, disclosures: buttonDisclosures } : {}),
   };
+  // Component pull step 1. These component-level values are only bound when there is no Size
+  // axis: every Size option replaces padding, font size and radius with its own real classes.
+  tagFields(button, {
+    radiusVariable: classOrigin("rounded-lg", cvaBase(buttonSource)),
+    paddingHorizontalVariable: derivedOrigin("hardcoded 10px (shadcn's default-size px-2.5), not read from a class; only used when Button has no Size axis"),
+    paddingVerticalVariable: derivedOrigin("no vertical padding class exists (the real height comes from h-8); 5px is an estimate, only used when Button has no Size axis"),
+    fontSizeVariable: classOrigin("text-sm", cvaBase(buttonSource), snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return button;
 }
 
 // The shared `Size` axis builder (component-variations plan, Batch 1,
@@ -1872,6 +1962,15 @@ function buildCvaSizeAxis(
   };
   const baseFontPx = firstTextPx(baseClasses);
   const baseRadius = firstRadius(baseClasses);
+  // Component pull step 1: the classes behind those values (the same "first match" the helpers above use).
+  const baseString = baseMatch?.[1] ?? "";
+  const firstTextClass = (classes: string[]) => classes.find((cls) => cls.startsWith("text-") && tailwindClassPx(cls) !== null);
+  const firstRadiusClass = (classes: string[]) => classes.find((cls) => resolveRadiusClass(cls, radius) !== null);
+  const radiusOrigin = (classes: string[], classString: string, match: { figmaName: string }, sizeName: string): FigmaSourceOrigin => {
+    const own = firstRadiusClass(classes);
+    const cls = own ?? (firstRadiusClass(baseClasses) as string);
+    return own ? classOrigin(cls, classString, radiusSnapOf(cls, match, radius), `variants.size.${sizeName}`) : classOrigin(cls, baseString, radiusSnapOf(cls, match, radius));
+  };
 
   // The icon px a size class string sets via `[&_svg:not([class*='size-'])]:size-N`
   // (xs: 12), else the base string's own (size-4 = 16). icon-sm / icon-lg set
@@ -1916,17 +2015,20 @@ function buildCvaSizeAxis(
       }
       const sizeMatch = nearestToken(sizePx, spacing, "spacing");
       const iconOverrides: FigmaComponentLayoutOverrides = { heightVariable: sizeMatch.figmaName };
+      tag(iconOverrides, "heightVariable", classOrigin(sizeClass, classString, snapOf(sizePx, sizeMatch, spacing), `variants.size.${sizeName}`));
       if (sizeMatch.deltaPx > 0) {
         disclosures.push(`Size ${label}: ${sizeClass} (${sizePx}px square) snapped to ${sizeMatch.figmaName} (${tokenPx(sizeMatch.figmaName, spacing)}px), ${sizeMatch.deltaPx}px off — no exact spacing token.`);
       }
       const iconRadius = firstRadius(classes) ?? baseRadius;
       if (iconRadius) {
         iconOverrides.radiusVariable = iconRadius.figmaName;
+        tag(iconOverrides, "radiusVariable", radiusOrigin(classes, classString, iconRadius, sizeName));
         if (iconRadius.deltaPx > 0) {
           disclosures.push(`Size ${label}: corner radius snapped to ${iconRadius.figmaName}, ${iconRadius.deltaPx}px off — no exact radius token.`);
         }
       }
       iconOverrides.iconOnly = { viewBox: LUCIDE_ICONS.plus.viewBox, pathData: LUCIDE_ICONS.plus.pathData, sizePx: iconPx, colorVariable: fallbackIconColor };
+      tag(iconOverrides.iconOnly, "colorVariable", derivedOrigin("fallback colour for the placeholder icon, used only by a variant with no text colour of its own; in code the icon is caller-supplied and takes the variant's text colour"));
       options.push({ name: label, overrides: iconOverrides });
       continue;
     }
@@ -1940,6 +2042,7 @@ function buildCvaSizeAxis(
     const overrides: FigmaComponentLayoutOverrides = {};
     const heightMatch = nearestToken(heightPx, spacing, "spacing");
     overrides.heightVariable = heightMatch.figmaName;
+    tag(overrides, "heightVariable", classOrigin(heightClass, classString, snapOf(heightPx, heightMatch, spacing), `variants.size.${sizeName}`));
     if (sizeName !== "default" && heightMatch.deltaPx > 0) {
       disclosures.push(`Size ${label}: height ${heightClass} (${heightPx}px) snapped to ${heightMatch.figmaName} (${tokenPx(heightMatch.figmaName, spacing)}px), ${heightMatch.deltaPx}px off — no exact spacing token.`);
     }
@@ -1949,6 +2052,7 @@ function buildCvaSizeAxis(
     if (padClass && padPx !== null) {
       const padMatch = nearestToken(padPx, spacing, "spacing");
       overrides.paddingHorizontalVariable = padMatch.figmaName;
+      tag(overrides, "paddingHorizontalVariable", classOrigin(padClass, classString, snapOf(padPx, padMatch, spacing), `variants.size.${sizeName}`));
       // Default's px-2.5 snap is already disclosed by the pre-existing
       // "Button horizontal padding" note, so it isn't repeated here.
       if (sizeName !== "default" && padMatch.deltaPx > 0) {
@@ -1960,6 +2064,8 @@ function buildCvaSizeAxis(
     if (fontPx !== undefined) {
       const fontMatch = nearestToken(fontPx, fontSize, "typography/primitive/fontSize");
       overrides.fontSizeVariable = fontMatch.figmaName;
+      const ownTextClass = firstTextClass(classes);
+      tag(overrides, "fontSizeVariable", classOrigin((ownTextClass ?? firstTextClass(baseClasses)) as string, ownTextClass ? classString : baseString, snapOf(fontPx, fontMatch, fontSize), ownTextClass ? `variants.size.${sizeName}` : undefined));
       if (sizeName !== "default" && fontMatch.deltaPx > 0) {
         disclosures.push(`Size ${label}: text size ${fontPx}px snapped to ${fontMatch.figmaName} (${tokenPx(fontMatch.figmaName, fontSize)}px), ${Math.round(fontMatch.deltaPx * 100) / 100}px off — no exact type-scale token.`);
       }
@@ -1968,6 +2074,7 @@ function buildCvaSizeAxis(
     const radiusMatch = firstRadius(classes) ?? baseRadius;
     if (radiusMatch) {
       overrides.radiusVariable = radiusMatch.figmaName;
+      tag(overrides, "radiusVariable", radiusOrigin(classes, classString, radiusMatch, sizeName));
       if (sizeName !== "default" && radiusMatch.deltaPx > 0) {
         disclosures.push(`Size ${label}: corner radius snapped to ${radiusMatch.figmaName}, ${radiusMatch.deltaPx}px off — no exact radius token.`);
       }
@@ -2093,7 +2200,7 @@ function buildBadgePlan(tokensCss: string, badgeSource: string, notes: string[])
     for (const line of badgeDisclosures) notes.push(`Badge ${line}`);
   }
 
-  return {
+  const badge: FigmaComponentPlanItem = {
     name: "Badge",
     variantPropertyName: "Variant",
     variants,
@@ -2107,6 +2214,16 @@ function buildBadgePlan(tokensCss: string, badgeSource: string, notes: string[])
     defaultLabel: "New",
     ...(hasStates ? { statePropertyName: "State" as const, disclosures: badgeDisclosures } : {}),
   };
+  // Component pull step 1: Badge's hardcoded targets are the real cva base classes (rounded-4xl
+  // caps at radius/xl by name; py-0.5's 2px snaps to the nearest spacing token).
+  const badgeBase = cvaBase(badgeSource);
+  tagFields(badge, {
+    radiusVariable: classOrigin("rounded-4xl", badgeBase),
+    paddingHorizontalVariable: classOrigin("px-2", badgeBase, snapOf(8, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-0.5", badgeBase, snapOf(2, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-xs", badgeBase, snapOf(12, fontSizeMatch, fontSize)),
+  });
+  return badge;
 }
 
 // Third real component, added 2026-09-17 — picked after checking every
@@ -2206,7 +2323,7 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
     for (const line of toggleDisclosures) notes.push(`Toggle ${line}`);
   }
 
-  return {
+  const toggle: FigmaComponentPlanItem = {
     name: "Toggle",
     variantPropertyName: "Variant",
     variants,
@@ -2221,6 +2338,15 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
     ...(hasStates ? { statePropertyName: "State" as const, disclosures: toggleDisclosures } : {}),
   };
+  // Component pull step 1. Only bound when there is no Size axis (every Size option replaces
+  // padding, font size and radius with its own real classes).
+  tagFields(toggle, {
+    radiusVariable: classOrigin("rounded-lg", cvaBase(toggleSource)),
+    paddingHorizontalVariable: derivedOrigin("hardcoded 10px (shadcn's default-size px-2.5), not read from a class; only used when Toggle has no Size axis"),
+    paddingVerticalVariable: derivedOrigin("no vertical padding class exists (the real height comes from h-8); 5px is an estimate, only used when Toggle has no Size axis"),
+    fontSizeVariable: classOrigin("text-sm", cvaBase(toggleSource), snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return toggle;
 }
 
 // Fourth real component, added 2026-09-17 — a genuinely different real
@@ -2255,7 +2381,10 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
 function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[]): FigmaComponentPlanItem {
   const { variants, skippedVariants } = buildVariantsFromCva(alertSource, "variant");
   for (const variant of variants) {
-    if (!variant.strokeVariable) variant.strokeVariable = sdsgtPathToFigmaName("border.default");
+    if (!variant.strokeVariable) {
+      variant.strokeVariable = sdsgtPathToFigmaName("border.default");
+      tag(variant, "strokeVariable", derivedOrigin("no border colour class in alert.tsx: the bare `border` (a width) gets its colour from shadcn's global base rule (`* { @apply border-border }`), so there is no class in this file to edit"));
+    }
   }
   notes.push("Alert: its real AlertDescription is modeled as a second, fixed text line (see file header) — real destructive-only translucent-red tint on the description isn't bound, since that class sits behind a `*:data-[slot=...]:` selector prefix this parser doesn't parse; always shown in text.secondary instead.");
 
@@ -2287,8 +2416,12 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
   const alertLinkColor = alertLinkHover.length > 0 ? classToFigmaVariable("text-foreground") : null;
   const alertLinkBuilt = alertLinkHover.length > 0 && alertLinkUnderline.length > 0 && alertLinkColor !== null && alertLinkColor.kind === "text";
   const ALERT_LINK_TEXT = "Learn more";
+  const alertDescriptionClasses = alertSource.match(/function AlertDescription[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
   if (alertLinkBuilt) {
-    for (const v of variants) v.states = [{ name: "Hover", linkTextVariable: alertLinkColor!.variable }];
+    for (const v of variants) {
+      v.states = [{ name: "Hover", linkTextVariable: alertLinkColor!.variable }];
+      tag(v.states[0], "linkTextVariable", classOrigin(alertLinkHover[0], alertDescriptionClasses));
+    }
   }
   const alertLinkDisclosures: string[] = [];
   if (alertLinkBuilt) {
@@ -2303,7 +2436,7 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
       ], notes)
     : [];
 
-  return {
+  const alert: FigmaComponentPlanItem = {
     name: "Alert",
     variantPropertyName: "Variant",
     variants,
@@ -2326,6 +2459,22 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
     ...(alertLinkBuilt ? { inlineLink: { text: ALERT_LINK_TEXT }, statePropertyName: "State" as const, disclosures: alertLinkDisclosures } : {}),
     ...(alertSkipDisclosures.length > 0 ? { disclosures: alertSkipDisclosures } : {}),
   };
+  // Component pull step 1: the hardcoded targets are the real cva base / AlertDescription classes.
+  const alertBase = cvaBase(alertSource);
+  tagFields(alert, {
+    radiusVariable: classOrigin("rounded-lg", alertBase),
+    paddingHorizontalVariable: classOrigin("px-2.5", alertBase, snapOf(10, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-2", alertBase, snapOf(8, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-sm", alertBase, snapOf(14, fontSizeMatch, fontSize)),
+    secondaryTextVariable: classToFigmaVariable("text-muted-foreground")?.variable === alert.secondaryTextVariable
+      ? classOrigin("text-muted-foreground", alertDescriptionClasses)
+      : derivedOrigin("hardcoded description colour, not read from a class"),
+    secondaryFontSizeVariable: classOrigin("text-sm", alertDescriptionClasses, snapOf(14, fontSizeMatch, fontSize)),
+  });
+  if (alert.inlineLink) {
+    tag(alert.inlineLink, "textVariable", derivedOrigin("the inline link has no colour class of its own at rest: it inherits the whole description's colour (text-muted-foreground in AlertDescription), so a link-only colour change has no single class to edit"));
+  }
+  return alert;
 }
 
 // Fifth and sixth real components, added 2026-09-17 — the first two from
@@ -2381,14 +2530,41 @@ function scanClassesForColors(classString: string, fallbackTextPath: string = "t
   let fillVariable: string | undefined;
   let textVariable: string | undefined;
   let strokeVariable: string | undefined;
+  const origins: Record<string, FigmaSourceOrigin> = {}; // component pull step 1 (same rule as buildVariantsFromCva)
   for (const cls of classString.split(" ").filter(Boolean)) {
     const parsed = classToFigmaVariable(cls);
     if (!parsed) continue;
+    const field = parsed.kind === "fill" ? "fillVariable" : parsed.kind === "text" ? "textVariable" : "strokeVariable";
+    const current = parsed.kind === "fill" ? fillVariable : parsed.kind === "text" ? textVariable : strokeVariable;
+    if (!(SELECTOR_PREFIX_PATTERN.test(cls) && current === parsed.variable && origins[field] !== undefined)) origins[field] = classOrigin(cls, classString);
     if (parsed.kind === "fill") fillVariable = parsed.variable;
     else if (parsed.kind === "text") textVariable = parsed.variable;
     else if (parsed.kind === "border") strokeVariable = parsed.variable;
   }
-  return { fillVariable, textVariable: textVariable ?? sdsgtPathToFigmaName(fallbackTextPath), strokeVariable };
+  if (textVariable === undefined) origins.textVariable = derivedOrigin(`no text colour class of its own; the text colour is inherited (shadcn's base text-foreground), drawn as ${sdsgtPathToFigmaName(fallbackTextPath)}`);
+  const result = { fillVariable, textVariable: textVariable ?? sdsgtPathToFigmaName(fallbackTextPath), strokeVariable };
+  tagFields(result, origins);
+  return result;
+}
+
+// Component pull step 1: a builder's `{ name, ...colors, ... }` variant gets the colour tags of `colors`.
+function withColorTags<T extends object>(colors: object, variant: T): T {
+  copyTags(colors, variant);
+  return variant;
+}
+
+// The full `data-[size=X]:<cls>` / `group-data-[size=X]/name:<cls>` token in `classString` that
+// `parseDataSizeClasses` read `cls` from for size `sizeName` (for `classOrigin`).
+function dataSizeToken(classString: string, sizeName: string, cls: string): string {
+  return classString.split(/\s+/).find((t) => t.endsWith(`:${cls}`) && new RegExp(`^(?:group-)?data-\\[size=${sizeName}\\](?:/[a-z0-9-]+)?:`).test(t)) ?? cls;
+}
+
+// Input/Textarea show their placeholder: its real class, when it is there and resolves to the bound colour.
+function placeholderTextOrigin(classString: string, variable: string): FigmaSourceOrigin {
+  const cls = classString.split(/\s+/).find((t) => t.startsWith("placeholder:text-"));
+  return cls && classToFigmaVariable(cls.slice("placeholder:".length))?.variable === variable
+    ? classOrigin(cls, classString)
+    : derivedOrigin(`the placeholder colour ${variable} is a fixed choice, not read from a class`);
 }
 
 // Batch 11 (component-variations plan, 2026-10-09): interaction States for the
@@ -2499,11 +2675,12 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
   }
   notes.push("Input: represented showing its placeholder text (color/semantic/text/secondary), not typed content — an at-rest Input has no typed value to show, and this is the real color shadcn's own `placeholder:text-muted-foreground` class targets.");
 
-  const variants: FigmaComponentVariantPlanItem[] = [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") }];
+  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") })];
+  tag(variants[0], "textVariable", placeholderTextOrigin(classMatch[1], variants[0].textVariable as string));
   // Batch 11: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildFormFieldStates("Input", inputSource, classMatch[1], variants, notes);
 
-  return {
+  const input: FigmaComponentPlanItem = {
     name: "Input",
     variantPropertyName: "Variant",
     variants,
@@ -2517,6 +2694,13 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
     defaultLabel: "Placeholder",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tagFields(input, {
+    radiusVariable: classOrigin("rounded-lg", classMatch[1]),
+    paddingHorizontalVariable: classOrigin("px-2.5", classMatch[1], snapOf(10, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-1", classMatch[1], snapOf(4, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-base", classMatch[1], snapOf(16, fontSizeMatch, fontSize)),
+  });
+  return input;
 }
 
 // Real current source: `flex field-sizing-content min-h-16 w-full
@@ -2551,11 +2735,12 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
   }
   notes.push("Textarea: represented showing its placeholder text (color/semantic/text/secondary), not typed content — same real reason as Input's own note.");
 
-  const variants: FigmaComponentVariantPlanItem[] = [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") }];
+  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") })];
+  tag(variants[0], "textVariable", placeholderTextOrigin(classMatch[1], variants[0].textVariable as string));
   // Batch 11: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildFormFieldStates("Textarea", textareaSource, classMatch[1], variants, notes);
 
-  return {
+  const textarea: FigmaComponentPlanItem = {
     name: "Textarea",
     variantPropertyName: "Variant",
     variants,
@@ -2569,6 +2754,13 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
     defaultLabel: "Placeholder",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tagFields(textarea, {
+    radiusVariable: classOrigin("rounded-lg", classMatch[1]),
+    paddingHorizontalVariable: classOrigin("px-2.5", classMatch[1], snapOf(10, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-2", classMatch[1], snapOf(8, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-base", classMatch[1], snapOf(16, fontSizeMatch, fontSize)),
+  });
+  return textarea;
 }
 
 // Seventh real component, and the first real compound one, added
@@ -2650,36 +2842,78 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
   // Component-variations plan, Batch 5 (2026-10-08): the `Size` axis. Default
   // is exactly the values above; each other size comes from the real
   // `data-[size=X]:` / `group-data-[size=X]/card:` classes.
-  const buildSections = (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string): FigmaComponentSectionPlanItem[] => [
-    {
-      paddingHorizontalVariable: spacingVar,
-      textLines: [
-        { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Card Title" },
-        { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Card description goes here." },
-      ],
-    },
-    {
-      paddingHorizontalVariable: spacingVar,
-      textLines: [
-        { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: contentFontVar, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the card's main content." },
-      ],
-    },
-  ];
-  const sizeAxis = buildCardSizeAxis(cardSource, buildSections, titleFontSize.figmaName, bodyFontSize.figmaName, readCssScale(tokensCss, "spacing"), fontSize, notes);
+  // Component pull step 1: the real class strings the hardcoded values above come from.
+  const cardRoot = cardSource.match(/function Card\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const cardTitleClasses = cardSource.match(/data-slot="card-title"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const cardDescriptionClasses = cardSource.match(/data-slot="card-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  // Title and Content have no colour class of their own: they inherit the Card root's text-card-foreground.
+  const inheritedCardText = classOrigin("text-card-foreground", cardRoot);
+  const descriptionCardText = classOrigin("text-muted-foreground", cardDescriptionClasses);
+  const buildSections = (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string, origins?: CardSectionOrigins): FigmaComponentSectionPlanItem[] => {
+    const sections: FigmaComponentSectionPlanItem[] = [
+      {
+        paddingHorizontalVariable: spacingVar,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Card Title" },
+          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Card description goes here." },
+        ],
+      },
+      {
+        paddingHorizontalVariable: spacingVar,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: contentFontVar, weight: "Regular", labelPropertyName: "Content", defaultLabel: "This is the card's main content." },
+        ],
+      },
+    ];
+    tag(sections[0].textLines[0], "textVariable", inheritedCardText);
+    tag(sections[0].textLines[1], "textVariable", descriptionCardText);
+    tag(sections[1].textLines[0], "textVariable", inheritedCardText);
+    if (origins) {
+      for (const section of sections) tag(section, "paddingHorizontalVariable", origins.spacing); // px-(--card-spacing): the value is the root's --card-spacing
+      tag(sections[0].textLines[0], "fontSizeVariable", origins.title);
+      tag(sections[0].textLines[1], "fontSizeVariable", origins.description);
+      tag(sections[1].textLines[0], "fontSizeVariable", origins.content);
+    }
+    return sections;
+  };
+  const defaultCardOrigins: CardSectionOrigins = {
+    spacing: classOrigin("[--card-spacing:--spacing(4)]", cardRoot),
+    title: classOrigin("text-base", cardTitleClasses, snapOf(16, titleFontSize, fontSize)),
+    description: classOrigin("text-sm", cardDescriptionClasses, snapOf(14, bodyFontSize, fontSize)),
+    content: classOrigin("text-sm", cardRoot, snapOf(14, bodyFontSize, fontSize)), // Content inherits the root's text-sm
+  };
+  const sizeAxis = buildCardSizeAxis(cardSource, buildSections, titleFontSize.figmaName, bodyFontSize.figmaName, readCssScale(tokensCss, "spacing"), fontSize, notes, defaultCardOrigins);
 
-  return {
+  const cardVariant: FigmaComponentVariantPlanItem = { name: "Default", fillVariable: sdsgtPathToFigmaName("background.surface"), textVariable: sdsgtPathToFigmaName("text.on-surface"), strokeVariable: sdsgtPathToFigmaName("border.subtle"), underline: false };
+  tagFields(cardVariant, {
+    fillVariable: classOrigin("bg-card", cardRoot),
+    textVariable: inheritedCardText,
+    strokeVariable: derivedOrigin("approximation: the real outline is ring-1 ring-foreground/10 (a translucent ring, not a border colour), drawn as the nearest semantic token border.subtle; no class names this token"),
+  });
+  const card: FigmaComponentPlanItem = {
     name: "Card",
     variantPropertyName: "Variant",
-    variants: [
-      { name: "Default", fillVariable: sdsgtPathToFigmaName("background.surface"), textVariable: sdsgtPathToFigmaName("text.on-surface"), strokeVariable: sdsgtPathToFigmaName("border.subtle"), underline: false },
-    ],
+    variants: [cardVariant],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: "spacing/4",
-    sections: buildSections("spacing/4", titleFontSize.figmaName, bodyFontSize.figmaName, bodyFontSize.figmaName),
+    sections: buildSections("spacing/4", titleFontSize.figmaName, bodyFontSize.figmaName, bodyFontSize.figmaName, defaultCardOrigins),
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+  tagFields(card, {
+    radiusVariable: classOrigin("rounded-xl", cardRoot, snapOf(radiusTarget, radiusMatch, radius)),
+    sectionGapVariable: defaultCardOrigins.spacing, // gap-(--card-spacing) and py-(--card-spacing): both the root's --card-spacing
+  });
+  return card;
+}
+
+// Component pull step 1: where Card's per-size values come from (see buildCardPlan).
+interface CardSectionOrigins {
+  spacing: FigmaSourceOrigin;
+  title: FigmaSourceOrigin;
+  description: FigmaSourceOrigin;
+  content: FigmaSourceOrigin;
 }
 
 // Card's `Size` axis (component-variations plan, Batch 5, 2026-10-08), read
@@ -2701,12 +2935,13 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
 // reason; missing root source returns no axis.
 function buildCardSizeAxis(
   cardSource: string,
-  buildSections: (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string) => FigmaComponentSectionPlanItem[],
+  buildSections: (spacingVar: string, titleFontVar: string, descriptionFontVar: string, contentFontVar: string, origins?: CardSectionOrigins) => FigmaComponentSectionPlanItem[],
   defaultTitleFontVar: string,
   defaultBodyFontVar: string,
   spacing: Record<string, number>,
   fontSize: Record<string, number>,
   notes: string[],
+  defaultOrigins: CardSectionOrigins,
 ): FigmaComponentAxisPlanItem | undefined {
   const rootMatch = cardSource.match(/function Card\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
   if (!rootMatch) {
@@ -2742,10 +2977,9 @@ function buildCardSizeAxis(
   const skippedOptions: FigmaComponentAxisPlanItem["skippedOptions"] = [];
   const disclosures: string[] = [];
 
-  options.push({
-    name: "Default",
-    overrides: { sectionGapVariable: "spacing/4", sections: buildSections("spacing/4", defaultTitleFontVar, defaultBodyFontVar, defaultBodyFontVar) },
-  });
+  const defaultOverrides: FigmaComponentLayoutOverrides = { sectionGapVariable: "spacing/4", sections: buildSections("spacing/4", defaultTitleFontVar, defaultBodyFontVar, defaultBodyFontVar, defaultOrigins) };
+  tag(defaultOverrides, "sectionGapVariable", defaultOrigins.spacing);
+  options.push({ name: "Default", overrides: defaultOverrides });
 
   const consumed = new Map<string, Set<string>>(); // size -> classes this builder turned into overrides
   for (const sizeName of Object.keys(allBySize).filter((n) => n !== "default")) {
@@ -2778,10 +3012,21 @@ function buildCardSizeAxis(
     const descriptionVar = fontVar(descriptionPx, defaultBodyFontVar, "Description");
     const contentVar = fontVar(contentPx, defaultBodyFontVar, "Content");
 
-    options.push({
-      name: label,
-      overrides: { sectionGapVariable: spacingMatch.figmaName, sections: buildSections(spacingMatch.figmaName, titleVar, descriptionVar, contentVar) },
-    });
+    // Component pull step 1: this size's own class where it has one, else the default's.
+    const sizeTextOrigin = (classString: string, bySize: Record<string, string[]>, px: number | null, fontVarName: string, fallback: FigmaSourceOrigin): FigmaSourceOrigin => {
+      const cls = (bySize[sizeName] ?? []).find((c) => c.startsWith("text-") && tailwindClassPx(c) !== null);
+      return px === null || !cls ? fallback : classOrigin(dataSizeToken(classString, sizeName, cls), classString, snapOf(px, { figmaName: fontVarName }, fontSize));
+    };
+    const spacingToken = (rootBySize[sizeName] ?? []).find((cls) => spacingFn([cls]) !== null) as string;
+    const sizeOrigins: CardSectionOrigins = {
+      spacing: classOrigin(dataSizeToken(rootMatch[1], sizeName, spacingToken), rootMatch[1], snapOf(spacingPx, spacingMatch, spacing)),
+      title: sizeTextOrigin(titleClasses, titleBySize, titlePx, titleVar, defaultOrigins.title),
+      description: sizeTextOrigin(descriptionClasses, descriptionBySize, descriptionPx, descriptionVar, defaultOrigins.description),
+      content: sizeTextOrigin(rootMatch[1], rootBySize, contentPx, contentVar, defaultOrigins.content),
+    };
+    const sizeOverrides: FigmaComponentLayoutOverrides = { sectionGapVariable: spacingMatch.figmaName, sections: buildSections(spacingMatch.figmaName, titleVar, descriptionVar, contentVar, sizeOrigins) };
+    tag(sizeOverrides, "sectionGapVariable", sizeOrigins.spacing);
+    options.push({ name: label, overrides: sizeOverrides });
   }
 
   if (options.length < 2) {
@@ -2875,10 +3120,10 @@ function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): Fi
   }
   notes.push("Kbd: its real in-data-[slot=tooltip-content]: variant (a visually distinct look when nested inside a Tooltip) isn't represented — this parser's plain class regex doesn't see selector-prefixed classes; only the normal, non-tooltip rest state is modeled.");
 
-  return {
+  const kbd: FigmaComponentPlanItem = {
     name: "Kbd",
     variantPropertyName: "Variant",
-    variants: [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") }],
+    variants: [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") })],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingHMatch.figmaName,
@@ -2888,6 +3133,13 @@ function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): Fi
     labelPropertyName: "Label",
     defaultLabel: "⌘",
   };
+  tagFields(kbd, {
+    radiusVariable: classOrigin("rounded-sm", classMatch[1], snapOf(radiusTarget, radiusMatch, radius)),
+    paddingHorizontalVariable: classOrigin("px-1", classMatch[1], snapOf(4, paddingHMatch, spacing)),
+    paddingVerticalVariable: derivedOrigin(`computed, not a class: Kbd has no vertical padding class; ${paddingVTarget}px is (h-5 height 20px - text-xs 12px) / 2`),
+    fontSizeVariable: classOrigin("text-xs", classMatch[1], snapOf(12, fontSizeMatch, fontSize)),
+  });
+  return kbd;
 }
 
 // Ninth real component, added 2026-09-18, same batch as Kbd/Avatar. Real
@@ -2953,7 +3205,7 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
 
   const sizeAxis = buildNativeSelectSizeAxis(classMatch[1], spacing, radius, notes);
 
-  const variants: FigmaComponentVariantPlanItem[] = [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.primary") }];
+  const variants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.primary") })];
   // Batch 12: interaction states (Hover, Focus, Disabled, Invalid), read from the
   // real <select> class string like Input/Textarea (a single class string, no
   // cva axis). Two NativeSelect-specific facts:
@@ -2994,7 +3246,7 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
     for (const line of nsDisclosures) notes.push(`NativeSelect ${line}`);
   }
 
-  return {
+  const nativeSelect: FigmaComponentPlanItem = {
     name: "NativeSelect",
     variantPropertyName: "Variant",
     variants,
@@ -3009,6 +3261,14 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
     ...(nsHasStates ? { statePropertyName: "State" as const, disclosures: nsDisclosures } : {}),
   };
+  tagFields(nativeSelect, {
+    radiusVariable: classOrigin("rounded-lg", classMatch[1]),
+    // pl-2.5 is the text-side padding; the plan uses it for both sides (pr-8 makes room for the chevron).
+    paddingHorizontalVariable: classOrigin("pl-2.5", classMatch[1], snapOf(10, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-1", classMatch[1], snapOf(4, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-sm", classMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return nativeSelect;
 }
 
 // NativeSelect's `Size` axis (component-variations plan, Batch 5,
@@ -3067,6 +3327,7 @@ function buildNativeSelectSizeAxis(
     }
     const heightMatch = nearestToken(height.px, spacing, "spacing");
     const overrides: FigmaComponentLayoutOverrides = { heightVariable: heightMatch.figmaName };
+    tag(overrides, "heightVariable", classOrigin(sizeName === "default" ? height.cls : dataSizeToken(selectClassString, sizeName, height.cls), selectClassString, snapOf(height.px, heightMatch, spacing)));
     if (sizeName !== "default") {
       if (heightMatch.deltaPx > 0) {
         disclosures.push(`Size ${label}: height ${height.cls} (${height.px}px) snapped to ${heightMatch.figmaName} (${tokenPx(heightMatch.figmaName, spacing)}px), ${heightMatch.deltaPx}px off — no exact spacing token.`);
@@ -3074,6 +3335,9 @@ function buildNativeSelectSizeAxis(
       const ownRadius = radiusOf(classes) ?? baseRadius;
       if (ownRadius) {
         overrides.radiusVariable = ownRadius.figmaName;
+        const ownRadiusClass = classes.find((cls) => resolveRadiusClass(cls, radius) !== null);
+        const radiusClass = ownRadiusClass ?? (baseClasses.find((cls) => resolveRadiusClass(cls, radius) !== null) as string);
+        tag(overrides, "radiusVariable", classOrigin(ownRadiusClass ? dataSizeToken(selectClassString, sizeName, ownRadiusClass) : radiusClass, selectClassString, radiusSnapOf(radiusClass, ownRadius, radius)));
         if (ownRadius.deltaPx > 0) {
           disclosures.push(`Size ${label}: corner radius snapped to ${ownRadius.figmaName}, ${ownRadius.deltaPx}px off — no exact radius token.`);
         } else if (baseRadius && ownRadius.figmaName === baseRadius.figmaName && classes.some((cls) => cls.startsWith("rounded-"))) {
@@ -3184,6 +3448,11 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
   if (!fallbackMatch) throw new Error("Could not find AvatarFallback's own className string — real vendored source may have changed shape since this parser was written.");
   const colors = scanClassesForColors(fallbackMatch[1]);
   colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // see file header — real ring lives on Avatar's own after:border-border pseudo-element, not AvatarFallback's own class list
+  // Component pull step 1: the ring's colour class is on the Avatar root's after: pseudo-element.
+  const avatarRootClasses = avatarSource.match(/function Avatar\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  tag(colors, "strokeVariable", avatarRootClasses.split(/\s+/).includes("after:border-border")
+    ? classOrigin("after:border-border", avatarRootClasses)
+    : derivedOrigin("hardcoded border.default ring, not read from a class"));
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
@@ -3202,10 +3471,10 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
 
   const sizeAxis = buildAvatarSizeAxis(avatarSource, fallbackMatch[1], spacing, fontSize, notes);
 
-  return {
+  const avatar: FigmaComponentPlanItem = {
     name: "Avatar",
     variantPropertyName: "Variant",
-    variants: [{ name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") }],
+    variants: [withColorTags(colors, { name: "Default", ...colors, underline: false, textVariable: colors.textVariable ?? sdsgtPathToFigmaName("text.secondary") })],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingMatch.figmaName,
@@ -3216,6 +3485,14 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
     defaultLabel: "JD",
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
   };
+  const paddingOrigin = derivedOrigin(`computed, not a class: AvatarFallback has no padding class; ${paddingTarget}px is (size-8 32px - text-sm 14px) / 2, only used when Avatar has no Size axis`);
+  tagFields(avatar, {
+    radiusVariable: classOrigin("rounded-full", fallbackMatch[1]),
+    paddingHorizontalVariable: paddingOrigin,
+    paddingVerticalVariable: paddingOrigin,
+    fontSizeVariable: classOrigin("text-sm", fallbackMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return avatar;
 }
 
 // Avatar's `Size` axis (component-variations plan, Batch 4, 2026-10-08) — the
@@ -3293,10 +3570,12 @@ function buildAvatarSizeAxis(
     if (fontMatch.deltaPx > 0) {
       disclosures.push(`Size ${label}: fallback text size ${fontPx}px snapped to ${fontMatch.figmaName} (${tokenPx(fontMatch.figmaName, fontSize)}px), ${Math.round(fontMatch.deltaPx * 100) / 100}px off — no exact type-scale token.`);
     }
-    options.push({
-      name: label,
-      overrides: { heightVariable: sizeMatch.figmaName, square: true, fontSizeVariable: fontMatch.figmaName },
+    const avatarOverrides: FigmaComponentLayoutOverrides = { heightVariable: sizeMatch.figmaName, square: true, fontSizeVariable: fontMatch.figmaName };
+    tagFields(avatarOverrides, {
+      heightVariable: classOrigin(spec.sizeName === "default" ? spec.sizeClass : dataSizeToken(rootMatch[1], spec.sizeName, spec.sizeClass), rootMatch[1], snapOf(sizePx, sizeMatch, spacing)),
+      fontSizeVariable: classOrigin(spec.fontInherited || spec.sizeName === "default" ? spec.fontClass : dataSizeToken(fallbackClassString, spec.sizeName, spec.fontClass), fallbackClassString, snapOf(fontPx, fontMatch, fontSize)),
     });
+    options.push({ name: label, overrides: avatarOverrides });
   }
 
   if (options.length === 0) {
@@ -3366,11 +3645,11 @@ function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[])
   notes.push("Label: has no padding/radius/fill/border class of its own at all in its real source — represented as a bare text node (0px padding, radius/none, no fill, no stroke), not approximated into a box that doesn't exist.");
   notes.push("Label: its real text color isn't set by any class of its own — inherited from shadcn's own generated `body { @apply text-foreground }` base rule, the same class of finding as Alert's own border.default fallback — bound to text.primary via scanClassesForColors's new fallbackTextPath default.");
 
-  const labelVariants: FigmaComponentVariantPlanItem[] = [{ name: "Default", ...colors, underline: false }];
+  const labelVariants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false })];
   // Batch 15: the Disabled state (the only state-like classes the real Label has).
   const stateDisclosures = buildLabelStates(labelSource, classMatch[1], labelVariants, notes);
 
-  return {
+  const label: FigmaComponentPlanItem = {
     name: "Label",
     variantPropertyName: "Variant",
     variants: labelVariants,
@@ -3384,6 +3663,13 @@ function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[])
     defaultLabel: "Label",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tagFields(label, {
+    radiusVariable: derivedOrigin("Label has no radius class at all; drawn as the 0px token (a bare text label), so there is no class to edit"),
+    paddingHorizontalVariable: derivedOrigin("Label has no padding class at all; drawn as the 0px token (a bare text label), so there is no class to edit"),
+    paddingVerticalVariable: derivedOrigin("Label has no padding class at all; drawn as the 0px token (a bare text label), so there is no class to edit"),
+    fontSizeVariable: classOrigin("text-sm", classMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return label;
 }
 
 // Batch 15 (component-variations plan, 2026-10-13): the Disabled State for Label. The real Label
@@ -3483,14 +3769,21 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
   notes.push("Skeleton: its real source has no padding or sizing class at all — every real usage supplies its own explicit width/height override this parser can't see (caller JSX, not the component's own definition). Represented as a representative ~96x24px placeholder box (via padding on an empty frame) purely so the pushed component is visible in Figma, not a real default size — see file header for the same real, disclosed reasoning as Input's own placeholder-text choice.");
   notes.push("Skeleton: its real `animate-pulse` shimmer animation is not reproduced — pushed as a static gray box. Figma has no token-bound equivalent for a running CSS keyframe opacity pulse, and this pipeline's plan format has no animation concept yet.");
 
-  return {
+  const skeletonVariant: FigmaComponentVariantPlanItem = { name: "Default", fillVariable: colors.fillVariable, underline: false };
+  copyTags(colors, skeletonVariant);
+  const skeletonOrigins = {
+    radiusVariable: classOrigin("rounded-md", classMatch[1], snapOf(radiusTarget, radiusMatch, radius)),
+    paddingHorizontalVariable: derivedOrigin("representative stand-in: Skeleton has no padding or size class (every real use sets its own size), so a placeholder ~96px-wide box is drawn; no class to edit"),
+    paddingVerticalVariable: derivedOrigin("representative stand-in: Skeleton has no padding or size class (every real use sets its own size), so a placeholder ~24px-tall box is drawn; no class to edit"),
+  };
+  const skeleton: FigmaComponentPlanItem = {
     name: "Skeleton",
     variantPropertyName: "Variant",
     // No textVariable — Skeleton has no text at all (see
     // FigmaComponentVariantPlanItem.textVariable's own comment). No
     // labelPropertyName/defaultLabel/fontSizeVariable at the top level
     // either — there's no label to bind.
-    variants: [{ name: "Default", fillVariable: colors.fillVariable, underline: false }],
+    variants: [skeletonVariant],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingHMatch.figmaName,
@@ -3503,6 +3796,8 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
     // every other component, not because anything binds to it.
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
   };
+  tagFields(skeleton, skeletonOrigins);
+  return skeleton;
 }
 
 // Thirteenth real component, added 2026-09-21 — "Batch 6" of
@@ -3605,7 +3900,7 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
       ], notes)
     : [];
 
-  return {
+  const breadcrumb: FigmaComponentPlanItem = {
     name: "Breadcrumb",
     variantPropertyName: "Variant",
     variants: [{ name: "Default", underline: false }],
@@ -3643,6 +3938,21 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
     ],
     ...(breadcrumbSkipDisclosures.length > 0 ? { disclosures: breadcrumbSkipDisclosures } : {}),
   };
+  // Component pull step 1. Every item's text size is BreadcrumbList's text-sm (inherited).
+  tagFields(breadcrumb, {
+    radiusVariable: derivedOrigin("the <nav> root has no radius class at all; drawn as the 0px token, so there is no class to edit"),
+    sectionGapVariable: classOrigin("gap-1.5", listMatch[1], snapOf(6, itemGapMatch, spacing)),
+  });
+  const listFontOrigin = classOrigin("text-sm", listMatch[1], snapOf(14, fontSizeMatch, fontSize));
+  for (const section of breadcrumb.sections ?? []) {
+    tag(section, "paddingHorizontalVariable", derivedOrigin("BreadcrumbItem has no padding class (its gap-1 is a gap between its own children); drawn as the 0px token, so there is no class to edit"));
+    for (const line of section.textLines) {
+      tag(line, "fontSizeVariable", listFontOrigin);
+      if (line.labelPropertyName === "CurrentPage") tagLike(line, "textVariable", pageColors, "textVariable");
+      else tagLike(line, "textVariable", listColors, "textVariable");
+    }
+  }
+  return breadcrumb;
 }
 
 // Fourteenth real component, added 2026-09-21 — "Batch 4" of
@@ -3741,7 +4051,9 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
   notes.push("Empty: its real border-dashed class has no accompanying border-width utility of its own — Tailwind's own preflight reset leaves border-width at 0 absent one, so a real unstyled Empty has NO visible border despite border-dashed being present. Represented with no stroke.");
   notes.push("Empty: two different real vertical-spacing values (a 24px outer p-6 and a 16px inter-section gap-4) collapse onto this schema's one shared sectionGapVariable — bound to the larger, outer-padding value (spacing/6, 24px) to preserve Empty's own defining generous-whitespace look; its real, smaller 16px inter-section gap is approximated up to 24px as a result.");
 
-  return {
+  const emptyRoot = emptySource.match(/function Empty\(\{[\s\S]*?className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const emptyClasses = (slot: string) => emptySource.match(new RegExp(`data-slot="${slot}"[\\s\\S]*?cn\\(\\s*"([^"]*)"`))?.[1] ?? "";
+  const empty: FigmaComponentPlanItem = {
     name: "Empty",
     variantPropertyName: "Variant",
     variants: [
@@ -3767,6 +4079,24 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
       },
     ],
   };
+  // Component pull step 1. `sectionGapVariable` is both the outer padding (the real p-6) and the
+  // gap between Header and Content (really gap-4, approximated to p-6's value).
+  const emptyPadding = classOrigin("p-6", emptyRoot, snapOf(24, paddingHMatch, spacing));
+  tagFields(empty, {
+    radiusVariable: classOrigin("rounded-xl", emptyRoot, snapOf(radiusTarget, radiusMatch, radius)),
+    "sectionGapVariable@paddingVertical": classOrigin("p-6", emptyRoot, snapOf(24, sectionGapMatch, spacing)),
+    "sectionGapVariable@itemSpacing": derivedOrigin("approximation: the real gap between Header and Content is gap-4 (16px), but this schema shares one value for the outer padding and that gap, so it is drawn with p-6's value (24px)"),
+  });
+  const inheritedText = derivedOrigin("no text colour class of its own; the text colour is inherited (shadcn's base text-foreground), drawn as text.primary");
+  for (const section of empty.sections ?? []) {
+    tag(section, "paddingHorizontalVariable", emptyPadding); // the root's p-6: neither section has padding of its own
+    for (const line of section.textLines) {
+      if (line.labelPropertyName === "Title") tagFields(line, { textVariable: inheritedText, fontSizeVariable: classOrigin("text-sm", emptyClasses("empty-title"), snapOf(14, titleFontSize, fontSize)) });
+      if (line.labelPropertyName === "Description") tagFields(line, { textVariable: classOrigin("text-muted-foreground", emptyClasses("empty-description")), fontSizeVariable: classOrigin("text-sm/relaxed", emptyClasses("empty-description"), snapOf(14, bodyFontSize, fontSize)) });
+      if (line.labelPropertyName === "Content") tagFields(line, { textVariable: inheritedText, fontSizeVariable: classOrigin("text-sm", emptyClasses("empty-content"), snapOf(14, bodyFontSize, fontSize)) });
+    }
+  }
+  return empty;
 }
 
 // Fifteenth real component, added 2026-09-21, same batch as Empty. Real
@@ -3876,9 +4206,26 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
   // option can change; the base plan (vertical, `textLineDirection` absent) and
   // every axis option build theirs through this function, so each text line's
   // `labelPropertyName` is identical in every orientation (step 5 binds by it).
+  // Component pull step 1: the origins every orientation's sections share.
+  const zeroFieldPadding = derivedOrigin("Field's parts have no padding class at all; drawn as the 0px token, so there is no class to edit");
+  const fieldLineOrigins: Record<string, Record<string, FigmaSourceOrigin>> = {
+    Label: {
+      textVariable: getTag(labelColors, "textVariable") as FigmaSourceOrigin,
+      fontSizeVariable: derivedOrigin("FieldLabel renders the Label component, whose text-sm lives in label.tsx (not in field.tsx), so there is no class in this file to edit"),
+    },
+    Description: { textVariable: getTag(descriptionColors, "textVariable") as FigmaSourceOrigin, fontSizeVariable: classOrigin("text-sm", descriptionMatch[1], snapOf(14, fontSizeMatch, fontSize)) },
+    Error: { textVariable: getTag(errorColors, "textVariable") as FigmaSourceOrigin, fontSizeVariable: classOrigin("text-sm", errorMatch[1], snapOf(14, fontSizeMatch, fontSize)) },
+  };
+  const tagFieldSections = (sections: FigmaComponentSectionPlanItem[]): FigmaComponentSectionPlanItem[] => {
+    for (const section of sections) {
+      tag(section, "paddingHorizontalVariable", zeroFieldPadding);
+      for (const line of section.textLines) tagFields(line, fieldLineOrigins[line.labelPropertyName] ?? {});
+    }
+    return sections;
+  };
   const buildSections = (direction?: "horizontal"): FigmaComponentSectionPlanItem[] => {
     const dir = direction ? { textLineDirection: direction } : {};
-    return [
+    return tagFieldSections([
       {
         paddingHorizontalVariable: paddingHMatch.figmaName,
         ...dir,
@@ -3900,7 +4247,7 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
           { textVariable: errorColors.textVariable, fontSizeVariable: fontSizeMatch.figmaName, weight: "Regular", labelPropertyName: "Error", defaultLabel: "This field is required." },
         ],
       },
-    ];
+    ]);
   };
 
   const extraAxes = buildFieldOrientationAxis(fieldSource, buildSections, notes);
@@ -3922,6 +4269,13 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
     ...(invalidBuilt ? [{ name: "Invalid" as const, textLineOverrides: { Label: { textVariable: invalidColor!.variable } } }] : []),
     ...(disabledBuilt ? [{ name: "Disabled" as const, textLineOverrides: { Label: { textVariable: sdsgtPathToFigmaName(FIELD_LABEL_DISABLED_TOKEN.token) } } }] : []),
   ];
+  for (const st of fieldStates) {
+    const labelOverride = st.textLineOverrides?.Label;
+    if (!labelOverride) continue;
+    tag(labelOverride, "textVariable", st.name === "Invalid"
+      ? classOrigin(fieldInvalid[0], cvaBase(fieldSource)) // on the Field root; the label inherits it
+      : derivedOrigin(`user decision (2026-10-13): Disabled is drawn with the solid token ${labelOverride.textVariable} instead of the real ${fieldDisabled[0]} (a 50% fade of the label), so no class names this token`));
+  }
   const fieldCardLabel = classesInSource(fieldSource, [
     "has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-muted/50",
     "has-[>[data-slot=field]]:has-[:focus-visible]:border-ring",
@@ -3961,7 +4315,7 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
   }
   const fieldSkipDisclosures = fieldSkipLines.length > 0 ? skippedStatesDisclosure("Field", fieldSkipLines, notes) : [];
 
-  return {
+  const field: FigmaComponentPlanItem = {
     name: "Field",
     variantPropertyName: "Variant",
     variants: [
@@ -3976,6 +4330,14 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
     ...(fieldStates.length > 0 ? { statePropertyName: "State" as const } : {}),
     ...(fieldInvalidDisclosures.length + fieldSkipDisclosures.length > 0 ? { disclosures: [...fieldInvalidDisclosures, ...fieldSkipDisclosures] } : {}),
   };
+  // Component pull step 1. `sectionGapVariable` is the real gap-2 between the rows, which this
+  // schema also draws as the outer frame's top/bottom padding (Field's root has none).
+  tagFields(field, {
+    radiusVariable: derivedOrigin("Field has no radius class at all; drawn as the 0px token, so there is no class to edit"),
+    "sectionGapVariable@itemSpacing": classOrigin("gap-2", cvaBase(fieldSource), snapOf(8, sectionGapMatch, spacing)),
+    "sectionGapVariable@paddingVertical": derivedOrigin("Field's root has no padding; this schema shares one value for the outer padding and the gap between rows, so gap-2's value is drawn as top/bottom padding too"),
+  });
+  return field;
 }
 
 // Field's `Orientation` axis (component-variations plan, Batch 7, 2026-10-08).
@@ -4089,7 +4451,7 @@ function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: s
   notes.push("Separator: represented as a fixed 1px-thick line at a representative 200px length — its real source has no intrinsic length of its own (shadcn's own w-full/self-stretch always fills whatever container the caller supplies, which this parser can't see), and its real thickness (a bare Tailwind h-px) has no matching spacing token to bind (the smallest real spacing token is 4px) — see FigmaComponentLinePlanItem's own comment for why thicknessPx is a raw, unbound pixel literal instead of a nearest-token approximation that would round it to either an invisible 0px or an oversized 4px line.");
   const extraAxes = buildSeparatorAxes(classMatch[1], colors.fillVariable, 1, 200, notes);
 
-  return {
+  const separator: FigmaComponentPlanItem = {
     name: "Separator",
     variantPropertyName: "Variant",
     variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own here — the line's own color lives on `line.colorVariable` instead, see that field's own comment
@@ -4103,6 +4465,10 @@ function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: s
     },
     ...(extraAxes.length > 0 ? { extraAxes } : {}),
   };
+  // Component pull step 1: every orientation's line is the one real bg-border.
+  for (const line of [separator.line, ...extraAxes.flatMap((a) => a.options.map((o) => o.overrides.line))]) if (line) tagLike(line, "colorVariable", colors, "fillVariable");
+  tag(separator, "radiusVariable", derivedOrigin("a line has no radius class; drawn as the 0px token, so there is no class to edit"));
+  return separator;
 }
 
 // Separator's `Orientation` axis (component-variations plan, Batch 7,
@@ -4247,7 +4613,7 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
   notes.push("FieldSeparator: its real implementation absolutely-positions the label span OVER one continuous line and masks it with a bg-background fill; this plan instead represents it as three non-overlapping segments ([line, text, line]) — a disclosed simplification, not a parse failure. The label's own real bg-background masking fill isn't modeled, since the non-overlapping row has no line running underneath the text to mask in the first place.");
   notes.push("FieldSeparator: its inner Separator's own real border.default color is reused directly from buildSeparatorPlan's own derivation (this function only ever sees field.tsx's own source, not separator.tsx's) — a real, confirmed value applied via a hardcoded post-process, the same treatment buildAvatarPlan's own border.default case already uses.");
 
-  return {
+  const fieldSeparator: FigmaComponentPlanItem = {
     name: "FieldSeparator",
     variantPropertyName: "Variant",
     variants: [{ name: "Default", underline: false }],
@@ -4267,6 +4633,17 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
       },
     },
   };
+  // Component pull step 1.
+  const fieldSeparatorRoot = fieldSource.match(/function FieldSeparator[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const line = fieldSeparator.line!;
+  tag(line, "colorVariable", derivedOrigin("the line is the nested <Separator> component, whose colour class (bg-border) lives in separator.tsx, not in field.tsx"));
+  tagLike(line.centerLabel!, "textVariable", labelColors, "textVariable");
+  tagFields(line.centerLabel!, {
+    fontSizeVariable: classOrigin("text-sm", fieldSeparatorRoot, snapOf(14, fontSizeMatch, fontSize)), // on the FieldSeparator root; the label span inherits it
+    gapVariable: classOrigin("px-2", labelClassMatch[1], snapOf(8, gapMatch, spacing)), // the label span's own side padding = the gap to each line segment
+  });
+  tag(fieldSeparator, "radiusVariable", derivedOrigin("a line has no radius class; drawn as the 0px token, so there is no class to edit"));
+  return fieldSeparator;
 }
 
 // Eighteenth real component, added 2026-09-21 — "Batch 7" of
@@ -4350,20 +4727,41 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
   // The one Title + Description section, parameterized by the two values a
   // Size option can change (horizontal padding, Description font size); the
   // base plan and every Size option build theirs through this one function.
-  const buildSections = (paddingHVar: string, descriptionFontVar: string): FigmaComponentSectionPlanItem[] => [
-    {
-      paddingHorizontalVariable: paddingHVar,
-      textLines: [
-        { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Item title" },
-        { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
-      ],
-    },
-  ];
+  // Component pull step 1: the real classes behind the section values.
+  const itemTitleClasses = itemSource.match(/data-slot="item-title"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const itemDescriptionClasses = itemSource.match(/data-slot="item-description"[\s\S]*?cn\(\s*"([^"]*)"/)?.[1] ?? "";
+  const itemTitleText = derivedOrigin("ItemTitle has no text colour class of its own; the text colour is inherited (shadcn's base text-foreground), drawn as text.primary");
+  const itemTitleFont = classOrigin("text-sm", itemTitleClasses, snapOf(14, fontSizeMatch, fontSize));
+  const itemDescriptionText = classToFigmaVariable("text-muted-foreground")?.variable === sdsgtPathToFigmaName("text.secondary")
+    ? classOrigin("text-muted-foreground", itemDescriptionClasses)
+    : derivedOrigin("hardcoded description colour, not read from a class");
+  const buildSections = (paddingHVar: string, descriptionFontVar: string, origins?: { padding: FigmaSourceOrigin; descriptionFont: FigmaSourceOrigin }): FigmaComponentSectionPlanItem[] => {
+    const sections: FigmaComponentSectionPlanItem[] = [
+      {
+        paddingHorizontalVariable: paddingHVar,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.primary"), fontSizeVariable: fontSizeMatch.figmaName, weight: "Medium", labelPropertyName: "Title", defaultLabel: "Item title" },
+          { textVariable: sdsgtPathToFigmaName("text.secondary"), fontSizeVariable: descriptionFontVar, weight: "Regular", labelPropertyName: "Description", defaultLabel: "Item description goes here." },
+        ],
+      },
+    ];
+    tagFields(sections[0].textLines[0], { textVariable: itemTitleText, fontSizeVariable: itemTitleFont });
+    tag(sections[0].textLines[1], "textVariable", itemDescriptionText);
+    if (origins) {
+      tag(sections[0], "paddingHorizontalVariable", origins.padding);
+      tag(sections[0].textLines[1], "fontSizeVariable", origins.descriptionFont);
+    }
+    return sections;
+  };
+  const itemDefaultOrigins = {
+    padding: classOrigin("px-3", undefined, snapOf(12, paddingHMatch, spacing), "variants.size.default"),
+    descriptionFont: classOrigin("text-sm", itemDescriptionClasses, snapOf(14, fontSizeMatch, fontSize)),
+  };
 
   notes.push("Item: only its real outer frame and ItemTitle/ItemDescription are modeled — ItemMedia (an icon/image slot) and ItemActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons named in figma-remaining-components-plan.md. Its real size axis (default/sm/xs) is modeled as a Size property — see the `Item Size ...` notes below for what it does and doesn't change.");
   notes.push("Item: ItemContent's real gap-1 (4px) between Title and Description has no home in this schema's sections/textLines shape — the two lines stack directly adjacent in the replay, relying only on each line's own line-height for visual separation, not a bound 4px gap.");
 
-  const sizeAxis = buildItemSizeAxis(itemSource, spacing, fontSize, notes, buildSections);
+  const sizeAxis = buildItemSizeAxis(itemSource, spacing, fontSize, notes, buildSections, itemDefaultOrigins.descriptionFont);
 
   // Batch 12: interaction states, read from the real class strings. Item has
   // Hover (written `[a]:hover:bg-muted`, so only when the Item is rendered as a
@@ -4399,7 +4797,7 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
     for (const line of itemDisclosures) notes.push(`Item ${line}`);
   }
 
-  return {
+  const item: FigmaComponentPlanItem = {
     name: "Item",
     variantPropertyName: "Variant",
     variants,
@@ -4407,11 +4805,21 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: paddingVMatch.figmaName,
-    sections: buildSections(paddingHMatch.figmaName, fontSizeMatch.figmaName),
+    sections: buildSections(paddingHMatch.figmaName, fontSizeMatch.figmaName, itemDefaultOrigins),
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
     ...(itemHasStates ? { statePropertyName: "State" as const, disclosures: itemDisclosures } : {}),
   };
+  tagFields(item, {
+    radiusVariable: classOrigin("rounded-lg", cvaBase(itemSource)),
+    "sectionGapVariable@paddingVertical": classOrigin("py-2.5", undefined, snapOf(10, paddingVMatch, spacing), "variants.size.default"),
+    "sectionGapVariable@itemSpacing": ITEM_SINGLE_SECTION_GAP,
+  });
+  return item;
 }
+
+// Component pull step 1: Item and Attachment have ONE text section, so the gap between sections that
+// `sectionGapVariable` also binds has no visible effect (it just takes the vertical padding's value).
+const ITEM_SINGLE_SECTION_GAP = derivedOrigin("this component has a single text section, so the gap between sections has no visible effect; this schema gives it the vertical padding's value, not a class of its own");
 
 // Item's `Size` axis (component-variations plan, Batch 3, 2026-10-08) — the
 // first `sections` + `extraAxes` combination. Reads the real `size` cva axis
@@ -4434,7 +4842,8 @@ function buildItemSizeAxis(
   spacing: Record<string, number>,
   fontSize: Record<string, number>,
   notes: string[],
-  buildSections: (paddingHVar: string, descriptionFontVar: string) => FigmaComponentSectionPlanItem[],
+  buildSections: (paddingHVar: string, descriptionFontVar: string, origins?: { padding: FigmaSourceOrigin; descriptionFont: FigmaSourceOrigin }) => FigmaComponentSectionPlanItem[],
+  defaultDescriptionFontOrigin: FigmaSourceOrigin,
 ): FigmaComponentAxisPlanItem | undefined {
   let sizeEntries: Array<[string, string]>;
   try {
@@ -4495,13 +4904,21 @@ function buildItemSizeAxis(
       disclosures.push(`Size ${label}: this size also applies ${otherSizeClasses.join(", ")} to Item's inner parts (media image / content spacing) — not modeled, since this Figma Item has only the Title and Description text.`);
     }
 
-    options.push({
-      name: label,
-      overrides: {
-        sectionGapVariable: padYMatch.figmaName,
-        sections: buildSections(padXMatch.figmaName, descFontMatch.figmaName),
-      },
+    const itemOrigins = {
+      padding: classOrigin(padXClass, classString, snapOf(padXPx, padXMatch, spacing), `variants.size.${sizeName}`),
+      descriptionFont: descFontClass
+        ? classOrigin(dataSizeToken(descriptionClasses.join(" "), sizeName, descFontClass), descriptionClasses.join(" "), snapOf(descFontPx, descFontMatch, fontSize))
+        : defaultDescriptionFontOrigin,
+    };
+    const itemOverrides: FigmaComponentLayoutOverrides = {
+      sectionGapVariable: padYMatch.figmaName,
+      sections: buildSections(padXMatch.figmaName, descFontMatch.figmaName, itemOrigins),
+    };
+    tagFields(itemOverrides, {
+      "sectionGapVariable@paddingVertical": classOrigin(padYClass, classString, snapOf(padYPx, padYMatch, spacing), `variants.size.${sizeName}`),
+      "sectionGapVariable@itemSpacing": ITEM_SINGLE_SECTION_GAP,
     });
+    options.push({ name: label, overrides: itemOverrides });
   }
 
   if (options.length === 0) {
@@ -4641,12 +5058,18 @@ function buildMarkerStyleVariants(
       const gapMatch = nearestToken((baseGapPx ?? 0) + bMargin, spacing, "spacing");
       const isHandled = (c: string) => c === "flex-1" || c === "min-w-0" || c === "h-px" || /^h-\d+(?:\.\d+)?$/.test(c) || /^m[rl]-\d+(?:\.\d+)?$/.test(c) || classToFigmaVariable(c)?.kind === "fill";
       const unmodeled = [...before.filter((c) => !isHandled(c)).map((c) => `before:${c}`), ...after.filter((c) => !isHandled(c)).map((c) => `after:${c}`)];
-      variants.push({
+      const separatorVariant: FigmaComponentVariantPlanItem = {
         name: label,
         textVariable: baseColors.textVariable,
         underline: false,
         flankLines: { colorVariable: b.color.variable, thicknessPx: bThick, representativeLengthPx: 80, gapVariable: gapMatch.figmaName },
+      };
+      tagLike(separatorVariant, "textVariable", baseColors, "textVariable");
+      tagFields(separatorVariant.flankLines!, {
+        colorVariable: derivedOrigin(`the two lines are two classes that must change together (before:${before.find((c) => classToFigmaVariable(c)?.kind === "fill")} and after:${after.find((c) => classToFigmaVariable(c)?.kind === "fill")}), so no single class reproduces this binding`),
+        gapVariable: derivedOrigin(`the gap is the sum of two classes (the base ${baseGapClass ?? "gap"} plus the line's own ${b.margin}/${a.margin}, ${(baseGapPx ?? 0) + bMargin}px), so no single class reproduces this binding`),
       });
+      variants.push(separatorVariant);
       disclosures.push(`Variant ${label}: the two real ${bThick}px ${b.color.variable} lines (before:/after: pseudo-elements) flank the label with a ${(baseGapPx ?? 0) + bMargin}px gap (gap-2 plus the line's own margin), bound to ${gapMatch.figmaName}${gapMatch.deltaPx > 0 ? ` (${gapMatch.deltaPx}px off the real value)` : ""}.`);
       disclosures.push(`Variant ${label}: the real lines have flex-1 and stretch to fill the Marker's full width, which has no fixed value, so Figma uses two 80px stand-in lines (not a real default length) and the Marker hugs its content instead of being full-width. The ${bThick}px thickness is a raw literal, not a spacing token (no spacing token is that thin).`);
       if (unmodeled.length > 0) disclosures.push(`Variant ${label}: these real classes aren't modeled: ${unmodeled.join(" ")}.`);
@@ -4664,7 +5087,7 @@ function buildMarkerStyleVariants(
     const pbPx = pbClass ? parseFloat(pbClass.slice(3)) * 4 : null;
     const pbMatch = pbPx !== null ? nearestToken(pbPx, spacing, "spacing") : null;
     const unmodeled = tokens.filter((t) => t !== "border-b" && t !== pbClass && classToFigmaVariable(t)?.kind !== "border");
-    variants.push({
+    const borderVariant: FigmaComponentVariantPlanItem = {
       name: label,
       textVariable: baseColors.textVariable,
       strokeVariable: stroke.variable,
@@ -4672,7 +5095,11 @@ function buildMarkerStyleVariants(
       strokeWeightPx: 1,
       underline: false,
       ...(pbMatch ? { paddingBottomVariable: pbMatch.figmaName } : {}),
-    });
+    };
+    tagLike(borderVariant, "textVariable", baseColors, "textVariable");
+    tag(borderVariant, "strokeVariable", classOrigin(tokens.find((t) => classToFigmaVariable(t)?.kind === "border") as string, classString, undefined, `variants.variant.${name}`));
+    if (pbMatch && pbClass && pbPx !== null) tag(borderVariant, "paddingBottomVariable", classOrigin(pbClass, classString, snapOf(pbPx, pbMatch, spacing), `variants.variant.${name}`));
+    variants.push(borderVariant);
     disclosures.push(`Variant ${label}: the real 1px bottom rule (border-b ${tokens.find((t) => classToFigmaVariable(t)?.kind === "border")} → ${stroke.variable}) is drawn as a 1px stroke on the bottom edge only${pbMatch ? `, with ${pbClass} (${pbPx}px) as bottom padding bound to ${pbMatch.figmaName}${pbMatch.deltaPx > 0 ? ` (${pbMatch.deltaPx}px off the real value)` : ""}` : ""}. The 1px weight is a raw literal, not a spacing token (no spacing token is that thin), and the Figma Marker hugs its text, so the rule is only as wide as the text (the real Marker is full-width). The stroke also adds 1px to this variant's height (a stroke counts toward an auto-layout frame's size).`);
     if (unmodeled.length > 0) disclosures.push(`Variant ${label}: these real classes aren't modeled: ${unmodeled.join(" ")}.`);
   }
@@ -4729,10 +5156,10 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
   }
   notes.push("Marker: has no padding or radius class of its own in its real source (confirmed: no `rounded-*` class anywhere in the file, and no padding class outside the `border` option's own `pb-2`, which only the Border variant carries, as bottom padding) — Default is a bare text node (0px padding, radius/none), the same real finding and treatment already established for Label.");
 
-  return {
+  const marker: FigmaComponentPlanItem = {
     name: "Marker",
     variantPropertyName: "Variant",
-    variants: [{ name: "Default", ...colors, underline: false }, ...styled.variants],
+    variants: [withColorTags(colors, { name: "Default", ...colors, underline: false }), ...styled.variants],
     skippedVariants: styled.skippedVariants,
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingHMatch.figmaName,
@@ -4743,6 +5170,14 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
     defaultLabel: "Marker",
     ...(disclosures.length > 0 ? { disclosures } : {}),
   };
+  const zeroMarker = (what: string) => derivedOrigin(`Marker has no ${what} class of its own; drawn as the 0px token (a bare text row), so there is no class to edit`);
+  tagFields(marker, {
+    radiusVariable: zeroMarker("radius"),
+    paddingHorizontalVariable: zeroMarker("padding"),
+    paddingVerticalVariable: zeroMarker("padding"),
+    fontSizeVariable: classOrigin("text-sm", classMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return marker;
 }
 // Batch 10 of figma-remaining-components-plan.md ("chat/AI kit" registry
 // extension), first real consumer of Batch 9's selector-prefix stripping.
@@ -4829,7 +5264,15 @@ function buildBubbleClickable(
       note: `drawn with the existing tokens ${sdsgtPathToFigmaName("status.error-bg")} (a pale red tint) as the fill and ${sdsgtPathToFigmaName("status.error")} (the saturated red) as the text colour, same decision as Button's and Badge's Destructive Hover. The real class is ${destructiveHover.slice(HOVER_PREFIX.length)}: a 20% red tint over the 10% red tint of the rest look, which this plan cannot copy because the rest is drawn as a solid red fill; so this is a deliberate token-based approximation, not the exact browser colour`,
     };
   }
-  const stateDisclosures = buildStatesForVariants(synth, "variant", variants, stateNames, Object.keys(stateOverrides).length > 0 ? stateOverrides : undefined);
+  // Component pull step 1: the synthetic classes are recorded as the real classes they stand for.
+  const realClass = (c: string) => (c.startsWith("hover:") ? HOVER_PREFIX + c.slice("hover:".length) : c.startsWith("focus-visible:") ? FOCUS_PREFIX + c.slice("focus-visible:".length) : c);
+  setSourceAlias({ cls: realClass, classString: (str) => str.split(/\s+/).filter(Boolean).map(realClass).join(" ") });
+  let stateDisclosures: string[];
+  try {
+    stateDisclosures = buildStatesForVariants(synth, "variant", variants, stateNames, Object.keys(stateOverrides).length > 0 ? stateOverrides : undefined);
+  } finally {
+    setSourceAlias(undefined);
+  }
   if (!variants.some((v) => v.states && v.states.length > 0)) return none;
 
   // Muted's arbitrary-value hover: say plainly that it is pending, not that "the source has no hover classes".
@@ -4923,7 +5366,8 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
   }
   const bubbleSkipDisclosures = bubbleSkipLines.length > 0 ? skippedStatesDisclosure("Bubble", bubbleSkipLines, notes) : [];
 
-  return {
+  const bubbleContentClasses = bubbleSource.match(/function BubbleContent[\s\S]*?cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const bubble: FigmaComponentPlanItem = {
     name: "Bubble",
     variantPropertyName: "Variant",
     variants,
@@ -4938,6 +5382,14 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
     ...(bubbleClickable.built ? { extraAxes: bubbleClickable.axes, statePropertyName: "State" as const, disclosures: bubbleClickable.disclosures } : {}),
     ...(!bubbleClickable.built && bubbleSkipDisclosures.length > 0 ? { disclosures: bubbleSkipDisclosures } : {}),
   };
+  // Component pull step 1: the box is BubbleContent's (Ghost's own rounded-none/p-0 is not modeled, see the notes).
+  tagFields(bubble, {
+    radiusVariable: classOrigin("rounded-xl", bubbleContentClasses, snapOf(radiusTarget, radiusMatch, radius)),
+    paddingHorizontalVariable: classOrigin("px-3", bubbleContentClasses, snapOf(12, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-2", bubbleContentClasses, snapOf(8, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-sm", bubbleContentClasses, snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return bubble;
 }
 
 // Twenty-first real component, added 2026-09-22 — "Batch 11" of
@@ -4980,7 +5432,7 @@ function buildProgressPlan(tokensCss: string, progressSource: string, notes: str
   notes.push("Progress: its real indicator width is set via an inline style keyed to a runtime value/max prop, not a class — there is no real static default to read, so this plan uses a disclosed representative footprint (a 240px track, 60% filled) rather than a fabricated 'real' default. See FigmaComponentBarPlanItem's own comment for why this is a different category of gap than every other numeric target in this file.");
   notes.push("Progress: the indicator's real rounded LEFT edge comes entirely from the track's own overflow-x-hidden clip in a real browser, not a rounded-* class on the indicator itself (which has none) — replayed as a square indicator rectangle inside a clipsContent track, not a second independent radius binding, which would incorrectly round the indicator's right edge too whenever the fill is under 100%.");
 
-  return {
+  const progress: FigmaComponentPlanItem = {
     name: "Progress",
     variantPropertyName: "Variant",
     variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own at this level — see `bar` instead
@@ -4996,6 +5448,16 @@ function buildProgressPlan(tokensCss: string, progressSource: string, notes: str
       heightVariable: heightMatch.figmaName,
     },
   };
+  // Component pull step 1. The indicator's height is the track's h-1 too (the indicator is h-full).
+  const bar = progress.bar!;
+  tagLike(bar, "trackColorVariable", trackColors, "fillVariable");
+  tagLike(bar, "indicatorColorVariable", indicatorColors, "fillVariable");
+  tagFields(bar, {
+    radiusVariable: classOrigin("rounded-full", trackMatch[1]),
+    heightVariable: classOrigin("h-1", trackMatch[1], snapOf(4, heightMatch, spacing)),
+  });
+  tag(progress, "radiusVariable", classOrigin("rounded-full", trackMatch[1]));
+  return progress;
 }
 
 // Real, confirmed formula behind every `rounded-md` class in this
@@ -5148,6 +5610,7 @@ function buildTabsStyleAxis(tabsSource: string, triggerTokens: string[], baseIna
       } else if (cls === "data-active:after:opacity-100") {
         if (barColor && barColor.kind === "fill" && barHeightPx !== null) {
           activeOverride.strokeVariable = barColor.variable;
+          tag(activeOverride, "strokeVariable", classOrigin(barColorClass as string, triggerTokens.join(" "))); // the real underline bar's colour (an after: element)
           activeOverride.strokeSides = "bottom";
           activeOverride.strokeWeightPx = barHeightPx;
           disclosures.push(`Style ${label}: the real active tab's underline bar (${barColorClass} ${barHeightClass}${barBottomClass ? ` ${barBottomClass}` : ""}) is drawn as a ${barHeightPx}px stroke on the Active tab's bottom edge only, bound to ${barColor.variable}. This is the nearest look Figma's frame can show, not an exact copy: in the real component the bar is a separate element${barBottomPx !== null ? ` that sits ${Math.abs(barBottomPx) - barHeightPx} to ${Math.abs(barBottomPx)}px below the tab` : " that sits just below the tab"} and spans the tab's inner width (inside its 1px border), while the Figma stroke sits flush on the tab's own bottom edge across its full width, its ends follow the tab's rounded bottom corners (the real bar is straight), and it makes the Active tab 2px taller than the others (a stroke counts toward an auto-layout frame's size; the real bar is absolutely positioned and adds no height). Because the inactive tab's 60% text opacity is dropped (the file-wide opacity simplification), this bar is the only thing telling Active from Inactive in this style.`);
@@ -5213,9 +5676,17 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
 
   const inactiveColors = scanClassesForColors(baseClasses);
   const activeColors = scanClassesForColors(activeClasses);
+  // Component pull step 1: the Active colours are the real `data-active:` classes (scanned with the prefix stripped).
+  for (const cls of activeClasses.split(/\s+/).filter(Boolean)) {
+    const parsed = classToFigmaVariable(cls);
+    if (parsed) tag(activeColors, parsed.kind === "fill" ? "fillVariable" : parsed.kind === "text" ? "textVariable" : "strokeVariable", classOrigin(`data-active:${cls}`, fullClassString));
+  }
   // The Inactive tab's resting text as a solid token (see TAB_INACTIVE_TOKEN), when the project has it.
   const tabInactiveToken = baseClasses.split(/\s+/).includes("text-foreground/60") && projectHasToken(TAB_INACTIVE_TOKEN.cssVar);
-  if (tabInactiveToken) inactiveColors.textVariable = sdsgtPathToFigmaName(TAB_INACTIVE_TOKEN.token);
+  if (tabInactiveToken) {
+    inactiveColors.textVariable = sdsgtPathToFigmaName(TAB_INACTIVE_TOKEN.token);
+    tag(inactiveColors, "textVariable", derivedOrigin(`solid-token substitution by the user's decision (2026-10-13): the real text-foreground/60 (60% text colour) is drawn as the solid token ${inactiveColors.textVariable}, because a colour's transparency is lost on Figma instances; no class names this token`));
+  }
 
   const spacing = readCssScale(tokensCss, "spacing");
   const radius = readCssScale(tokensCss, "radius");
@@ -5242,14 +5713,14 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
   } else notes.push("Tabs: Active and Inactive end up with the SAME bound text.primary, not a genuinely different pair — the real inactive state's own text-foreground/60 (60% opacity) is dropped per this file's existing opacity-modifier simplification (same as Badge's bg-destructive/10), so the one real visual difference this plan still carries is Active's own filled background.primary pill, not a text-color change.");
 
   const tabsVariants: FigmaComponentVariantPlanItem[] = [
-    { name: "Inactive", fillVariable: inactiveColors.fillVariable, textVariable: inactiveColors.textVariable, strokeVariable: inactiveColors.strokeVariable, underline: false },
-    { name: "Active", fillVariable: activeColors.fillVariable, textVariable: activeColors.textVariable, underline: false },
+    withColorTags(inactiveColors, { name: "Inactive", fillVariable: inactiveColors.fillVariable, textVariable: inactiveColors.textVariable, strokeVariable: inactiveColors.strokeVariable, underline: false }),
+    withColorTags(activeColors, { name: "Active", fillVariable: activeColors.fillVariable, textVariable: activeColors.textVariable, underline: false }),
   ];
   const extraAxes = buildTabsStyleAxis(tabsSource, tokens, tabsVariants[0], tabsVariants[1], notes);
   // Batch 14: interaction states (Hover, Focus, Disabled) from the real trigger classes.
   const stateDisclosures = buildTabsStates(tabsSource, fullClassString, tabsVariants, extraAxes, notes);
 
-  return {
+  const tabs: FigmaComponentPlanItem = {
     name: "Tabs",
     variantPropertyName: "Variant",
     variants: tabsVariants,
@@ -5264,6 +5735,13 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
     ...(extraAxes.length > 0 ? { extraAxes } : {}),
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tagFields(tabs, {
+    radiusVariable: classOrigin("rounded-md", fullClassString, snapOf(shadcnRadiusPx(radius, "md"), radiusMatch, radius)),
+    paddingHorizontalVariable: classOrigin("px-1.5", fullClassString, snapOf(6, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-0.5", fullClassString, snapOf(2, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-sm", fullClassString, snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return tabs;
 }
 
 // Batch 14 (component-variations plan, 2026-10-13): interaction States for Tabs. State = Default,
@@ -5416,11 +5894,11 @@ function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: s
   notes.push("Accordion: only AccordionTrigger's own label is modeled, as a flat single-text box — its real trailing chevron icon (ChevronDownIcon/ChevronUpIcon) is NOT represented, a disclosed scope cut narrower than a literal 'chevron + label' reading, since the existing sections/textLineDirection mechanism that could place a trailing glyph beside a label has no field for this component's own real vertical padding (see this function's own comment for the full reasoning). AccordionContent (the expandable panel) isn't modeled at all — arbitrary caller-supplied children with no fixed shape, the same reason chart.tsx is permanently out of scope.");
   notes.push("Accordion: has no horizontal padding class of its own in real source (confirmed: no px-* class anywhere on AccordionTrigger) — represented as a real, computed 0px via nearestToken, the same 'genuinely zero, not a gap' discipline already established for Label/Marker.");
 
-  const accordionVariants: FigmaComponentVariantPlanItem[] = [{ name: "Default", ...colors, underline: false }];
+  const accordionVariants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false })];
   // Batch 15: interaction states (Hover, Focus, Disabled) from the real trigger classes.
   const stateDisclosures = buildAccordionStates(accordionSource, triggerMatch[1], accordionVariants, notes);
 
-  return {
+  const accordion: FigmaComponentPlanItem = {
     name: "Accordion",
     variantPropertyName: "Variant",
     variants: accordionVariants,
@@ -5434,6 +5912,13 @@ function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: s
     defaultLabel: "Is it accessible?",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tagFields(accordion, {
+    radiusVariable: classOrigin("rounded-lg", triggerMatch[1]),
+    paddingHorizontalVariable: derivedOrigin("AccordionTrigger has no horizontal padding class; drawn as the 0px token, so there is no class to edit"),
+    paddingVerticalVariable: classOrigin("py-2.5", triggerMatch[1], snapOf(10, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-sm", triggerMatch[1], snapOf(14, fontSizeMatch, fontSize)),
+  });
+  return accordion;
 }
 
 // Batch 15 (component-variations plan, 2026-10-13): interaction States for Accordion. State =
@@ -5553,10 +6038,10 @@ function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: strin
   notes.push("Tooltip: its real bg-foreground/text-background classes are a genuine, intentional fg/bg role inversion (a dark tooltip with light text) — this resolves correctly (fill bound to the real text.primary color value, text bound to the real background.primary color value) but reads as backwards to anyone auditing bound VARIABLE NAMES later, since the fill is bound to a variable literally named text/primary and the text color to one named background/primary. Right value, confusing name — disclosed here, not silently passed through.");
   notes.push("Tooltip: only TooltipContent's own box is modeled — the real Arrow connector (a separately-colored, rotated triangle) isn't, the same disclosed scope cut already established for Avatar's own AvatarImage and Card's own Footer. TooltipTrigger's own real hover/focus-driven show/hide mechanics aren't modeled either — this pipeline's components are rest-states only.");
 
-  return {
+  const tooltip: FigmaComponentPlanItem = {
     name: "Tooltip",
     variantPropertyName: "Variant",
-    variants: [{ name: "Default", ...colors, underline: false }],
+    variants: [withColorTags(colors, { name: "Default", ...colors, underline: false })],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     paddingHorizontalVariable: paddingHMatch.figmaName,
@@ -5566,6 +6051,13 @@ function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: strin
     labelPropertyName: "Label",
     defaultLabel: "Add to library",
   };
+  tagFields(tooltip, {
+    radiusVariable: classOrigin("rounded-md", classMatch[1], snapOf(shadcnRadiusPx(radius, "md"), radiusMatch, radius)),
+    paddingHorizontalVariable: classOrigin("px-3", classMatch[1], snapOf(12, paddingHMatch, spacing)),
+    paddingVerticalVariable: classOrigin("py-1.5", classMatch[1], snapOf(6, paddingVMatch, spacing)),
+    fontSizeVariable: classOrigin("text-xs", classMatch[1], snapOf(12, fontSizeMatch, fontSize)),
+  });
+  return tooltip;
 }
 
 // Batch 13 (component-variations plan, 2026-10-13): interaction States for the
@@ -5734,7 +6226,7 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
   notes.push("Checkbox: the checked icon's real class is text-current, not a direct color class — it inherits the checked box's own text-primary-foreground, so the icon is bound to the SAME text.on-primary variable as the box's own text color, not a separately-derived one. Disclosed for the same reason Tooltip's own fg/bg inversion is: a real, confirmed-correct binding that could otherwise read as a coincidence to someone auditing it later.");
 
   const variants: FigmaComponentVariantPlanItem[] = [
-    { name: "Unchecked", fillVariable: uncheckedColors.fillVariable, strokeVariable: uncheckedColors.strokeVariable, underline: false },
+    withColorTags(uncheckedColors, { name: "Unchecked", fillVariable: uncheckedColors.fillVariable, strokeVariable: uncheckedColors.strokeVariable, underline: false }),
     {
       name: "Checked",
       fillVariable: checkedColors.fillVariable,
@@ -5743,10 +6235,11 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
       icon: { viewBox: LUCIDE_ICONS.check.viewBox, pathData: LUCIDE_ICONS.check.pathData, sizePx: 14, colorVariable: sdsgtPathToFigmaName("text.on-primary") },
     },
   ];
+  tagCheckedControl(variants[1], classMatch[1], "the check icon (text-current)");
   // Batch 13: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildCheckableControlStates("Checkbox", checkboxSource, classMatch[1], variants, notes);
 
-  return {
+  const checkbox: FigmaComponentPlanItem = {
     name: "Checkbox",
     variantPropertyName: "Variant",
     variants,
@@ -5756,6 +6249,24 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tag(checkbox, "radiusVariable", classOrigin(`rounded-[${radiusMatch_[1]}px]`, classMatch[1], snapOf(radiusTargetPx, radiusMatch, radius)));
+  return checkbox;
+}
+
+// Component pull step 1: Checkbox's / RadioGroup's Checked look is the real `data-checked:` classes
+// (scanned with the prefix stripped); the indicator (icon or dot) takes `data-checked:text-primary-foreground`
+// for the icon (its text-current inherits it) — the dot has its own class, tagged by the caller.
+function tagCheckedControl(checked: FigmaComponentVariantPlanItem, classString: string, indicator: string): void {
+  const checkedClass = (prefixLess: string, variable: string | undefined): FigmaSourceOrigin => {
+    const token = classString.split(/\s+/).find((t) => t.startsWith("data-checked:") && t.slice("data-checked:".length).startsWith(prefixLess) && classToFigmaVariable(t.slice("data-checked:".length))?.variable === variable);
+    return token ? classOrigin(token, classString) : derivedOrigin(`no data-checked:${prefixLess}* class resolving to ${variable} was found`);
+  };
+  tag(checked, "fillVariable", checkedClass("bg-", checked.fillVariable));
+  tag(checked, "strokeVariable", checkedClass("border-", checked.strokeVariable));
+  if (checked.icon) {
+    const iconOrigin = checkedClass("text-", checked.icon.colorVariable);
+    tag(checked.icon, "colorVariable", iconOrigin.origin === "class" ? iconOrigin : derivedOrigin(`${indicator} has no colour class of its own`));
+  }
 }
 
 // Twenty-sixth real component, added 2026-09-22 — second and last of the
@@ -5787,7 +6298,7 @@ function buildSpinnerPlan(tokensCss: string, spinnerSource: string, notes: strin
   notes.push("Spinner: its real animate-spin rotation isn't reproduced — a disclosed static icon, the same treatment Skeleton's own animate-pulse already receives.");
   notes.push("Spinner: has no color class of its own anywhere in real source — bound to text.primary via the same base-layer-inheritance fallback already established for Label/Marker/Accordion, not a parse miss.");
 
-  return {
+  const spinner: FigmaComponentPlanItem = {
     name: "Spinner",
     variantPropertyName: "Variant",
     variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own at this level — see top-level `icon` instead
@@ -5801,6 +6312,8 @@ function buildSpinnerPlan(tokensCss: string, spinnerSource: string, notes: strin
       colorVariable: sdsgtPathToFigmaName("text.primary"),
     },
   };
+  tag(spinner.icon!, "colorVariable", derivedOrigin("Spinner has no colour class: its stroke is currentColor, inherited from wherever it is placed (drawn as text.primary), so there is no class in spinner.tsx to edit"));
+  return spinner;
 }
 
 // Twenty-seventh real component, added 2026-09-22 — final batch closing
@@ -5875,15 +6388,30 @@ function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[
   // trackWidth - thumbSize - borderInset (real translate-x-[calc(100%-2px)]),
   // unchecked = borderInset (real translate-x-0). Key order matters (the
   // Default size must serialize byte-identically to the pre-axis plan).
-  const makeThumb = (state: "Unchecked" | "Checked", dims: { trackWidthPx: number; trackHeightPx: number; thumbSizePx: number }): NonNullable<FigmaComponentVariantPlanItem["thumb"]> => ({
-    trackColorVariable: sdsgtPathToFigmaName(state === "Checked" ? "action.primary" : "border.default"),
-    thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
-    trackWidthPx: dims.trackWidthPx,
-    trackHeightPx: dims.trackHeightPx,
-    thumbSizePx: dims.thumbSizePx,
-    thumbOffsetXPx: state === "Checked" ? dims.trackWidthPx - dims.thumbSizePx - borderInsetPx : borderInsetPx,
-    radiusVariable: radiusMatch.figmaName,
-  });
+  // Component pull step 1: the real track / thumb classes behind the hardcoded colours.
+  const switchRoot = switchSource.match(/className=\{cn\(\s*"([^"]+)"/)?.[1] ?? "";
+  const switchThumbClasses = switchSource.match(/data-slot="switch-thumb"[\s\S]*?className="([^"]+)"/)?.[1] ?? "";
+  const switchClassOrigin = (cls: string, within: string, variable: string): FigmaSourceOrigin =>
+    within.split(/\s+/).includes(cls) && classToFigmaVariable(cls.replace(/^data-(?:checked|unchecked):/, ""))?.variable === variable
+      ? classOrigin(cls, within)
+      : derivedOrigin(`hardcoded ${variable}; the expected class ${cls} was not found`);
+  const makeThumb = (state: "Unchecked" | "Checked", dims: { trackWidthPx: number; trackHeightPx: number; thumbSizePx: number }): NonNullable<FigmaComponentVariantPlanItem["thumb"]> => {
+    const thumb = {
+      trackColorVariable: sdsgtPathToFigmaName(state === "Checked" ? "action.primary" : "border.default"),
+      thumbColorVariable: sdsgtPathToFigmaName("background.primary"),
+      trackWidthPx: dims.trackWidthPx,
+      trackHeightPx: dims.trackHeightPx,
+      thumbSizePx: dims.thumbSizePx,
+      thumbOffsetXPx: state === "Checked" ? dims.trackWidthPx - dims.thumbSizePx - borderInsetPx : borderInsetPx,
+      radiusVariable: radiusMatch.figmaName,
+    };
+    tagFields(thumb, {
+      trackColorVariable: switchClassOrigin(state === "Checked" ? "data-checked:bg-primary" : "data-unchecked:bg-input", switchRoot, thumb.trackColorVariable),
+      thumbColorVariable: switchClassOrigin("bg-background", switchThumbClasses, thumb.thumbColorVariable),
+      radiusVariable: classOrigin("rounded-full", switchRoot),
+    });
+    return thumb;
+  };
   const defaultDims = readSwitchSize("default");
   if (!defaultDims) {
     throw new Error("Switch's real source has the default-size markers but its data-[size=default] track/thumb classes could not be read — real vendored source may have changed shape since buildSwitchPlan was written.");
@@ -6062,10 +6590,16 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
       centerDot: { sizePx: 8, colorVariable: sdsgtPathToFigmaName("text.on-primary") }, // real size-2 (8px), real bg-primary-foreground
     },
   ];
+  copyTags(uncheckedColors, variants[0]);
+  tagCheckedControl(variants[1], itemMatch[1], "the center dot");
+  const dotClasses = radioSource.match(/<span className="([^"]*bg-primary-foreground[^"]*)"/)?.[1] ?? "";
+  tag(variants[1].centerDot!, "colorVariable", classToFigmaVariable("bg-primary-foreground")?.variable === variants[1].centerDot!.colorVariable
+    ? classOrigin("bg-primary-foreground", dotClasses)
+    : derivedOrigin("hardcoded center-dot colour, not read from a class"));
   // Batch 13: interaction states (Focus, Disabled, Invalid) from the real classes.
   const stateDisclosures = buildCheckableControlStates("RadioGroup", radioSource, itemMatch[1], variants, notes);
 
-  return {
+  const radioGroup: FigmaComponentPlanItem = {
     name: "RadioGroup",
     variantPropertyName: "Variant",
     variants,
@@ -6075,6 +6609,8 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tag(radioGroup, "radiusVariable", classOrigin("rounded-full", itemMatch[1]));
+  return radioGroup;
 }
 
 // Twenty-ninth real component, added 2026-09-22, same batch — the last of
@@ -6147,7 +6683,10 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     .filter((t) => !t.includes(":"))
     .join(" ");
   const colors = scanClassesForColors(baseClasses);
-  if (!colors.strokeVariable) colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // bare `border`, no dash-suffix — see this function's own comment
+  if (!colors.strokeVariable) {
+    colors.strokeVariable = sdsgtPathToFigmaName("border.default"); // bare `border`, no dash-suffix — see this function's own comment
+    tag(colors, "strokeVariable", derivedOrigin("no border colour class in attachment.tsx: the bare `border` (a width) gets its colour from shadcn's global base rule (`* { @apply border-border }`), so there is no class in this file to edit"));
+  }
 
   const descMatch = attachmentSource.match(/function AttachmentDescription[\s\S]*?className=\{cn\(\s*"([^"]+)"/);
   if (!descMatch) throw new Error("Could not find AttachmentDescription's own className string — real vendored source may have changed shape since this parser was written.");
@@ -6176,25 +6715,43 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
   // The one Title + Description section, parameterized by the two values a
   // Size/Orientation option can change (horizontal padding, Title font size);
   // the base plan and every axis option build theirs through this function.
-  const buildSections = (paddingHVar: string, titleFontVar: string): FigmaComponentSectionPlanItem[] => [
-    {
-      paddingHorizontalVariable: paddingHVar,
-      textLines: [
-        { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
-        { textVariable: descColors.textVariable, fontSizeVariable: descFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "2.4 MB" },
-      ],
-    },
-  ];
+  // Component pull step 1: Title inherits the root's text-card-foreground; Description has its own classes.
+  const attachmentTitleText = classOrigin("text-card-foreground", baseMatch[1]);
+  const attachmentDescFont = classOrigin("text-xs", descMatch[1], snapOf(12, descFontSize, fontSize));
+  const buildSections = (paddingHVar: string, titleFontVar: string, origins?: AttachmentSectionOrigins): FigmaComponentSectionPlanItem[] => {
+    const sections: FigmaComponentSectionPlanItem[] = [
+      {
+        paddingHorizontalVariable: paddingHVar,
+        textLines: [
+          { textVariable: sdsgtPathToFigmaName("text.on-surface"), fontSizeVariable: titleFontVar, weight: "Medium", labelPropertyName: "Title", defaultLabel: "receipt.pdf" },
+          { textVariable: descColors.textVariable, fontSizeVariable: descFontSize.figmaName, weight: "Regular", labelPropertyName: "Description", defaultLabel: "2.4 MB" },
+        ],
+      },
+    ];
+    tag(sections[0].textLines[0], "textVariable", attachmentTitleText);
+    tagLike(sections[0].textLines[1], "textVariable", descColors, "textVariable");
+    tag(sections[0].textLines[1], "fontSizeVariable", attachmentDescFont);
+    if (origins) {
+      tag(sections[0], "paddingHorizontalVariable", origins.padding);
+      tag(sections[0].textLines[0], "fontSizeVariable", origins.titleFont);
+    }
+    return sections;
+  };
+  const attachmentDefaultOrigins: AttachmentSectionOrigins = {
+    padding: classOrigin("has-data-[slot=attachment-content]:px-2.5", undefined, snapOf(10, paddingHMatch, spacing), "variants.size.default"),
+    titleFont: classOrigin("text-sm", undefined, snapOf(14, titleFontSize, fontSize), "variants.size.default"),
+  };
+  const attachmentRadiusOrigin = classOrigin("rounded-xl", baseMatch[1], snapOf(shadcnRadiusPx(radius, "xl"), radiusMatch, radius));
 
   notes.push("Attachment: only the outer frame and AttachmentTitle/AttachmentDescription are modeled — AttachmentMedia (a real icon/image slot, always caller-supplied, never a default the component ships with) and AttachmentActions (real interactive buttons) aren't, the same declared NEEDS-ICON/NEEDS-INTERACTIVE-STRUCTURE reasons already named in [Legacy] figma-remaining-components-plan.md and established by Item's own ItemMedia/ItemActions exclusion. Only its 'done' state (the component's own real default) is modeled — the real idle/uploading/processing/error states aren't. Its real size (default/sm/xs) and orientation (horizontal/vertical) axes are modeled as Size and Orientation properties — see the `Attachment Size ...`/`Attachment Orientation ...` notes below for what they do and don't change.");
   notes.push("Attachment: AttachmentTitle has no explicit color class of its own — it inherits from Attachment's own text-card-foreground, NOT the global body's text-foreground this file's usual fallback assumes, so it's hardcoded to text.on-surface directly rather than routed through scanClassesForColors's own generic fallback default, which would have been wrong here.");
 
-  const extraAxes = buildAttachmentAxes(attachmentSource, spacing, radius, fontSize, radiusMatch, notes, buildSections);
-  const attachmentVariants: FigmaComponentVariantPlanItem[] = [{ name: "Default", ...colors, underline: false }];
+  const extraAxes = buildAttachmentAxes(attachmentSource, spacing, radius, fontSize, radiusMatch, notes, buildSections, attachmentRadiusOrigin);
+  const attachmentVariants: FigmaComponentVariantPlanItem[] = [withColorTags(colors, { name: "Default", ...colors, underline: false })];
   // Batch 15: interaction states (Hover, Focus) from the real root classes.
   const stateDisclosures = buildAttachmentStates(attachmentSource, baseMatch[1], attachmentVariants, notes);
 
-  return {
+  const attachment: FigmaComponentPlanItem = {
     name: "Attachment",
     variantPropertyName: "Variant",
     variants: attachmentVariants,
@@ -6202,10 +6759,22 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     radiusVariable: radiusMatch.figmaName,
     fontFamilyVariable: "typography/primitive/fontFamily/primary",
     sectionGapVariable: paddingVMatch.figmaName,
-    sections: buildSections(paddingHMatch.figmaName, titleFontSize.figmaName),
+    sections: buildSections(paddingHMatch.figmaName, titleFontSize.figmaName, attachmentDefaultOrigins),
     ...(extraAxes.length > 0 ? { extraAxes } : {}),
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
+  tagFields(attachment, {
+    radiusVariable: attachmentRadiusOrigin,
+    "sectionGapVariable@paddingVertical": classOrigin("has-data-[slot=attachment-content]:py-2", undefined, snapOf(8, paddingVMatch, spacing), "variants.size.default"),
+    "sectionGapVariable@itemSpacing": ITEM_SINGLE_SECTION_GAP,
+  });
+  return attachment;
+}
+
+// Component pull step 1: where Attachment's per-option section values come from.
+interface AttachmentSectionOrigins {
+  padding: FigmaSourceOrigin;
+  titleFont: FigmaSourceOrigin;
 }
 
 // Batch 15 (component-variations plan, 2026-10-13): interaction States for Attachment. The real
@@ -6307,7 +6876,8 @@ function buildAttachmentAxes(
   fontSize: Record<string, number>,
   baseRadius: { figmaName: string; deltaPx: number },
   notes: string[],
-  buildSections: (paddingHVar: string, titleFontVar: string) => FigmaComponentSectionPlanItem[],
+  buildSections: (paddingHVar: string, titleFontVar: string, origins?: AttachmentSectionOrigins) => FigmaComponentSectionPlanItem[],
+  baseRadiusOrigin: FigmaSourceOrigin,
 ): FigmaComponentAxisPlanItem[] {
   const tokenPx = (figmaName: string, scale: Record<string, number>) => scale[figmaName.split("/").pop() as string];
   const axes: FigmaComponentAxisPlanItem[] = [];
@@ -6328,7 +6898,7 @@ function buildAttachmentAxes(
     }
     return null;
   };
-  type SizeInfo = { label: string; padXPx: number; padXClass: string; padHVar: string; titleFontVar: string };
+  type SizeInfo = { label: string; padXPx: number; padXClass: string; padHVar: string; titleFontVar: string; titleFontOrigin: FigmaSourceOrigin };
   const sizeInfo = new Map<string, SizeInfo>(); // label -> what the Orientation combos need
 
   if (sizeEntries.length > 0) {
@@ -6366,15 +6936,23 @@ function buildAttachmentAxes(
       const mediaPad = classes.find((cls) => cls.startsWith("has-data-[slot=attachment-media]:"));
       if (mediaPad) disclosures.push(`Size ${label}: ${mediaPad} (the padding when the Attachment holds only a media part) isn't modeled — Media isn't part of this Figma Attachment.`);
 
-      sizeInfo.set(label, { label, padXPx: padX.px, padXClass: padX.cls.split(":")[1], padHVar: padXMatch.figmaName, titleFontVar: titleMatch.figmaName });
-      options.push({
-        name: label,
-        overrides: {
-          radiusVariable: radiusMatch.figmaName,
-          sectionGapVariable: padYMatch.figmaName,
-          sections: buildSections(padXMatch.figmaName, titleMatch.figmaName),
-        },
+      const at = `variants.size.${sizeName}`;
+      const sizeOrigins: AttachmentSectionOrigins = {
+        padding: classOrigin(padX.cls, classString, snapOf(padX.px, padXMatch, spacing), at),
+        titleFont: classOrigin(textClass, classString, snapOf(tailwindClassPx(textClass) as number, titleMatch, fontSize), at),
+      };
+      sizeInfo.set(label, { label, padXPx: padX.px, padXClass: padX.cls.split(":")[1], padHVar: padXMatch.figmaName, titleFontVar: titleMatch.figmaName, titleFontOrigin: sizeOrigins.titleFont });
+      const sizeOverrides: FigmaComponentLayoutOverrides = {
+        radiusVariable: radiusMatch.figmaName,
+        sectionGapVariable: padYMatch.figmaName,
+        sections: buildSections(padXMatch.figmaName, titleMatch.figmaName, sizeOrigins),
+      };
+      tagFields(sizeOverrides, {
+        radiusVariable: roundedClass === "rounded-lg" ? classOrigin("rounded-lg", classString, undefined, at) : baseRadiusOrigin,
+        "sectionGapVariable@paddingVertical": classOrigin(padY.cls, classString, snapOf(padY.px, padYMatch, spacing), at),
+        "sectionGapVariable@itemSpacing": ITEM_SINGLE_SECTION_GAP,
       });
+      options.push({ name: label, overrides: sizeOverrides });
     }
     if (options.length > 0) {
       disclosures.push("Size: AttachmentDescription keeps its own explicit text-xs (12px) in every size, and the media part's per-size classes (group-data-[size=X]/attachment: width, radius, icon size on AttachmentMedia) aren't modeled — Media isn't part of this Figma Attachment.");
@@ -6416,6 +6994,7 @@ function buildAttachmentAxes(
       if (widthPx !== null) {
         const widthTokenMatch = nearestToken(widthPx, spacing, "spacing");
         overrides.widthVariable = widthTokenMatch.figmaName;
+        tag(overrides, "widthVariable", classOrigin(widthToken as string, classString, snapOf(widthPx, widthTokenMatch, spacing), `variants.orientation.${orientationName}`));
         const widthClass = (widthToken as string).split(":")[1];
         if (widthTokenMatch.deltaPx > 0) disclosures.push(`Orientation ${label}: width ${widthClass} (${widthPx}px, the width when the Attachment holds a content part) snapped to ${widthTokenMatch.figmaName} (${tokenPx(widthTokenMatch.figmaName, spacing)}px), ${widthTokenMatch.deltaPx}px off — no exact spacing token that wide, so the Figma ${label} Attachment is narrower than the real one.`);
         else disclosures.push(`Orientation ${label}: width ${widthClass} (${widthPx}px) is a fixed ${tokenPx(widthTokenMatch.figmaName, spacing)}px (${widthTokenMatch.figmaName}).`);
@@ -6425,7 +7004,12 @@ function buildAttachmentAxes(
         combinationOverrides = {};
         for (const info of sizeInfo.values()) {
           const sumMatch = nearestToken(info.padXPx + contentPadPx, spacing, "spacing");
-          combinationOverrides[`Size=${info.label}`] = { sections: buildSections(sumMatch.figmaName, info.titleFontVar) };
+          combinationOverrides[`Size=${info.label}`] = {
+            sections: buildSections(sumMatch.figmaName, info.titleFontVar, {
+              padding: derivedOrigin(`the sum of two classes: this size's ${info.padXClass} (${info.padXPx}px) plus AttachmentContent's own ${contentPadToken} (${contentPadPx}px) = ${info.padXPx + contentPadPx}px${sumMatch.deltaPx > 0 ? `, snapped to ${sumMatch.figmaName}` : ""}; no single class reproduces it`),
+              titleFont: info.titleFontOrigin,
+            }),
+          };
           if (sumMatch.deltaPx > 0) disclosures.push(`Orientation ${label} with Size ${info.label}: horizontal padding ${info.padXClass} (${info.padXPx}px) plus the content's own ${(contentPadToken as string).split(":")[1]} (${contentPadPx}px) is ${info.padXPx + contentPadPx}px, snapped to ${sumMatch.figmaName} (${tokenPx(sumMatch.figmaName, spacing)}px), ${sumMatch.deltaPx}px off — no exact spacing token.`);
         }
       }
@@ -6526,6 +7110,18 @@ const COMPONENT_BUILDERS: ReadonlyArray<{
 // path is silently absent from the plan, not an error, since not every
 // scaffold vendors every component this parser knows about yet.
 export function buildFigmaComponentsPushPlan(codeDir: string, vendoredComponentsDir: string): FigmaComponentsPushPlan {
+  return buildFigmaComponentsPushPlanWithSources(codeDir, vendoredComponentsDir).plan;
+}
+
+// Component pull, step 1 (2026-10-15): the same plan, plus `figma-components-sources.json`'s
+// content — the code origin of every variable binding the replay applies (see
+// figma-components-sources.ts). `unrecorded` lists bindings no builder tagged (left out of
+// `sources`; scripts/check-components-sources.ts reports them). The plan is identical to
+// `buildFigmaComponentsPushPlan`'s.
+export function buildFigmaComponentsPushPlanWithSources(
+  codeDir: string,
+  vendoredComponentsDir: string,
+): { plan: FigmaComponentsPushPlan; sources: FigmaComponentsSources; unrecorded: UnrecordedBinding[] } {
   const notes: string[] = [];
   const components: FigmaComponentPlanItem[] = [];
   const tokensCss = readFileSync(join(codeDir, "css", "tokens.css"), "utf-8");
@@ -6541,11 +7137,21 @@ export function buildFigmaComponentsPushPlan(codeDir: string, vendoredComponents
   for (const { filename, name, build } of COMPONENT_BUILDERS) {
     const path = join(vendoredComponentsDir, filename);
     if (existsSync(path)) {
-      components.push(build(tokensCss, readFileSync(path, "utf-8"), notes));
+      const source = readFileSync(path, "utf-8");
+      setSourceContext(filename, source);
+      try {
+        const component = build(tokensCss, source, notes);
+        // Every component's text binds the same project-wide font family token.
+        tag(component, "fontFamilyVariable", derivedOrigin("the project's primary font family token, applied to every component's text globally (shadcn's base font), not set by a class in this component"));
+        components.push(component);
+      } finally {
+        clearSourceContext();
+      }
     } else {
       notes.push(`No ${filename} found at ${vendoredComponentsDir} — this project doesn't have ${name} vendored at the expected path.`);
     }
   }
 
-  return { components, notes };
+  const plan = { components, notes };
+  return { plan, ...collectFigmaComponentSources(plan) };
 }

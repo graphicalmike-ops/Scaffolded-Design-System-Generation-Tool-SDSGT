@@ -9,7 +9,8 @@
     "generate": "node src/cli.ts generate",
     "typecheck": "tsc --noEmit",
     "qa:matrix": "node scripts/qa-matrix.ts",
-    "regen:components-plan": "node scripts/regen-components-plan.ts"
+    "regen:components-plan": "node scripts/regen-components-plan.ts",
+    "check:components-sources": "node scripts/check-components-sources.ts"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
