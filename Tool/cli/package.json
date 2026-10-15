@@ -2,6 +2,7 @@
   "name": "sdsgt-cli",
   "version": "0.0.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "SDSGT pipeline CLI core (seed input -> promote -> generate). Local development only — not published.",
   "scripts": {
