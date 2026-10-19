@@ -1333,6 +1333,7 @@ For each item in `plan.components`, in order:
      const nativeSize = iconNode.width; // real lucide icons always import at their native square viewBox size (24 for every icon this file uses so far)
      iconNode.rescale(icon.sizePx / nativeSize); // NEVER resize() here — resize() scales the vector's geometry but leaves strokeWeight a literal, UNSCALED value (confirmed live: stayed exactly 2 after a resize() from 24px down to 14px, rendering disproportionately thick); rescale() correctly scales both together (confirmed live: 2 → 1.167 for a 24→14px scale, exactly `2 × 14/24`)
      const vector = iconNode.findOne(n => n.type === "VECTOR");
+     vector.name = "Icon"; // component pull baseline: the part name figma-components-sources.ts uses for this binding (see "Component pull baseline" below)
      vector.strokes = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(icon.colorVariable))]; // real, confirmed: setBoundVariableForPaint works identically on a VECTOR's own .strokes as it does on a FRAME's fills/strokes
      return iconNode;
    }
@@ -1368,6 +1369,7 @@ For each item in `plan.components`, in order:
      const lineColor = getVar(item.line.colorVariable);
      function makeLineRect(lengthPx) {
        const rect = figma.createRectangle();
+       rect.name = "Line"; // component pull baseline part name (FieldSeparator's two segments; on bare Separator the rect becomes the component itself)
        // Vertical (Batch 7, `item.line.orientation === "vertical"`): width = thickness, height = length.
        if (item.line.orientation === "vertical") rect.resize(item.line.thicknessPx, lengthPx);
        else rect.resize(lengthPx, item.line.thicknessPx); // fixed size, NOT auto-layout — a bare line has no content to "hug"
@@ -1462,6 +1464,7 @@ For each item in `plan.components`, in order:
      track.clipsContent = true; // reproduces the real overflow-x-hidden clip — this, not a radius on the indicator, is what gives the indicator its real rounded-left/square-right look
 
      const indicator = figma.createRectangle(); // deliberately NO radius binding — see this branch's own comment above for why
+     indicator.name = "Indicator"; // component pull baseline part name
      indicator.resize(Math.max(1, component.bar.widthPx * component.bar.representativeFillFraction), 1); // real height bound below, matching the track's
      indicator.x = 0;
      indicator.y = 0;
@@ -1539,6 +1542,7 @@ For each item in `plan.components`, in order:
      track.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(t.trackColorVariable))];
 
      const thumb = figma.createEllipse(); // a real circle — Switch's own thumb is always perfectly round (rounded-full, equal width/height), not just a rounded rectangle
+     thumb.name = "Thumb"; // component pull baseline part name
      thumb.resize(t.thumbSizePx, t.thumbSizePx);
      thumb.x = t.thumbOffsetXPx;
      thumb.y = (t.trackHeightPx - t.thumbSizePx) / 2; // vertically centered, matching the real items-center flex behavior
@@ -2034,6 +2038,7 @@ For each item in `plan.components`, in order:
    no `createNodeFromSvg`/`rescale` involved at all:
    ```js
      const dot = figma.createEllipse();
+     dot.name = "CenterDot"; // component pull baseline part name
      dot.resize(variant.centerDot.sizePx, variant.centerDot.sizePx);
      dot.x = (frame.width - variant.centerDot.sizePx) / 2;
      dot.y = (frame.height - variant.centerDot.sizePx) / 2;
@@ -2052,7 +2057,7 @@ For each item in `plan.components`, in order:
      // first line goes in before the text; the second is appended after it below.
      // Fixed-size rectangles in a horizontal auto-layout frame (cross-axis centered
      // already), gap bound to the token; `makeFlank` fills are variable-bound.
-     const makeFlank = () => { const r = figma.createRectangle(); r.resize(variantItem.flankLines.representativeLengthPx, variantItem.flankLines.thicknessPx); r.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.flankLines.colorVariable))]; return r; };
+     const makeFlank = () => { const r = figma.createRectangle(); r.name = "FlankLine"; /* component pull baseline part name */ r.resize(variantItem.flankLines.representativeLengthPx, variantItem.flankLines.thicknessPx); r.fills = [bindPaint({ r: 0, g: 0, b: 0 }, getVar(variantItem.flankLines.colorVariable))]; return r; };
      if (variantItem.flankLines) { frame.setBoundVariable("itemSpacing", getVar(variantItem.flankLines.gapVariable)); frame.appendChild(makeFlank()); }
      const text = figma.createText();
      text.name = "PrimaryText"; // lets step 5 find this specific node once a variant can have two
@@ -2184,6 +2189,7 @@ For each item in `plan.components`, in order:
    // this loop therefore read `item.`, never `component.`, for those two fields.
    for (const section of item.sections) {
      const sectionFrame = figma.createFrame();
+     sectionFrame.name = `Section:${section.textLines[0]?.labelPropertyName ?? "?"}`; // component pull baseline part name, e.g. "Section:Title" (its first line's label)
      sectionFrame.layoutMode = section.textLineDirection === "horizontal" ? "HORIZONTAL" : "VERTICAL"; // absent (every section before Breadcrumb) always resolves to "VERTICAL" — Card's own original line, unchanged
      sectionFrame.primaryAxisSizingMode = "AUTO";
      sectionFrame.counterAxisSizingMode = "AUTO";
@@ -2338,7 +2344,67 @@ For each item in `plan.components`, in order:
    each has (and which were skipped, with the plan's own stated reason),
    and — if any binding needed a nearest-token approximation per the plan's
    `notes` — say so plainly, the same "don't present an approximate result
-   as pixel-perfect" honesty step 6 already applies to tokens.
+   as pixel-perfect" honesty step 6 already applies to tokens. Once every
+   component is done, also relay the component baseline's report (below).
+
+**Component pull baseline (added 2026-10-19, component pull step 2).** Once
+every component set in the plan has been pushed AND validated (items 1-6
+above, for all of them), write the component pull baseline — needed for a
+future component pull (pulling a designer's token swaps on components back
+into code) to ever work, so don't skip it. It runs automatically as the last
+part of this step, not as a separate thing the user asks for. Same idea as
+step 5's token baseline: read what is ACTUALLY bound in Figma right now (not
+the plan — the build-screenshot-check-adjust loop can leave Figma slightly
+different from it), save it, and let the CLI compare and write the file.
+
+This depends on the layer names the replay code above gives every bound
+layer (`PrimaryText`, `SecondaryText`, `CenterLabelText`, `Line`,
+`FlankLine`, `Indicator`, `Thumb`, `Icon` on the icon's vector,
+`CenterDot`, each sections line's `labelPropertyName`, and
+`Section:<first line's label>` on each section frame) — they are the
+`part` names in `<projectDir>/figma-components-sources.json`. Never rename
+them, and never improvise the read-back: the script is fixed and lives in
+the CLI.
+
+For each component set in the plan (`plan.components[].name`), in order:
+
+1. Print its read-back script (from `cli/`):
+   ```
+   node src/cli.ts figma-components-readback-script --component "<Name>"
+   ```
+2. Paste the printed script **verbatim** as the code of one `figma_execute`
+   call (`figmaMcp === "southleft"`, `timeout: 30000`) or one `use_figma`
+   call (`figmaMcp === "official"`). It is read-only (it only reads nodes
+   and variables) and returns one compact JSON object.
+3. Save what it returned, **verbatim** (no reformatting, no edits), to
+   `<temp dir>/<Name>.json` — one file per component set, in a fresh temp
+   directory used for nothing else. (The CLI accepts the object itself, a
+   `{ "result": ... }` wrapper, or the object as a JSON string, so save
+   whatever the tool returned.) If a call errors, say so and retry once; if
+   it still fails, skip that set — the report below will list it as
+   missing rather than hiding it.
+
+Then run:
+
+```
+node src/cli.ts figma-components-pull --project-dir "<projectDir>" --live-data "<temp dir>" --init
+```
+
+This writes `<projectDir>/figma-components-sync-snapshot.json` — the
+baseline a future component pull diffs against — and prints a report:
+how many intended bindings match Figma exactly; bindings bound to a
+different variable than intended; bindings whose sides no longer agree
+(e.g. left and right padding on different tokens); bindings with a typed
+raw value instead of a variable; and components, variants or layers it
+could not find. Relay it in plain language. A fresh push should report
+everything matching; anything else after a fresh push is worth saying
+plainly (it usually means the build-adjust loop changed something). If it
+says layers were not found by name, the file was pushed before this step
+named its layers: say a re-push is needed for the baseline to cover them.
+Do this every time step 7 pushes components to a file (including a re-push
+to a fresh file). The command never edits code; only `--init` exists today
+(the component pull itself, comparing live Figma against this baseline and
+editing the component files, is not built yet).
 
 **Not yet built, real and disclosed:** re-running this step against a file
 that already has one of these component sets will create a second,

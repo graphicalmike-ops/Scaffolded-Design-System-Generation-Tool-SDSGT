@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { promote } from "./promote/index.ts";
 import { buildFigmaPushPlan } from "./promote/figma-plan.ts";
 import { computeFigmaPull, writeInitialSnapshot, SNAPSHOT_FILE, type FigmaPullInput } from "./promote/figma-pull.ts";
+import { buildComponentsReadbackScript } from "./scaffold/figma-components-readback.ts";
+import { writeComponentsBaseline, formatComponentsBaselineReport, COMPONENTS_SNAPSHOT_FILE } from "./scaffold/figma-components-pull.ts";
 import { generateCodeTokens } from "./generate/index.ts";
 import { generateTailwindTheme } from "./generate/tailwind.ts";
 import { generateBootstrapVariables } from "./generate/bootstrap.ts";
@@ -345,7 +347,59 @@ const USAGE = [
   "    Figma post-push (not the push plan's own placeholder literals for",
   "    alias/alpha entries). Every subsequent figma-pull call (without",
   "    --init) diffs against whatever this wrote.",
+  "",
+  '  node src/cli.ts figma-components-readback-script --component "<Name>"',
+  "    Prints the fixed, read-only Plugin API script that reads one pushed",
+  "    component set back out of Figma (component pull, step 2). The",
+  "    SDSGT-figma-push skill pastes it verbatim into figma_execute / use_figma",
+  "    at the end of its component push and saves what it returns to",
+  "    <dir>/<Name>.json. For every variant and every named layer it records",
+  "    the variable each property is bound to, or the raw value when unbound.",
+  "    See scaffold/figma-components-readback.ts.",
+  "",
+  '  node src/cli.ts figma-components-pull --project-dir "<dir>" --live-data "<dir>" --init',
+  "    Writes the component pull baseline: reads every read-back file in",
+  "    --live-data (one .json per component set), compares it with the",
+  "    project's figma-components-sources.json (what the push meant to bind),",
+  `    writes ${COMPONENTS_SNAPSHOT_FILE} in --project-dir and prints a plain`,
+  "    report (matched, bound to a different variable, split sides, unbound",
+  "    raw values, missing components / variants / layers). Only --init exists",
+  "    for now: the pull itself (diffing live Figma against this baseline and",
+  "    editing code) is step 3, not built yet. See",
+  "    scaffold/figma-components-pull.ts.",
 ].join("\n");
+
+function runFigmaComponentsReadbackScript(rest: string[]) {
+  const args = parseArgs(rest);
+  const name = args.component;
+  if (!name || name === "true") {
+    console.error(`figma-components-readback-script needs --component <Name>.\n\n${USAGE}`);
+    process.exit(1);
+  }
+  process.stdout.write(buildComponentsReadbackScript(name));
+}
+
+function runFigmaComponentsPull(rest: string[]) {
+  const args = parseArgs(rest);
+  const projectDir = args["project-dir"];
+  const liveDir = args["live-data"];
+  if (args.init !== "true") {
+    console.error("figma-components-pull only supports --init for now: it writes the baseline the component pull will compare against. The component pull itself (reading Figma edits back into code) isn't built yet.");
+    process.exit(1);
+  }
+  if (!projectDir || projectDir === "true" || !liveDir || liveDir === "true") {
+    console.error(`figma-components-pull needs --project-dir <dir> and --live-data <dir>.\n\n${USAGE}`);
+    process.exit(1);
+  }
+  try {
+    const { report, snapshotPath } = writeComponentsBaseline(projectDir, liveDir);
+    console.log(formatComponentsBaselineReport(report, snapshotPath));
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`figma-components-pull failed: ${detail}`);
+    process.exit(1);
+  }
+}
 
 function runFigmaPull(rest: string[]) {
   const args = parseArgs(rest);
@@ -627,6 +681,10 @@ async function main() {
     runScaffold(rest);
   } else if (command === "figma-pull") {
     runFigmaPull(rest);
+  } else if (command === "figma-components-readback-script") {
+    runFigmaComponentsReadbackScript(rest);
+  } else if (command === "figma-components-pull") {
+    runFigmaComponentsPull(rest);
   } else {
     console.error(`Unknown command: ${command ?? "(none)"}.\n\n${USAGE}`);
     process.exit(1);

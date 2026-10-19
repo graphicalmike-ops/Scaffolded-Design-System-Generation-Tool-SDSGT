@@ -12,7 +12,8 @@
     "qa:matrix": "node scripts/qa-matrix.ts",
     "regen:components-plan": "node scripts/regen-components-plan.ts",
     "check:components-sources": "node scripts/check-components-sources.ts",
-    "check:components-roundtrip": "node scripts/check-components-roundtrip.ts"
+    "check:components-roundtrip": "node scripts/check-components-roundtrip.ts",
+    "check:components-baseline": "node scripts/check-components-baseline.ts"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
