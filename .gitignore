@@ -40,3 +40,6 @@ Thumbs.db
 
 # Tool artifacts
 .playwright-mcp/
+
+# Demo run output (regenerated each run)
+Demo/
