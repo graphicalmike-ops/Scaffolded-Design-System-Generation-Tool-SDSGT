@@ -2402,7 +2402,11 @@ plainly (it usually means the build-adjust loop changed something). If it
 says layers were not found by name, the file was pushed before this step
 named its layers: say a re-push is needed for the baseline to cover them.
 Do this every time step 7 pushes components to a file (including a re-push
-to a fresh file). The command never edits code; only `--init` exists today
+to a fresh file). **Proven live 2026-10-19** ("SDSGT test file", Southleft):
+Button (200 variants), Alert and Separator read back and matched all 1342
+intended bindings; Southleft returns the script's object under `result`, and
+Button's ~19 KB read-back came through intact; a planted swapped fill, typed
+radius and renamed layer were each reported. The command never edits code; only `--init` exists today
 (the component pull itself, comparing live Figma against this baseline and
 editing the component files, is not built yet).
 

@@ -85,9 +85,13 @@ npm run typecheck
 - [x] 5 offline test (a) faithful mock, (b) faulty mock — both PASS. Read-back size (mock, Demo): 52,194 bytes total for 29 sets / 3011 bindings; largest Button 17,850, Item 4,434, Attachment 3,510, Toggle 3,470, Bubble 3,131
 - [x] 6 docs (pipeline-plan.md step 2 + Build status line, this log)
 
-All verification commands above pass (plan + sources byte-identical, roundtrip 241/241, sources OK, baseline (a)+(b) PASS, typecheck clean). DONE apart from the live test.
+All verification commands above pass (plan + sources byte-identical, roundtrip 241/241, sources OK, baseline (a)+(b) PASS, typecheck clean). DONE. Live test PASSED 2026-10-19 (see below).
 
-## Live test still needed (what the mock assumed)
+## Live test — PASSED 2026-10-19
+
+Pushed the Demo tokens + Button (200), Alert (4), Separator (2) into the emptied "SDSGT test file" (Southleft), read back with the printed script verbatim: 1342/1342 bindings matched. Every assumption below held: the Separator rectangle is wrapped (child `Line`), Alert's description splits into two segments that both keep their binding, every property kind reads back, the result arrives under `result`, Button's ~19 KB read-back came through intact. A faulty pass on Alert (swapped fill, typed 13px radius, renamed layer) produced exactly the three expected report lines; the edits were then reverted.
+
+## What the mock assumed (all confirmed live)
 
 - `createComponentFromNode` on a bare RECTANGLE (Separator) converts it in place (fill on the component root). If it wraps it instead, the CLI falls back to the child named `Line`.
 - Text `boundVariables.fontSize` / `fontFamily` read back as an alias or an array of aliases (both handled).
