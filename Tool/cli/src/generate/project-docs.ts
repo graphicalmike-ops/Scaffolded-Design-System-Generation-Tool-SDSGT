@@ -186,7 +186,7 @@ function buildAgentsMd({ framework, hasTailwind, isReactNative, hasShadcn, hasRn
   // and "Fixed defaults", and scaffold/react-native.ts's font scope cut.
   if (isReactNative) {
     rules.push(
-      "Custom fonts aren't loaded in this project. React Native needs `.ttf`/`.otf` font files loaded through `expo-font`'s `useFonts()`, and SDSGT only fetches web font files (`.woff2`), so text renders in the platform's default font. Sizes, weights and line heights still come from the type tokens, and the font family names in the tokens are correct — to use them, add the `.ttf` files and load them with `useFonts()`. Don't swap in a different font to work around this. *(This project targets React Native.)*",
+      "Custom fonts aren't loaded in this project. React Native needs `.ttf`/`.otf` font files loaded through `expo-font`'s `useFonts()`, and SDSGT only fetches web font files (`.woff2`), so text renders in the platform's default font. Sizes, weights and line heights still come from the type tokens, and the font family names in the tokens are correct. To use the real fonts, add `.ttf`/`.otf` files and load them with `expo-font` (see Expo's fonts guide): with static fonts each weight is a separate file, declared with its own weight and style — or use one variable font file, whose weights work on iOS and Android 10+ only. Don't swap in a different font to work around this. *(This project targets React Native.)*",
     );
   }
   if (hasRnr) {
@@ -204,7 +204,7 @@ function buildAgentsMd({ framework, hasTailwind, isReactNative, hasShadcn, hasRn
   }
   if (hasMd2 || hasMd3 || hasVuetify || hasRnPaper) {
     rules.push(
-      "The grid tiers (`grid.json`) follow Material Design 3's columns, margins and gutters, but switch at this project's web breakpoints rather than Material's own window sizes: `compact` below 768px, `medium` 768–1023px, `expanded` 1024px and up (Material's native thresholds are 600dp and 840dp). Use the breakpoint tokens, not Material's numbers. *(This project targets a Material Design library.)*",
+      "The grid tiers (`grid.json`) follow Material Design 3's columns, margins and gutters, but switch at this project's breakpoint tokens rather than Material's own window sizes: `compact` below `breakpoint.md`, `medium` from `breakpoint.md` up to `breakpoint.lg`, `expanded` from `breakpoint.lg` up (current widths in `design.md`, section 4). Material's native thresholds are 600dp and 840dp — use the breakpoint tokens, not Material's numbers. *(This project targets a Material Design library.)*",
     );
   }
 
@@ -224,8 +224,8 @@ files (\`CLAUDE.md\`, \`.cursor/rules\`) are meant to mirror it, not restate it.
 
 - Accessibility/UX rules (how the UI should behave): see
   \`foundations-rules.md\`.
-- This project's actual tokens, resolved presets, and components (how to
-  use *this* project's design system specifically): see \`design.md\`.
+- This project's actual tokens, scales, and components (how to use
+  *this* project's design system specifically): see \`design.md\`.
 
 ## Core rule
 

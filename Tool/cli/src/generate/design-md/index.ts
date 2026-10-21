@@ -1,6 +1,6 @@
 // Builds design.md — the per-project guide an AI agent reads before building
-// a new page. Contract: contracts-and-seeds.md, "design.md (contract decided —
-// not built)." Key rules it follows:
+// a new page. Contract: contracts-and-seeds.md, "design.md (built)." Key
+// rules it follows:
 //
 // - Describes only what's in the project's current files (token files,
 //   components folder, flags the step already receives). Never a saved copy
@@ -94,6 +94,8 @@ const FRAMEWORK_NAMES: Record<string, string> = {
   nextjs: "Next.js",
   vuejs: "Vue.js",
   "react-native": "React Native (Expo)",
+  kotlin: "Kotlin (Jetpack Compose)",
+  swiftui: "SwiftUI",
 };
 
 function componentLibraryName(o: DesignMdOptions): string | null {

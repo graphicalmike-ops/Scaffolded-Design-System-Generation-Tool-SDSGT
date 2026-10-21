@@ -64,21 +64,31 @@ export interface DtcgShadowToken {
 // elevation number instead (`$type: "dimension"`), which every consumer had
 // to special-case — and which once crashed generate/bootstrap.ts on a
 // Bootstrap + md2 QA case. Those presets were removed (contracts-and-
-// seeds.md, "Shadow"); readShadowTokens below rejects an old elevation-
-// shaped shadow.json with a clear message instead of every caller checking.
+// seeds.md, "Shadow"). readShadowTokens below is the one place that checks:
+// an older project's elevation-number entries are SKIPPED with a warning
+// (never stop the run — token sync and generate run this CLI against
+// existing projects, and those shadows were never bound anyway).
 export type ShadowToken = DtcgShadowToken;
 
 export interface ShadowFile {
   shadow: Record<string, ShadowToken>;
 }
 
+const warnedOldShadows = new Set<string>();
+
 export function readShadowTokens(tokensDir: string): Record<string, ShadowToken> {
   const { shadow } = readJson<{ shadow: Record<string, { $type: string }> }>(join(tokensDir, "shadow.json"));
-  const old = Object.entries(shadow).filter(([, t]) => t.$type !== "shadow").map(([k]) => k);
-  if (old.length) {
-    throw new Error(`shadow.json has elevation-number entries (${old.join(", ")}) from a removed MD3/MD2 shadow preset — re-run promote with shadowPreset "tailwind" or "bootstrap" (see contracts-and-seeds.md, "Shadow").`);
+  const drawable: Record<string, ShadowToken> = {};
+  const old: string[] = [];
+  for (const [key, token] of Object.entries(shadow)) {
+    if (token.$type === "shadow") drawable[key] = token as ShadowToken;
+    else old.push(key);
   }
-  return shadow as Record<string, ShadowToken>;
+  if (old.length && !warnedOldShadows.has(tokensDir)) {
+    warnedOldShadows.add(tokensDir);
+    console.warn(`Warning: shadow.json has elevation-number entries (${old.join(", ")}) from a removed MD3/MD2 shadow preset — skipped: they're still not applied in code (as before) and are no longer pushed to Figma. To get real shadows, re-run promote with shadowPreset "tailwind" or "bootstrap" (see contracts-and-seeds.md, "Shadow").`);
+  }
+  return drawable;
 }
 
 export interface DtcgNumberToken {

@@ -48,6 +48,7 @@ export type PairingNote =
   | "Meets AA for body text"
   | "Meets AA for large text and UI only"
   | "Below AA contrast — designer's choice; don't change it"
+  | "No minimum required — WCAG exempts disabled controls"
   | "Not checked — one of these colors is partly transparent";
 
 export interface PairingResult {
@@ -85,7 +86,13 @@ function resolveSemantic(tree: SemanticTree, primitives: ColorPrimitivesFile["co
   return out;
 }
 
-function noteFor(ratio: number): PairingNote {
+// Disabled text is exempt from WCAG 1.4.3 ("part of an inactive user
+// interface component ... no contrast requirement"), so it never gets a
+// below-AA note — the ratio is still shown.
+const EXEMPT_TEXT = new Set(["text.disabled"]);
+
+function noteFor(text: string, ratio: number): PairingNote {
+  if (EXEMPT_TEXT.has(text)) return "No minimum required — WCAG exempts disabled controls";
   if (ratio >= WCAG_AA_NORMAL_TEXT) return "Meets AA for body text";
   if (ratio >= WCAG_AA_LARGE_TEXT) return "Meets AA for large text and UI only";
   return "Below AA contrast — designer's choice; don't change it";
@@ -110,7 +117,7 @@ export function computeTextPairings(tokensDir: string): ModePairings[] {
         continue;
       }
       const ratio = contrastRatio(fg, bg);
-      pairs.push({ text, on, ratio: Math.floor(ratio * 10) / 10, note: noteFor(ratio) });
+      pairs.push({ text, on, ratio: Math.floor(ratio * 10) / 10, note: noteFor(text, ratio) });
     }
     results.push({ mode, pairs });
   }
