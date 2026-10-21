@@ -189,6 +189,11 @@ function buildAgentsMd({ framework, hasTailwind, isReactNative, hasShadcn, hasRn
       "Custom fonts aren't loaded in this project. React Native needs `.ttf`/`.otf` font files loaded through `expo-font`'s `useFonts()`, and SDSGT only fetches web font files (`.woff2`), so text renders in the platform's default font. Sizes, weights and line heights still come from the type tokens, and the font family names in the tokens are correct — to use them, add the `.ttf` files and load them with `useFonts()`. Don't swap in a different font to work around this. *(This project targets React Native.)*",
     );
   }
+  if (hasRnr) {
+    rules.push(
+      "Use `shadows.ts` for shadows, not Tailwind `shadow-*` classes. `shadows.ts` holds this project's shadow tokens as React Native `boxShadow` styles (apply with `style={shadows.md}`, combinable with other styles); they render every layer on iOS and on Android 9+ (Android 8 and older show no shadow). Tailwind `shadow-*` classes don't render this project's shadows on device: they use Tailwind's own default values, and NativeWind's converter (`react-native-css-interop`) drops any multi-layer shadow and keeps only the color of a single-layer one (using its spread as the blur — no offset, no opacity), so they look weak or invisible. RNR's own installed components still use `shadow-*` classes internally — don't edit them to swap in `shadows.ts` without asking the designer. *(This project targets React Native Reusables.)*",
+    );
+  }
   const isMui = hasMd2 && framework === "nextjs";
   if (isMui || hasVuetify) {
     const lib = isMui ? "MUI's `theme.shadows`" : "Vuetify's elevation system";

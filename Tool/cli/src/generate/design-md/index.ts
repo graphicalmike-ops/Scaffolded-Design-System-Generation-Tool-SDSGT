@@ -408,6 +408,7 @@ function sectionLimits(o: DesignMdOptions): string {
   if (o.isReactNative && (o.hasTailwind || o.hasRnr)) topics.push("NativeWind's inlineRem setting");
   if (o.hasTailwind || o.hasRnr) topics.push("tailwind-merge overrides across differently-shaped classes");
   if (o.isReactNative) topics.push("custom fonts not loaded on React Native");
+  if (o.hasRnr) topics.push("shadows: use shadows.ts, not Tailwind shadow-* classes");
   if ((o.hasMd2 && o.framework === "nextjs") || o.hasVuetify) topics.push("shadow tokens not connected to the library's elevation system");
   if (o.hasMd2 || o.hasMd3 || o.hasVuetify || o.hasRnPaper) topics.push("grid tiers switching at web breakpoints, not Material's window sizes");
   return [
@@ -430,6 +431,10 @@ const PATH_CANDIDATES: Array<[string, string]> = [
   ["src/app/theme-light.css", "Light mode color variables"],
   ["src/app/theme-dark.css", "Dark mode color variables"],
   ["src/app/globals.css", "Global styles, including the generated theme block"],
+  ["global.css", "NativeWind theme variables"],
+  ["constants.ts", "React Navigation theme colors"],
+  ["shadows.ts", "Shadow tokens as React Native boxShadow styles"],
+  ["rnr/", "React Native Reusables theme files"],
   ["src/components/ui/", "Components"],
   ["components/ui/", "Components"],
   [VENDORED_MANIFEST, "Original fingerprint of each installed component (detects customized files)"],

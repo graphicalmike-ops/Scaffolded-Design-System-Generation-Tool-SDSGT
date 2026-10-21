@@ -878,6 +878,23 @@ export function checkRnr(tokensDir: string, codeOutDir: string, seed: SeedConfig
     );
   }
 
+  // rnr/shadows.ts (2026-10-21): one React Native boxShadow style per
+  // shadow.json tier, each string exactly matching that tier's layers.
+  const shadowsTs = readIfExists(join(codeOutDir, "rnr", "shadows.ts"));
+  if (!shadowsTs) {
+    results.push(fail("rnr/shadows.ts exists", "rnr", "file present", "missing"));
+  } else {
+    results.push(pass("rnr/shadows.ts exists", "rnr"));
+    const shadowTokens = (JSON.parse(readFileSync(join(tokensDir, "shadow.json"), "utf-8")) as {
+      shadow: Record<string, { $value: Array<{ offsetX: string; offsetY: string; blur: string; spread: string; color: string }> }>;
+    }).shadow;
+    for (const [key, token] of Object.entries(shadowTokens)) {
+      const expected = token.$value.map((l) => `${l.offsetX} ${l.offsetY} ${l.blur} ${l.spread} ${l.color}`).join(", ");
+      const found = shadowsTs.includes(`boxShadow: ${JSON.stringify(expected)}`);
+      results.push(found ? pass(`shadows.ts ${key} matches shadow.json`, "rnr") : fail(`shadows.ts ${key} matches shadow.json`, "rnr", expected, "not found"));
+    }
+  }
+
   const tsPath = join(codeOutDir, "rnr", "constants.ts");
   const ts = readIfExists(tsPath);
   if (!ts) {

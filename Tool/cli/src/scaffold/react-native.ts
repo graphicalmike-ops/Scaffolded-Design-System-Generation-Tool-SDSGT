@@ -554,6 +554,9 @@ function writeReadme(outDir: string, projectName: string, hasRnr: boolean): void
     "  `Theme.colors` shape, generated from the exact same tokens as",
     "  `global.css`. Keep the two in sync via `scaffold --update`, not by",
     "  hand-editing either file.",
+    "- `shadows.ts` — your shadow tokens as React Native `boxShadow` styles",
+    "  (`style={shadows.md}`). Use these instead of Tailwind `shadow-*`",
+    "  classes, which don't render your shadows on device. Needs Android 9+.",
     "- `tailwind.config.js` — maps those variables onto Tailwind color names",
     "  (`bg-primary`, `text-foreground`, etc.) usable in any component's",
     "  `className`.",
@@ -598,6 +601,10 @@ export function scaffoldReactNative(opts: ScaffoldReactNativeOptions): ScaffoldR
   // `generate` build before this file existed won't have one, and that's
   // not fatal).
   const constantsTsPath = join(codeDir, "rnr", "constants.ts");
+  // rnr/shadows.ts (2026-10-21) — the shadow tokens as React Native
+  // `boxShadow` styles (see generate/rnr.ts's buildShadowsTs). Same
+  // "copy when present" treatment as constants.ts.
+  const shadowsTsPath = join(codeDir, "rnr", "shadows.ts");
   const tokensCssPath = join(codeDir, "css", "tokens.css");
   if (!existsSync(tokensCssPath)) {
     throw new Error(`No ${tokensCssPath} found — was ${codeDir} really written by this pipeline's \`generate\`? Spacing values come from there.`);
@@ -635,6 +642,9 @@ export function scaffoldReactNative(opts: ScaffoldReactNativeOptions): ScaffoldR
   guarded("global.css", globalCss);
   if (existsSync(constantsTsPath)) {
     guarded("constants.ts", readFileSync(constantsTsPath));
+  }
+  if (existsSync(shadowsTsPath)) {
+    guarded("shadows.ts", readFileSync(shadowsTsPath));
   }
 
   const hasSecondary = /--secondary:/.test(globalCss);
