@@ -47,7 +47,7 @@ import {
   type TypographyPrimitivesFile,
   type DtcgDimensionToken,
 } from "./read-tokens.ts";
-import { buildScheme, surfaceColorAtElevation } from "./md3.ts";
+import { buildScheme, surfaceColorAtElevation, MD3_ELEVATION_DP } from "./md3.ts";
 import { LIGHT_FILE, DARK_FILE } from "./index.ts";
 
 // roundness wired 2026-09-15 — a real gap found while building the Figma
@@ -84,7 +84,7 @@ export const PAPER_SCHEME_ROLES = [
   "scrim",
 ] as const;
 
-const ELEVATION_DP = [0, 1, 3, 6, 8, 12] as const;
+const ELEVATION_DP = MD3_ELEVATION_DP;
 
 function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace("#", "");

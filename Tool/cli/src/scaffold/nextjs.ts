@@ -501,7 +501,9 @@ export function scaffoldNextjs(opts: ScaffoldNextjsOptions): ScaffoldResult {
     guarded(join("src", "app", "globals.css"), buildGlobalsCss({ hasDark, fontFaceCss }));
   }
 
-  filesWritten.push(...copyAgentDocs(codeDir, outDir));
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  filesWritten.push(...agentDocs.files);
+  warnings.push(...agentDocs.warnings);
 
   if (!update) {
     writeReadme(outDir, projectName, componentLibrary === "shadcn");

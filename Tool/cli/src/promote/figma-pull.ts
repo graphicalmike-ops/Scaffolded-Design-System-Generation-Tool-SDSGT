@@ -43,7 +43,7 @@
 //
 // Scope, real and disclosed: pulls VARIABLES (color primitives/semantics,
 // spacing, radius, opacity, border-width, breakpoint, typography
-// primitives, MD3/MD2 elevation FLOATs) AND STYLES (text styles, box-
+// primitives) AND STYLES (text styles, box-
 // shadow effect styles — added 2026-09-17). Structural changes are never
 // inferred: a Figma variable/style with no match in this pipeline's own
 // naming convention is reported as unmapped, never guessed into a new
@@ -292,17 +292,7 @@ export function computeFigmaPull(tokensDir: string, rawInput: FigmaPullInput): F
   const snapshot: FigmaSyncSnapshot = roundSnapshot({ variables: rawSnapshot.variables ?? {}, textStyles: rawSnapshot.textStyles ?? {}, effectStyles: rawSnapshot.effectStyles ?? {} });
 
   const plan = buildFigmaPushPlan(tokensDir);
-  const allVars: FigmaVariablePlanItem[] = [
-    ...plan.variables,
-    ...plan.elevationVariables.map((e) => ({
-      path: figmaNameToPath(e.figmaName).join("."),
-      figmaName: e.figmaName,
-      type: "FLOAT" as const,
-      group: "foundation" as const,
-      scopes: e.scopes,
-      valuesByMode: { value: e.value },
-    })),
-  ];
+  const allVars: FigmaVariablePlanItem[] = plan.variables;
 
   const liveVarMap = new Map<string, Record<string, string | number>>();
   for (const v of input.variables) {
@@ -322,7 +312,7 @@ export function computeFigmaPull(tokensDir: string, rawInput: FigmaPullInput): F
   }
 
   // --- Variables (color/spacing/radius/opacity/border-width/breakpoint/
-  // typography primitives, MD3/MD2 elevation floats) ---
+  // typography primitives) ---
   for (const variable of allVars) {
     const liveModes = liveVarMap.get(variable.figmaName);
     if (!liveModes) continue; // not present live — reported via `unmapped` only in the other direction
@@ -410,8 +400,7 @@ export function computeFigmaPull(tokensDir: string, rawInput: FigmaPullInput): F
     }
   }
 
-  // --- Effect styles (shadow.json's box-shadow-shaped entries only —
-  // MD3/MD2's elevation-dp shape is handled above, as a plain variable) ---
+  // --- Effect styles (one per shadow.json tier) ---
   for (const style of plan.effectStyles) {
     const live = liveEffectStyleMap.get(style.figmaName);
     if (!live) continue;

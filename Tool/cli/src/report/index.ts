@@ -104,13 +104,6 @@ function semanticGroups(mode: "light" | "dark", brandRamp: Ramp, neutralRamp: Ra
   ];
 }
 
-// Tailwind/Bootstrap shadow entries are $type "shadow" (real CSS layers).
-// MD3/MD2 entries are $type "dimension" (an elevation dp/px number) — there's
-// no real box-shadow to read yet, since the tonal-surface-overlay math that
-// would turn elevation into an actual MD3 shadow is generator-layer work
-// that isn't built (see contracts-and-seeds.md, "Shadow"). Synthesize a
-// plausible-looking shadow from the elevation number just for this preview,
-// and label it as elevation rather than claiming it's the real render.
 function fontFaceCss(fontFiles: FontFilesMap | undefined, family: string | undefined): string {
   if (!fontFiles || !family || !fontFiles[family]) return "";
   const weights = fontFiles[family]!;

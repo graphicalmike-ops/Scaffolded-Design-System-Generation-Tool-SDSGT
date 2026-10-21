@@ -13,10 +13,11 @@
 // - achromatic (4): #808080 (zero saturation) on primary/secondary/both —
 //   regression coverage for the hue formula bug already fixed once in
 //   src/color/hsl.ts, now also exercised through md3.ts's own HCT math.
-// - mismatch (6): shadowPreset mismatched against targetDesignLanguage —
-//   the only preset field that's structurally polymorphic ($type: "shadow"
-//   composite vs. "dimension" bare dp), confirmed by diffing every preset
-//   family's JSON shape.
+// - mismatch (6): presets mixed against targetDesignLanguage. Originally
+//   built around shadowPreset's two token shapes (composite vs. bare
+//   elevation dp); since the MD3/MD2 shadow presets were removed
+//   (2026-10-21) every shadow is composite, and these cases now cover
+//   cross-language mixes of the remaining presets.
 // - baseline (2): the real files in examples/, read verbatim.
 // - boundary (2): pure black/white primary — a lightness-extreme case
 //   distinct from the achromatic (zero-saturation) bug class.
@@ -51,7 +52,9 @@ function seed(
     spacingPreset: lang,
     radiusPreset: lang,
     opacityPreset: lang === "bootstrap" ? "bootstrap" : "tailwind",
-    shadowPreset: lang,
+    // MD3/MD2 shadow presets were removed 2026-10-21 — Material languages
+    // get the Tailwind shadow preset, same as the setup form suggests.
+    shadowPreset: lang === "bootstrap" ? "bootstrap" : "tailwind",
     ...fields,
   };
 }
@@ -91,18 +94,17 @@ function achromatic(): QaCase[] {
 
 function mismatch(): QaCase[] {
   return [
-    // Composite-native project (tailwind), dimension-shaped shadow (md3).
-    { id: "MIS-1", group: "mismatch", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#2563EB", secondaryColor: "#F97316", neutralColorStyle: "brand-tinted", shadowPreset: "md3" }) },
-    // Dimension-native project (md3), composite-shaped shadow (tailwind) —
-    // MD3's elevation overlay must be skipped, not approximated.
+    // Tailwind project with Bootstrap shadows.
+    { id: "MIS-1", group: "mismatch", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#2563EB", secondaryColor: "#F97316", neutralColorStyle: "brand-tinted", shadowPreset: "bootstrap" }) },
+    // MD3 project with Tailwind shadows (the setup form's suggestion).
     { id: "MIS-2", group: "mismatch", seed: seed("md3", { targetFramework: "swiftui", lightDarkMode: "both", primaryColor: "#8B5CF6", secondaryColor: "#F59E0B", neutralColorStyle: "pure-gray", shadowPreset: "tailwind" }) },
-    // Same as MIS-1 for the other composite family member (bootstrap).
-    { id: "MIS-3", group: "mismatch", seed: seed("bootstrap", { targetFramework: "vuejs", lightDarkMode: "light", primaryColor: "#0D6EFD", neutralColorStyle: "brand-tinted", shadowPreset: "md2" }) },
-    // Same as MIS-2 for the other dimension family member (md2).
+    // Bootstrap project with Tailwind shadows.
+    { id: "MIS-3", group: "mismatch", seed: seed("bootstrap", { targetFramework: "vuejs", lightDarkMode: "light", primaryColor: "#0D6EFD", neutralColorStyle: "brand-tinted", shadowPreset: "tailwind" }) },
+    // MD2 project with Bootstrap shadows.
     { id: "MIS-4", group: "mismatch", seed: seed("md2", { targetFramework: "nextjs", lightDarkMode: "dark", primaryColor: "#9C27B0", secondaryColor: "#FFC107", neutralColorStyle: "pure-gray", shadowPreset: "bootstrap" }) },
-    // Everything mismatched, dimension-shaped shadow.
-    { id: "MIS-5", group: "mismatch", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#EF4444", secondaryColor: "#10B981", neutralColorStyle: "brand-tinted", typeScalePreset: "md3", spacingPreset: "bootstrap", radiusPreset: "md2", shadowPreset: "md3", opacityPreset: "bootstrap" }) },
-    // Everything mismatched, composite-shaped shadow (opposite direction).
+    // Everything mismatched, Bootstrap shadows.
+    { id: "MIS-5", group: "mismatch", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#EF4444", secondaryColor: "#10B981", neutralColorStyle: "brand-tinted", typeScalePreset: "md3", spacingPreset: "bootstrap", radiusPreset: "md2", shadowPreset: "bootstrap", opacityPreset: "bootstrap" }) },
+    // Everything mismatched, Tailwind shadows (opposite direction).
     { id: "MIS-6", group: "mismatch", seed: seed("md2", { targetFramework: "vuejs", lightDarkMode: "both", primaryColor: "#14B8A6", secondaryColor: "#F43F5E", neutralColorStyle: "pure-gray", typeScalePreset: "bootstrap", spacingPreset: "md3", radiusPreset: "tailwind", shadowPreset: "tailwind", opacityPreset: "tailwind" }) },
   ];
 }

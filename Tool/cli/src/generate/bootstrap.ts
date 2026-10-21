@@ -76,12 +76,11 @@ import {
   nearestDimensionPx,
   nearestOpacity,
   shadowLayersToCss,
-  isShadowLayerToken,
+  readShadowTokens,
   type ColorPrimitivesFile,
   type RadiusFile,
   type SpacingFile,
   type TypographyPrimitivesFile,
-  type ShadowFile,
   type OpacityFile,
 } from "./read-tokens.ts";
 
@@ -134,7 +133,7 @@ export function generateBootstrapVariables(tokensDir: string, outDir: string): G
   const { radius } = readJson<RadiusFile>(join(tokensDir, "radius.json"));
   const { spacing } = readJson<SpacingFile>(join(tokensDir, "spacing.json"));
   const { typography } = readJson<TypographyPrimitivesFile>(join(tokensDir, "typography.primitive.json"));
-  const { shadow } = readJson<ShadowFile>(join(tokensDir, "shadow.json"));
+  const shadow = readShadowTokens(tokensDir);
   const { opacity } = readJson<OpacityFile>(join(tokensDir, "opacity.json"));
 
   const lines: string[] = [
@@ -180,19 +179,10 @@ export function generateBootstrapVariables(tokensDir: string, outDir: string): G
   // SHADOW_KEY_TO_BOOTSTRAP's own comment for why xl/2xl have nothing to
   // bind to. Same layer count/color as this pipeline's own shadow token,
   // only the lengths reformatted to Bootstrap's own rem convention.
-  // Skips cleanly (real Bootstrap default stays in place) if the chosen
-  // shadow preset is elevation-shaped (`md3`/`md2` — a single dp/px
-  // number, not real box-shadow layer data) rather than box-shadow-shaped
-  // (`tailwind`/`bootstrap`) — see `read-tokens.ts`'s own `ShadowToken`
-  // comment for why both shapes are real and expected, not a malformed
-  // file. A real, mismatched-preset combination (Bootstrap design language
-  // + an `md2`/`md3` shadow preset) crashed here before this check was
-  // added — caught by the real QA matrix, fixed by checking `$type`
-  // instead of assuming every shadow.json is array-of-layers shaped.
   lines.push("");
   for (const [key, name] of Object.entries(SHADOW_KEY_TO_BOOTSTRAP)) {
     const token = shadow[key];
-    if (token && isShadowLayerToken(token)) lines.push(`$${name}: ${shadowLayersToCss(token, pxToRemForShadow)};`);
+    if (token) lines.push(`$${name}: ${shadowLayersToCss(token, pxToRemForShadow)};`);
   }
 
   // Real Bootstrap 5.3 default is .65 — nearest real opacity token used

@@ -16,13 +16,6 @@ export function textOn(hex: string): string {
   return luminance > 0.6 ? "#1F201D" : "#FFFFFF";
 }
 
-// Tailwind/Bootstrap shadow entries are $type "shadow" (real CSS layers).
-// MD3/MD2 entries are $type "dimension" (an elevation dp/px number) — there's
-// no real box-shadow to read yet, since the tonal-surface-overlay math that
-// would turn elevation into an actual MD3 shadow is generator-layer work
-// that isn't built (see contracts-and-seeds.md, "Shadow"). Synthesize a
-// plausible-looking shadow from the elevation number just for this preview,
-// and label it as elevation rather than claiming it's the real render.
 export interface PageStyleOptions {
   // Raw @font-face CSS (already-built string, possibly empty) — see
   // report/index.ts's fontFaceCss.
@@ -154,11 +147,9 @@ export function stageBannerHtml(kind: "agnostic" | "adapted", title: string, bod
   return `<div class="stage-banner ${kind}"><strong>${escapeHtml(title)}</strong>${bodyHtml}</div>`;
 }
 
+// Every shadow preset is real CSS layers since the MD3/MD2 elevation-number
+// presets were removed (2026-10-21, contracts-and-seeds.md, "Shadow").
 export function shadowDisplay(entry: { $type: string; $value: unknown }): { css: string; label: string } {
-  if (entry.$type === "dimension") {
-    const px = parseInt(String(entry.$value), 10);
-    return { css: `0 ${px}px ${px * 2}px rgba(0,0,0,0.15)`, label: `${entry.$value} elevation (approximated)` };
-  }
   const layers = Array.isArray(entry.$value) ? entry.$value : [entry.$value];
   const css = layers.map((l: any) => `${l.offsetX} ${l.offsetY} ${l.blur} ${l.spread} ${l.color}`).join(", ");
   const label = `${layers.length} layer${layers.length > 1 ? "s" : ""}`;

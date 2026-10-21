@@ -62,10 +62,6 @@ function modeExpectations(seed: SeedConfig) {
   return { hasLight: seed.lightDarkMode !== "dark", hasDark: seed.lightDarkMode !== "light" };
 }
 
-function isCompositeShadow(seed: SeedConfig): boolean {
-  return seed.shadowPreset === "tailwind" || seed.shadowPreset === "bootstrap";
-}
-
 // Same px->rem formula as bootstrap.ts's pxToRem — recomputed independently
 // here (not imported) so the check verifies the generator's actual output
 // against the spec, not against its own helper always agreeing with itself.
@@ -88,13 +84,6 @@ interface ColorPrimitives {
 
 function readPrimitives(tokensDir: string): ColorPrimitives {
   return JSON.parse(readFileSync(join(tokensDir, "color.primitive.json"), "utf-8")) as ColorPrimitives;
-}
-
-function readShadowTypes(tokensDir: string): Record<string, string> | null {
-  const path = join(tokensDir, "shadow.json");
-  if (!existsSync(path)) return null;
-  const { shadow } = JSON.parse(readFileSync(path, "utf-8")) as { shadow: Record<string, { $type: string }> };
-  return Object.fromEntries(Object.entries(shadow).map(([k, v]) => [k, v.$type]));
 }
 
 // ---------------------------------------------------------------------------
@@ -157,18 +146,16 @@ export function checkCss(tokensDir: string, codeOutDir: string, seed: SeedConfig
     }
   }
 
-  // Shadow $type polymorphism (bug class #2), checked at the CSS-transform
-  // level independent of md3.ts: dimension-shaped shadows never contain
-  // rgba(), composite-shaped shadows always do.
+  // Every shadow preset is a drawable CSS shadow since the MD3/MD2
+  // elevation-number presets were removed (2026-10-21): --shadow-sm must be
+  // a real box-shadow with a color, never a bare number.
   if (tokensCss) {
     const m = tokensCss.match(/--shadow-sm:\s*([^;]+);/);
     if (m) {
-      const expectComposite = isCompositeShadow(seed);
-      const isComposite = /rgba?\(/.test(m[1]);
       results.push(
-        isComposite === expectComposite
-          ? pass("shadow.sm CSS shape matches shadowPreset", "css")
-          : fail("shadow.sm CSS shape matches shadowPreset", "css", expectComposite ? "contains rgba()" : "no rgba()", m[1]),
+        /rgba?\(/.test(m[1])
+          ? pass("shadow.sm is a real CSS box-shadow", "css")
+          : fail("shadow.sm is a real CSS box-shadow", "css", "contains rgba()", m[1]),
       );
     }
   }
@@ -562,24 +549,12 @@ export function checkMd3(tokensDir: string, codeOutDir: string, seed: SeedConfig
   checkColorSchemeBlock(kotlin, "LightColorScheme", results);
   checkColorSchemeBlock(kotlin, "DarkColorScheme", results);
 
-  // Bug class #2's central assertion: elevation overlay present iff the
-  // shadow preset is dimension-shaped (md3/md2), absent for composite
-  // (tailwind/bootstrap) — never approximated.
-  const shadowTypes = readShadowTypes(tokensDir);
-  const expectOverlay = shadowTypes !== null && Object.values(shadowTypes).every((t) => t === "dimension");
+  // Elevation overlay: always present since 2026-10-21, computed at MD3's
+  // own fixed elevation levels 0-5 (not from shadow.json) — 6 per scheme.
   const hasOverlay = kotlin.includes("object ElevationOverlay");
-  results.push(
-    hasOverlay === expectOverlay
-      ? pass("ElevationOverlay present iff shadow.json is dimension-shaped", "md3")
-      : fail("ElevationOverlay present iff shadow.json is dimension-shaped", "md3", String(expectOverlay), String(hasOverlay)),
-  );
-  if (hasOverlay) {
-    const valCount = (kotlin.match(/val (sm|md|lg|xl|xxl) = Color/g) ?? []).length;
-    results.push(valCount === 10 ? pass("ElevationOverlay has exactly 10 val lines (5 keys x Light/Dark)", "md3") : fail("ElevationOverlay has exactly 10 val lines (5 keys x Light/Dark)", "md3", "10", String(valCount)));
-    results.push(
-      !/val 2xl/.test(kotlin) ? pass("no illegal 'val 2xl' identifier (renamed to xxl)", "md3") : fail("no illegal 'val 2xl' identifier (renamed to xxl)", "md3", "xxl", "2xl"),
-    );
-  }
+  results.push(hasOverlay ? pass("ElevationOverlay present", "md3") : fail("ElevationOverlay present", "md3", "present", "missing"));
+  const valCount = (kotlin.match(/val level[0-5] = Color/g) ?? []).length;
+  results.push(valCount === 12 ? pass("ElevationOverlay has exactly 12 val lines (levels 0-5 x Light/Dark)", "md3") : fail("ElevationOverlay has exactly 12 val lines (levels 0-5 x Light/Dark)", "md3", "12", String(valCount)));
 
   return results;
 }

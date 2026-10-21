@@ -62,9 +62,7 @@
 // across by name. v4's own `2xs` and (real) `sm` tiers have no
 // corresponding token in this pipeline's own 5-value scale — left
 // unbound, same "framework has more tiers than us" pattern as Bootstrap's
-// own missing `xl`/`2xl`. Skips cleanly (same as `bootstrap.ts`) if the
-// resolved shadow preset is elevation-shaped (`md3`/`md2`) rather than
-// box-shadow-shaped — see `read-tokens.ts`'s own `ShadowToken` comment.
+// own missing `xl`/`2xl`.
 // Lands in a real `@theme { }` block (see `generateShadcn`'s own inline
 // comment for why plain `:root` doesn't work here, unlike `--spacing`).
 //
@@ -109,14 +107,13 @@ import {
   readJson,
   resolveAlias,
   isSemanticToken,
-  isShadowLayerToken,
+  readShadowTokens,
   shadowLayersToCss,
   type ColorPrimitivesFile,
   type RadiusFile,
   type SemanticFile,
   type SemanticTree,
   type SemanticToken,
-  type ShadowFile,
 } from "./read-tokens.ts";
 import { contrastText } from "./mui-color.ts";
 import { computeLinearSpacingConstant, readSpacingEntries } from "./tailwind.ts";
@@ -335,14 +332,12 @@ export function generateShadcn(tokensDir: string, outDir: string): GenerateResul
   // as literal CSS the way `:root` is — so our real values get baked in
   // AS the utility's own literal, not a var() Tailwind then has to know to
   // reference. See this file's own header for the real v3->v4 key-name
-  // shift (our `sm` binds to `--shadow-xs`, not `--shadow-sm`) and why a
-  // mismatched elevation-shaped shadow preset (md3/md2) is skipped, not
-  // fabricated.
-  const { shadow } = readJson<ShadowFile>(join(tokensDir, "shadow.json"));
+  // shift (our `sm` binds to `--shadow-xs`, not `--shadow-sm`).
+  const shadow = readShadowTokens(tokensDir);
   const shadowThemeVars: string[] = [];
   for (const [key, cssVar] of Object.entries(SHADOW_KEY_TO_TAILWIND_V4)) {
     const token = shadow[key];
-    if (token && isShadowLayerToken(token)) shadowThemeVars.push(`  ${cssVar}: ${shadowLayersToCss(token)};`);
+    if (token) shadowThemeVars.push(`  ${cssVar}: ${shadowLayersToCss(token)};`);
   }
   // Same real `@theme { }` block for both fixes that need one (see the
   // spacingThemeVars comment above and this file's original --shadow-*

@@ -58,7 +58,7 @@ Concrete, non-obvious things worth not re-learning the hard way:
 
 ## Open questions
 
-- Remaining pre-v1 gaps are tracked in `pipeline-plan.md`'s "Still open" and "Pre-launch validation" sections — as of 2026-09-23 these are mostly outside Layer 2/3 (both essentially complete; see `pipeline-plan.md`'s "Next step"). The `design.md` content contract was decided 2026-10-21 (see `contracts-and-seeds.md`, "`design.md` (contract decided — not built)") and is waiting to be built — squircle support was considered and discarded, not deferred (see `pipeline-plan.md`, "Deferred").
+- Remaining pre-v1 gaps are tracked in `pipeline-plan.md`'s "Still open" and "Pre-launch validation" sections — as of 2026-09-23 these are mostly outside Layer 2/3 (both essentially complete; see `pipeline-plan.md`'s "Next step"). The `design.md` content contract was decided and built 2026-10-21 (see `contracts-and-seeds.md`, "`design.md` (built)") — squircle support was considered and discarded, not deferred (see `pipeline-plan.md`, "Deferred").
 
 Full list of remaining open and deferred items: see `pipeline-plan.md`.
 

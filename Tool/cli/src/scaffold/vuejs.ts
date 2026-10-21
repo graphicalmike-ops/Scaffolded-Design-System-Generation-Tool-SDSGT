@@ -592,7 +592,9 @@ export function scaffoldVuejs(opts: ScaffoldVuejsOptions): ScaffoldResult {
     guarded(join("src", "assets", "main.css"), buildMainCss({ hasDark, fontFaceCss }));
   }
 
-  filesWritten.push(...copyAgentDocs(codeDir, outDir));
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  filesWritten.push(...agentDocs.files);
+  warnings.push(...agentDocs.warnings);
 
   if (!update) {
     writeReadme(outDir, projectName, componentLibrary === "shadcn");

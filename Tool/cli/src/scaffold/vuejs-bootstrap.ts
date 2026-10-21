@@ -386,7 +386,9 @@ export function scaffoldVuejsBootstrap(opts: ScaffoldVuejsBootstrapOptions): Sca
     filesWritten.push("src/main.ts");
   }
 
-  filesWritten.push(...copyAgentDocs(codeDir, outDir));
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  filesWritten.push(...agentDocs.files);
+  warnings.push(...agentDocs.warnings);
 
   if (!update) {
     writeReadme(outDir, projectName);

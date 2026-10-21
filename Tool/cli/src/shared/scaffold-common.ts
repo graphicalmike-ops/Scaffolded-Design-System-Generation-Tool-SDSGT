@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, copyFileSyn
 import { join, dirname } from "node:path";
 
 import { slugFont, FONT_WEIGHTS } from "./font-slug.ts";
+import { refreshProjectDesignMd } from "../generate/design-md/index.ts";
 
 export const AGENT_DOC_FILES = ["AGENTS.md", "foundations-rules.md", "design.md"];
 
@@ -205,15 +206,29 @@ export function collectFilesRecursive(dir: string): string[] {
   return out;
 }
 
-export function copyAgentDocs(codeDir: string, outDir: string): string[] {
-  const written: string[] = [];
+// design.md isn't a plain copy: generate's version is refreshed for this
+// project (components, final paths) and the project's own designer-owned
+// blocks are carried over — see generate/design-md/index.ts. Runs on a
+// fresh scaffold and on every `--update`.
+export function copyAgentDocs(codeDir: string, outDir: string, opts: { force: boolean }): { files: string[]; warnings: string[] } {
+  const files: string[] = [];
+  const warnings: string[] = [];
   for (const file of AGENT_DOC_FILES) {
     const src = join(codeDir, file);
     if (!existsSync(src)) continue;
-    copyFileSync(src, join(outDir, file));
-    written.push(file);
+    const dest = join(outDir, file);
+    if (file === "design.md") {
+      const existing = existsSync(dest) ? readFileSync(dest, "utf-8") : null;
+      const { content, warning } = refreshProjectDesignMd(readFileSync(src, "utf-8"), outDir, existing, opts.force);
+      if (warning) warnings.push(warning);
+      if (content === null) continue;
+      writeFileSync(dest, content, "utf-8");
+    } else {
+      copyFileSync(src, dest);
+    }
+    files.push(file);
   }
-  return written;
+  return { files, warnings };
 }
 
 // Tailwind's own platform (generate/tailwind.ts) names this token

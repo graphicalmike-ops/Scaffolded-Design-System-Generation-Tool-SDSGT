@@ -577,15 +577,22 @@ async function runGenerate(rest: string[]) {
   // Unconditional — every generate run gets its agent-facing docs, not
   // gated by any platform flag. See generate/project-docs.ts.
   const framework = args.framework as TargetFramework | undefined;
-  const docFiles = writeProjectDocs(outDir, {
+  const docs = writeProjectDocs(outDir, tokensDir, {
+    framework,
     hasTailwind: args.tailwind !== undefined,
     isReactNative: framework === "react-native",
     hasShadcn: args.shadcn !== undefined,
     hasRnr: args.rnr !== undefined,
     hasRnPaper: args["rn-paper"] !== undefined,
     hasVuetify: args.vuetify !== undefined,
+    hasBootstrap: args.bootstrap !== undefined,
+    hasMd2: args.md2 !== undefined,
+    hasMd3: args.md3 !== undefined,
+    hasSwiftui: args.swiftui !== undefined,
     hasUnboundTailwindSpacing,
-  }).filesWritten;
+  });
+  const docFiles = docs.filesWritten;
+  for (const w of docs.warnings) console.warn(`Warning: ${w}`);
 
   const allFiles = [...filesWritten, ...tailwindFiles, ...bootstrapFiles, ...md2Files, ...md3Files, ...kotlinGuideFiles, ...swiftuiFiles, ...swiftuiGuideFiles, ...shadcnFiles, ...rnrFiles, ...rnPaperFiles, ...vuetifyFiles, ...demoFiles, ...docFiles];
   console.log(`Wrote ${allFiles.length} code-token file(s) to ${outDir}/:`);

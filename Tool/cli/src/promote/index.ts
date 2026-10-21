@@ -119,6 +119,11 @@ export function promote(seed: SeedConfig, options: PromoteOptions = {}): Promote
   const spacing = loadPreset("spacing", seed.spacingPreset);
   const radius = loadPreset("radius", seed.radiusPreset);
   const opacity = loadPreset("opacity", seed.opacityPreset);
+  // An older seed may still name a removed MD3/MD2 shadow preset — say so
+  // plainly instead of failing on a missing preset file.
+  if ((seed.shadowPreset as string) === "md3" || (seed.shadowPreset as string) === "md2") {
+    throw new Error(`shadowPreset "${seed.shadowPreset}" was removed on 2026-10-21 (it stored elevation numbers, not drawable shadows). Use "tailwind" or "bootstrap" instead — see contracts-and-seeds.md, "Shadow."`);
+  }
   const shadow = loadPreset("shadow", seed.shadowPreset);
   const borderWidth = loadDefault("border-width");
   const breakpoint = loadDefault("breakpoint");

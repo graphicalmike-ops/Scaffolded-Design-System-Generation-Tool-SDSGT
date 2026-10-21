@@ -16,16 +16,15 @@
 // passed," so the caller states them explicitly, same reasoning as
 // --tailwind/--bootstrap/etc. being opt-in rather than auto-detected.
 //
-// design.md's own content contract is explicitly undecided and deferred
-// (contracts-and-seeds.md: "flagged, deferred — not required for the
-// pipeline to work"). Written here anyway, as a real placeholder file
-// pointing at what does exist, so AGENTS.md's pointer to it isn't a dead
-// link — not an attempt to prematurely design its final shape.
+// design.md is built by generate/design-md/ (contract: contracts-and-seeds.md,
+// "design.md (contract decided — not built)"). Its designer-owned blocks are
+// carried over from the existing file on every run.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { GenerateResult } from "./index.ts";
+import { buildDesignMd, readDesignerBlocks, type DesignMdOptions } from "./design-md/index.ts";
 
 export const FOUNDATIONS_RULES_MD = `# foundations-rules.md
 
@@ -80,23 +79,6 @@ get silently auto-corrected; it's surfaced so a human or agent can decide
 whether and how to address it.
 `;
 
-// contracts-and-seeds.md, "design.md (flagged, deferred)": the doc's
-// existence and purpose are settled, its concrete contract isn't. Kept
-// deliberately minimal rather than guessing at a shape.
-export const DESIGN_MD_PLACEHOLDER = `# design.md
-
-This project's own design-system usage guide — which semantic tokens
-exist, which component variants survived pruning, how the roundness/
-spacing/type-scale presets resolved for this project — isn't built yet.
-Its content contract is still undecided (see \`pipeline-plan.md\`,
-"design.md").
-
-In the meantime:
-- Token-usage rules for writing code against this project's tokens: see
-  \`AGENTS.md\`.
-- Universal accessibility/UX rules: see \`foundations-rules.md\`.
-`;
-
 export interface AgentRulesOptions {
   // Whether --tailwind was passed to this generate run. Gates the
   // tailwind-merge always/never rule, per contracts-and-seeds.md: "Tailwind-
@@ -137,7 +119,7 @@ export interface AgentRulesOptions {
   hasUnboundTailwindSpacing: boolean;
 }
 
-function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify, hasUnboundTailwindSpacing }: AgentRulesOptions): string {
+function buildAgentsMd({ framework, hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify, hasMd2, hasMd3, hasUnboundTailwindSpacing }: DesignMdOptions): string {
   const rules: string[] = [
     "Never blindly re-run a vendored component's install/add command once it's been customized. There's no merge logic — it silently overwrites. Mark customized files clearly.",
   ];
@@ -179,12 +161,16 @@ function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPap
     );
   }
 
-  if (isReactNative && hasTailwind) {
+  // RNR is NativeWind (Tailwind v3) even though React Native projects never
+  // get --tailwind (its v4 output doesn't fit NativeWind) — so --rnr counts
+  // as Tailwind for these two rules. Gap found and fixed 2026-10-21.
+  const usesTailwindClasses = hasTailwind || hasRnr;
+  if (isReactNative && usesTailwindClasses) {
     rules.push(
       "NativeWind's `inlineRem` must be set to 16, not its default of 14. *(This project targets React Native + Tailwind/NativeWind.)*",
     );
   }
-  if (hasTailwind) {
+  if (usesTailwindClasses) {
     rules.push(
       "`tailwind-merge` doesn't reliably override classes across differently-shaped Tailwind groups (e.g. `px-4` vs. `pl-5`) — component variants need to account for this rather than assuming overrides always \"just work.\" *(This project targets Tailwind.)*",
     );
@@ -192,6 +178,28 @@ function buildAgentsMd({ hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPap
   if (hasUnboundTailwindSpacing) {
     rules.push(
       "This project's spacing-rhythm preset is not a constant-multiplier scale, so Tailwind v4's own `--spacing` base variable can't fully represent it — only this project's explicitly-named `--spacing-N` keys (see `tailwind/theme.css`) bind correctly. Any spacing utility outside that exact set — every fractional class (`px-2.5`, `gap-1.5`, ...) and any integer key `spacing.json` doesn't list — silently falls back to Tailwind's own raw default (4px per step), not this project's chosen rhythm. This shows up in real, unmodified vendored shadcn/ui (or shadcn-vue) component source, which uses exactly these classes. Prefer this project's own named spacing tokens over a bare fractional utility class where precision matters. *(This project targets Tailwind, with a non-linear spacing preset.)*",
+    );
+  }
+
+  // Known-limit disclosures added 2026-10-21 (design.md section 7 points to
+  // these by topic). Facts verified against contracts-and-seeds.md, "Shadow"
+  // and "Fixed defaults", and scaffold/react-native.ts's font scope cut.
+  if (isReactNative) {
+    rules.push(
+      "Custom fonts aren't loaded in this project. React Native needs `.ttf`/`.otf` font files loaded through `expo-font`'s `useFonts()`, and SDSGT only fetches web font files (`.woff2`), so text renders in the platform's default font. Sizes, weights and line heights still come from the type tokens, and the font family names in the tokens are correct — to use them, add the `.ttf` files and load them with `useFonts()`. Don't swap in a different font to work around this. *(This project targets React Native.)*",
+    );
+  }
+  const isMui = hasMd2 && framework === "nextjs";
+  if (isMui || hasVuetify) {
+    const lib = isMui ? "MUI's `theme.shadows`" : "Vuetify's elevation system";
+    const scale = isMui ? "25 levels" : "a two-layer Material depth model";
+    rules.push(
+      `This project's shadow tokens (\`shadow.json\`, 5 named tiers) are not connected to ${lib}. It uses a different kind of scale — a numbered depth model (${scale}) where each component picks its own level for structural reasons — so there's no fair one-to-one mapping, and none was invented. Use the library's own \`elevation\` prop on its components; use the \`shadow.*\` tokens only for custom elements outside the library. *(This project targets ${isMui ? "MUI" : "Vuetify"}.)*`,
+    );
+  }
+  if (hasMd2 || hasMd3 || hasVuetify || hasRnPaper) {
+    rules.push(
+      "The grid tiers (`grid.json`) follow Material Design 3's columns, margins and gutters, but switch at this project's web breakpoints rather than Material's own window sizes: `compact` below 768px, `medium` 768–1023px, `expanded` 1024px and up (Material's native thresholds are 600dp and 840dp). Use the breakpoint tokens, not Material's numbers. *(This project targets a Material Design library.)*",
     );
   }
 
@@ -229,12 +237,24 @@ ${rulesList}
 `;
 }
 
-export function writeProjectDocs(outDir: string, options: AgentRulesOptions): GenerateResult {
+export function writeProjectDocs(outDir: string, tokensDir: string, options: DesignMdOptions): GenerateResult & { warnings: string[] } {
   mkdirSync(outDir, { recursive: true });
 
   writeFileSync(join(outDir, "foundations-rules.md"), FOUNDATIONS_RULES_MD, "utf-8");
   writeFileSync(join(outDir, "AGENTS.md"), buildAgentsMd(options), "utf-8");
-  writeFileSync(join(outDir, "design.md"), DESIGN_MD_PLACEHOLDER, "utf-8");
+  const filesWritten = ["foundations-rules.md", "AGENTS.md"];
+  const warnings: string[] = [];
 
-  return { filesWritten: ["foundations-rules.md", "AGENTS.md", "design.md"] };
+  // Keep any designer-owned blocks already in this folder's design.md;
+  // leave the file alone if its markers are broken (nothing gets lost).
+  const designPath = join(outDir, "design.md");
+  const { blocks, problem } = readDesignerBlocks(existsSync(designPath) ? readFileSync(designPath, "utf-8") : null);
+  if (problem) {
+    warnings.push(problem);
+  } else {
+    writeFileSync(designPath, buildDesignMd(tokensDir, outDir, options, blocks), "utf-8");
+    filesWritten.push("design.md");
+  }
+
+  return { filesWritten, warnings };
 }

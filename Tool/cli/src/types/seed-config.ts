@@ -10,6 +10,9 @@ export type DesignLanguage = "tailwind" | "bootstrap" | "md3" | "md2";
 export type LightDarkMode = "light" | "dark" | "both";
 export type NeutralColorStyle = "brand-tinted" | "pure-gray";
 export type OpacityPreset = "tailwind" | "bootstrap";
+// MD3/MD2 shadow presets removed 2026-10-21 — they stored elevation numbers,
+// not drawable shadows (see contracts-and-seeds.md, "Shadow").
+export type ShadowPreset = "tailwind" | "bootstrap";
 // One per framework's "Suggestion logic" table in the SDSGT-start skill /
 // contracts-and-seeds.md's "Seed inputs" table. "shadcn" also covers
 // shadcn-vue and "react-bootstrap" also covers bootstrap-vue-next — both
@@ -78,5 +81,5 @@ export interface SeedConfig {
   spacingPreset: DesignLanguage;
   radiusPreset: DesignLanguage;
   opacityPreset: OpacityPreset;
-  shadowPreset: DesignLanguage;
+  shadowPreset: ShadowPreset;
 }

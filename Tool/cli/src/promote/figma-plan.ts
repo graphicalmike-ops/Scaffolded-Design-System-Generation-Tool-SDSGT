@@ -29,7 +29,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { readJson, type ColorPrimitivesFile } from "../generate/read-tokens.ts";
+import { readJson, readShadowTokens, type ColorPrimitivesFile } from "../generate/read-tokens.ts";
 import { LIGHT_FILE, DARK_FILE } from "../generate/index.ts";
 
 export type FigmaVariableType = "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
@@ -109,11 +109,6 @@ export interface FigmaEffectStylePlanItem {
   layers: Array<{ offsetX: number; offsetY: number; blur: number; spread: number; color: string }>;
 }
 
-export interface FigmaElevationVariablePlanItem {
-  figmaName: string;
-  value: number;
-  scopes: FigmaVariableScope[];
-}
 
 export interface FigmaPushPlan {
   // Which logical modes this project actually has — drives whether the
@@ -121,13 +116,10 @@ export interface FigmaPushPlan {
   modes: Array<"light" | "dark">;
   variables: FigmaVariablePlanItem[];
   textStyles: FigmaTextStylePlanItem[];
-  // Only populated when shadow.json is the Tailwind/Bootstrap `shadow`
-  // composite shape (contracts-and-seeds.md, "Shadow").
+  // One per shadow.json tier (contracts-and-seeds.md, "Shadow"). The MD3/MD2
+  // elevation-number presets, once pushed as FLOAT variables instead, were
+  // removed 2026-10-21.
   effectStyles: FigmaEffectStylePlanItem[];
-  // Only populated when shadow.json is the MD3/MD2 `dimension` (elevation
-  // dp) shape — pushed as a plain FLOAT rather than a fabricated shadow,
-  // since there's no real CSS shadow to represent (see file header).
-  elevationVariables: FigmaElevationVariablePlanItem[];
   notes: string[];
 }
 
@@ -401,31 +393,20 @@ export function buildFigmaPushPlan(tokensDir: string): FigmaPushPlan {
   if (breakpoint?.breakpoint) for (const item of foundationFloatVariables("breakpoint", breakpoint.breakpoint, ["WIDTH_HEIGHT"])) merged.set(item.figmaName, item);
 
   const effectStyles: FigmaEffectStylePlanItem[] = [];
-  const elevationVariables: FigmaElevationVariablePlanItem[] = [];
-  const shadow = tryReadJson<{ shadow: Record<string, { $type: string; $value: unknown }> }>(join(tokensDir, "shadow.json"));
-  if (shadow?.shadow) {
-    for (const [key, token] of Object.entries(shadow.shadow)) {
-      const figmaName = dtcgPathToFigmaName(["shadow", key]);
-      if (token.$type === "dimension") {
-        elevationVariables.push({ figmaName, value: parseFloat(String(token.$value)), scopes: ["EFFECT_FLOAT"] });
-      } else {
-        const layers = (Array.isArray(token.$value) ? token.$value : [token.$value]) as Array<{ offsetX: string; offsetY: string; blur: string; spread: string; color: string }>;
-        effectStyles.push({
-          figmaName,
-          layers: layers.map((l) => ({
-            offsetX: parseFloat(l.offsetX),
-            offsetY: parseFloat(l.offsetY),
-            blur: parseFloat(l.blur),
-            spread: parseFloat(l.spread),
-            color: l.color,
-          })),
-        });
-      }
-    }
-    if (elevationVariables.length > 0) {
-      notes.push("shadow.json is the MD3/MD2 elevation-dp shape — pushed as plain FLOAT variables (elevation dp), not fabricated Figma effect styles, since there's no real CSS shadow to represent.");
+  if (existsSync(join(tokensDir, "shadow.json"))) {
+    for (const [key, token] of Object.entries(readShadowTokens(tokensDir))) {
+      effectStyles.push({
+        figmaName: dtcgPathToFigmaName(["shadow", key]),
+        layers: token.$value.map((l) => ({
+          offsetX: parseFloat(l.offsetX),
+          offsetY: parseFloat(l.offsetY),
+          blur: parseFloat(l.blur),
+          spread: parseFloat(l.spread),
+          color: l.color,
+        })),
+      });
     }
   }
 
-  return { modes, variables: [...merged.values()], textStyles, effectStyles, elevationVariables, notes };
+  return { modes, variables: [...merged.values()], textStyles, effectStyles, notes };
 }

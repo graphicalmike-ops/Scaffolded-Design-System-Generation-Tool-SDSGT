@@ -35,11 +35,11 @@ import { argbFromHex, hexFromArgb } from "@material/material-color-utilities";
 import { escapeHtml, textOn, shadowDisplay, buildPageStyleCss, stageBannerHtml } from "../report/html-utils.ts";
 import type { TypographySpecimen } from "../report/index.ts";
 import { LIGHT_FILE, DARK_FILE, type GenerateResult } from "./index.ts";
-import { readJson, resolveAlias, type ColorPrimitivesFile, type RadiusFile, type SemanticFile } from "./read-tokens.ts";
+import { readJson, resolveAlias, type ColorPrimitivesFile, type RadiusFile, type SemanticFile, type ShadowFile } from "./read-tokens.ts";
 import { STEP_RELABEL as TAILWIND_STEP_RELABEL } from "./tailwind.ts";
 import { STEP_RELABEL as MUI_STEP_RELABEL, STATUS_ROLE_TO_MUI } from "./md2.ts";
 import { STATUS_ROLE_TO_BOOTSTRAP, RADIUS_KEY_TO_BOOTSTRAP, pxToRem } from "./bootstrap.ts";
-import { buildScheme, COLOR_SCHEME_ROLES, surfaceColorAtElevation, SHADOW_KEYS, type ShadowFile } from "./md3.ts";
+import { buildScheme, COLOR_SCHEME_ROLES, surfaceColorAtElevation, MD3_ELEVATION_DP } from "./md3.ts";
 import { augmentColor } from "./mui-color.ts";
 import { toSwiftPropertyName } from "./swiftui.ts";
 import { resolveShadcnVars } from "./shadcn.ts";
@@ -807,17 +807,11 @@ export function buildMd3Demo(tokensDir: string, outDir: string, platformFiles: s
       return `<div class="token-item"><div class="token-label"><span class="swab" style="background:${hex}"></span>${valName}.${role}</div><code class="token-hex">${hex}</code></div>`;
     }).join("");
 
-  const shadowFile = tryReadJson<ShadowFile>(join(tokensDir, "shadow.json"))?.shadow;
-  const elevationEligible = shadowFile && SHADOW_KEYS.every((k) => shadowFile[k]?.$type === "dimension");
-  const elevationHtml = elevationEligible
-    ? SHADOW_KEYS.map((key) => {
-        const dp = parseFloat(String(shadowFile![key].$value));
-        const light = surfaceColorAtElevation(hexFromArgb(lightScheme.surface), hexFromArgb(lightScheme.surfaceTint), dp);
-        const dark = surfaceColorAtElevation(hexFromArgb(darkScheme.surface), hexFromArgb(darkScheme.surfaceTint), dp);
-        const label = key.replace("2xl", "xxl");
-        return `<div class="grid-tier"><code>ElevationOverlay.Light/Dark.${label}</code><span>${light} (light) · ${dark} (dark) · ${dp}dp</span></div>`;
-      }).join("\n")
-    : null;
+  const elevationHtml = MD3_ELEVATION_DP.map((dp, level) => {
+    const light = surfaceColorAtElevation(hexFromArgb(lightScheme.surface), hexFromArgb(lightScheme.surfaceTint), dp);
+    const dark = surfaceColorAtElevation(hexFromArgb(darkScheme.surface), hexFromArgb(darkScheme.surfaceTint), dp);
+    return `<div class="grid-tier"><code>ElevationOverlay.Light/Dark.level${level}</code><span>${light} (light) · ${dark} (dark) · ${dp}dp</span></div>`;
+  }).join("\n");
 
   const bodyHtml = `
   <section>
@@ -826,11 +820,7 @@ export function buildMd3Demo(tokensDir: string, outDir: string, platformFiles: s
     <div class="token-group"><div class="token-group-title">LightColorScheme</div><div class="token-grid">${schemeRowsHtml(lightScheme, "LightColorScheme")}</div></div>
     <div class="token-group"><div class="token-group-title">DarkColorScheme</div><div class="token-grid">${schemeRowsHtml(darkScheme, "DarkColorScheme")}</div></div>
   </section>
-  ${
-    elevationHtml
-      ? `<section><h2>Elevation overlay</h2><p class="single-mode-note">Compose's own real <code>surfaceColorAtElevation()</code> formula, precomputed per shadow role.</p>${elevationHtml}</section>`
-      : ""
-  }
+  <section><h2>Elevation overlay</h2><p class="single-mode-note">Compose's own real <code>surfaceColorAtElevation()</code> formula, precomputed for Material 3's own elevation levels 0-5.</p>${elevationHtml}</section>
 
   <section>
     <h2>Not yet generated for this target</h2>

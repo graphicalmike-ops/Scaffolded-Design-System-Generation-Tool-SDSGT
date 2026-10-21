@@ -14,5 +14,5 @@
   "spacingPreset": "md3",
   "radiusPreset": "md3",
   "opacityPreset": "tailwind",
-  "shadowPreset": "md3"
+  "shadowPreset": "tailwind"
 }

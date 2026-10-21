@@ -41,8 +41,8 @@ silently doubling up.
 `pipeline-plan.md`'s "Token-sync staying live" describes** — ask if the
 user wants to check for Figma-side edits and pull them into code, any time
 after an initial push has happened. Covers every VARIABLE (color/spacing/
-radius/opacity/border-width/breakpoint/typography primitives, MD3/MD2
-elevation floats) and every STYLE (text styles, shadow effect styles) this
+radius/opacity/border-width/breakpoint/typography primitives) and every
+STYLE (text styles, shadow effect styles) this
 pipeline pushes — nothing pushed is un-pullable. Only the values change; a
 token's own STRUCTURE (new tokens, renamed groups, restructured files) is
 never inferred from a pull — that stays a `promote`-time decision. By
@@ -191,7 +191,7 @@ permission or rate-limit problem per that tool's own description):
 
 Read `<tokensDir>/figma-push-plan.json` (shape: `FigmaPushPlan` in
 `cli/src/promote/figma-plan.ts`) — `modes`, `variables`, `textStyles`,
-`effectStyles`, `elevationVariables`, `notes`. Say the `notes` array's
+`effectStyles`, `notes`. Say the `notes` array's
 contents to the user in plain language before pushing (e.g. "grid isn't
 pushed to Figma — that's expected").
 
@@ -275,8 +275,7 @@ it.
 
 ### 4. Push variables (literals first, then aliases/alpha)
 
-Split `plan.variables` (plus `plan.elevationVariables`, same treatment as a
-plain FLOAT foundation variable) into:
+Split `plan.variables` into:
 
 - **Literal-only** items (no `aliasByMode`, no `alphaByMode`) — the large
   majority (every primitive, every foundation, and the two baked semantic
@@ -330,7 +329,7 @@ fresh and confirmed resolved):
 const collection = await figma.variables.getVariableCollectionByIdAsync(COLLECTION_ID);
 const items = [
   { name: "color/primitive/brand/600", type: "COLOR", valuesByMode: { LIGHT_MODE_ID: {r:0.2,g:0.4,b:0.9}, DARK_MODE_ID: {r:0.2,g:0.4,b:0.9} } },
-  // ...rest of this chunk's literal-only variables from plan.variables/plan.elevationVariables
+  // ...rest of this chunk's literal-only variables from plan.variables
 ];
 const createdIds = {};
 for (const item of items) {
@@ -2686,8 +2685,7 @@ user's behalf.
 
 - Covers every variable AND style category this pipeline pushes today
   (color/spacing/radius/opacity/border-width/breakpoint/typography
-  primitives, MD3/MD2 elevation floats, text styles, box-shadow effect
-  styles) — nothing pushed is left un-pullable as of 2026-09-17.
+  primitives, text styles, box-shadow effect styles) — nothing pushed is left un-pullable as of 2026-09-17.
 - Never infers structural changes — a new variable/style added in Figma
   outside this pipeline's own naming convention doesn't create a new
   token; it's reported as unmapped, nothing more. Renaming or

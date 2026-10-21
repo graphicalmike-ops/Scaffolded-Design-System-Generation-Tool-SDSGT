@@ -304,7 +304,9 @@ export function scaffoldReactNativePaper(opts: ScaffoldReactNativePaperOptions):
     filesWritten.push("App.tsx");
   }
 
-  filesWritten.push(...copyAgentDocs(codeDir, outDir));
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  filesWritten.push(...agentDocs.files);
+  warnings.push(...agentDocs.warnings);
 
   if (!update) {
     writeReadme(outDir, projectName);

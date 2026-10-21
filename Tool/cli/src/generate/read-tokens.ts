@@ -6,6 +6,7 @@
 // tree-walking machinery (see bootstrap.ts's file header for why).
 
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export interface DtcgColorToken {
   $type: "color";
@@ -58,28 +59,26 @@ export interface DtcgShadowToken {
   $value: DtcgShadowLayer[];
 }
 
-// `shadow.json`'s own token SHAPE varies by preset, by this project's own
-// deliberate, pre-existing design — a real, structural difference this
-// pipeline already modeled in its presets before any generator consumed
-// them: `shadow.tailwind.json`/`shadow.bootstrap.json` are real, multi-
-// layer CSS box-shadow definitions (`$type: "shadow"`), while
-// `shadow.md3.json`/`shadow.md2.json` are a single elevation dp/px number
-// each (`$type: "dimension"`) — Material Design's own real elevation model
-// has no per-tier box-shadow definition to give, only a physical height.
-// Found the hard way: an early version of `generate/bootstrap.ts`'s own
-// shadow binding assumed every `shadow.json` was array-of-layers shaped
-// and crashed (`token.$value.map is not a function`) on a real QA case
-// that mixed a Bootstrap-language seed with an `md2` shadow preset —
-// caught by the real QA matrix, not missed. Callers must check `$type`
-// before treating a shadow token as either shape.
-export type ShadowToken = DtcgShadowToken | DtcgDimensionToken;
+// Every shadow preset is a real, drawable CSS box-shadow (`$type: "shadow"`,
+// one object per layer). Until 2026-10-21 the MD3/MD2 presets stored a bare
+// elevation number instead (`$type: "dimension"`), which every consumer had
+// to special-case — and which once crashed generate/bootstrap.ts on a
+// Bootstrap + md2 QA case. Those presets were removed (contracts-and-
+// seeds.md, "Shadow"); readShadowTokens below rejects an old elevation-
+// shaped shadow.json with a clear message instead of every caller checking.
+export type ShadowToken = DtcgShadowToken;
 
 export interface ShadowFile {
   shadow: Record<string, ShadowToken>;
 }
 
-export function isShadowLayerToken(token: ShadowToken): token is DtcgShadowToken {
-  return token.$type === "shadow";
+export function readShadowTokens(tokensDir: string): Record<string, ShadowToken> {
+  const { shadow } = readJson<{ shadow: Record<string, { $type: string }> }>(join(tokensDir, "shadow.json"));
+  const old = Object.entries(shadow).filter(([, t]) => t.$type !== "shadow").map(([k]) => k);
+  if (old.length) {
+    throw new Error(`shadow.json has elevation-number entries (${old.join(", ")}) from a removed MD3/MD2 shadow preset — re-run promote with shadowPreset "tailwind" or "bootstrap" (see contracts-and-seeds.md, "Shadow").`);
+  }
+  return shadow as Record<string, ShadowToken>;
 }
 
 export interface DtcgNumberToken {
