@@ -53,7 +53,7 @@ The predetermined (tool-fixed, not user-chosen) seeds everything else depends on
 | Fixed defaults (breakpoints, grid)                                | **Built** — `cli/src/defaults/`, see "Fixed defaults" below. |
 | `foundations-rules.md`                                            | **Built** — `cli/src/generate/project-docs.ts` (`generate` writes it unconditionally, every run). See "`foundations-rules.md` content" below. |
 | Agent rules template (`AGENTS.md`)                                | **Built** — `cli/src/generate/project-docs.ts`. `CLAUDE.md`/`.cursor/rules` mirrors aren't built yet. See "`AGENTS.md` template content" below. |
-| `design.md` template                                               | Flagged, not decided — deferred, not required for the pipeline to work. A placeholder file (pointing at `AGENTS.md`/`foundations-rules.md` in the meantime) is written by `cli/src/generate/project-docs.ts` so the pointer isn't a dead link, but its real content contract is still undesigned. See "`design.md` (flagged, deferred)" below. |
+| `design.md` template                                               | **Contract decided 2026-10-21 — not built.** The content contract (8 sections, fixed template wording, determinism rules, decisions) is in "`design.md` (contract decided — not built)" below. Still a placeholder in code: `cli/src/generate/project-docs.ts` writes only a title plus pointers to `AGENTS.md`/`foundations-rules.md`, so the pointer isn't a dead link. Not required for the pipeline to work. |
 | Figma push (variables + styles)                                    | **Built and verified live for both supported MCPs.** Southleft (2026-09-09): the plan-building half (`cli/src/promote/figma-plan.ts`) is deterministic, pure Node, and QA-matrix-tested — every `promote` run writes `figma-push-plan.json`. The replay half (`.claude/skills/SDSGT-figma-push/SKILL.md`) drives the Southleft MCP and was run end to end against a real Figma file — 286 variables (real aliases, not baked copies), 15 text styles, 5 effect styles, correctly landed the free-plan two-collection fallback. Official Figma MCP (2026-09-23): the same skill now has a full official-MCP procedure (steps 0/1/3/4), verified live against a real Enterprise-plan file — 2-mode variable collections, a real variable alias, text styles, and effect styles, all created, read back fresh, and cleanly deleted. Between the two MCPs, both the free-plan two-collection fallback AND the paid-plan single-collection-two-mode structure are now each verified live at least once — see "Figma push" below and `pipeline-plan.md`'s "Pre-launch validation." |
 
 Rationale, alternatives considered, and citations for every value below live in `contracts-proposals.md` — useful for a human who wants the "why," not needed to run the pipeline.
@@ -750,13 +750,235 @@ Rules 2, 3 and 7 are conditional on target framework/design-language; the genera
 
 `AGENTS.md` also points to `foundations-rules.md` and `design.md` (see `pipeline-plan.md`, "Agent rule files"). `CLAUDE.md` and `.cursor/rules` are thin mirrors of it — not built yet, not separate contracts.
 
-### `design.md` (flagged, deferred)
+### `design.md` (contract decided — not built)
 
-`design.md` is already referenced structurally elsewhere in the pipeline (see `pipeline-plan.md`, "design.md" and "Agent rule files") as the project-specific companion to `foundations-rules.md` — generated per project, pointing an agent at this project's actual tokens, resolved presets, and component variants, rather than universal rules. That it should exist is settled.
+**Status: Drafted 2026-10-20; reviewed and decided by the user 2026-10-21 — not built.** Nothing in `cli/` has changed; `cli/src/generate/project-docs.ts` still writes only the placeholder. Items marked **(new code)** need work the generator doesn't do today — collected under "What the generator would need that it doesn't have yet," below. The user's decisions are recorded under "Decisions (2026-10-21)" at the end; no questions remain open.
 
-**Its actual contract — what sections it has, exactly what gets pulled from the token spec to populate it — is not defined yet, on purpose.** It isn't required for the pipeline to run: nothing else in the pipeline depends on its content the way `promote`/`push` depend on the naming conventions above. Flagged here as a good addition for a more solid product, to design once the rest of the pipeline is proven out — see `pipeline-plan.md`, "Deferred."
+**Core principle (user, 2026-10-21): `design.md` describes only what is in the project's current files.** It never records the user's original setup-form choices (preset names, etc.) and nothing is saved elsewhere to remember them — the user can edit tokens afterward, and the tokens are the priority because they reflect the latest choice. A saved copy of the original selections would drift from the tokens over time.
 
-`cli/src/generate/project-docs.ts` writes a minimal placeholder `design.md` on every `generate` run in the meantime (a title plus pointers to `AGENTS.md`/`foundations-rules.md`) — purely so `AGENTS.md`'s pointer to it resolves to a real file, not a design decision about its eventual content.
+#### Purpose
+
+`design.md` is the project-specific companion to `foundations-rules.md` (universal) and `AGENTS.md` (rules for how to write code against tokens). Its one job: **give an AI agent everything project-specific it needs to build a NEW page consistent with this design system, in one short read** — which colors to reach for, which text styles, how much space, which components, and which known gaps to expect. An agent should be able to read this one file and build a settings page, a form, or a dashboard card without opening the token files first (it opens them only to look up an exact value).
+
+Target length: short enough to read in one go — roughly 150-250 lines for a typical project. Where a section would otherwise balloon (all 49+ color tokens, a long component list), it stays compact by using tables and by pointing at files rather than copying them.
+
+#### What it must NOT contain
+
+- **No hex values, no `rgba()`, no full token dumps.** Colors are always named by token (`background.surface`), never by value. The token files are the source of truth for values; `design.md` points at them (section 8).
+- **Nothing already in `foundations-rules.md`** (contrast thresholds, touch-target sizes, focus rules, reduced motion, required states) **or `AGENTS.md`** (the always/never rules, including the conditional shadcn/RNR/Paper/Vuetify/NativeWind/tailwind-merge/spacing-fallback rules). Where `design.md` needs one of those facts, it links to the file in one line instead of restating it.
+- **No AI-written prose.** Every sentence is either fixed template text written once inside the tool, or a name/number filled in from this project's own files (see "Determinism rules").
+- **No invented content.** If the tool has no written description for a token, component, or variant, it lists the name with no description rather than guessing one.
+
+#### Section-by-section shape
+
+Legend: **Fixed** = template text written once inside the tool, identical every run. **Filled** = values read from this project's own files at write time.
+
+**1. Summary**
+- *Contains:* a short table of what this project has, read from its current files only — brand color ramps by name (`brand`; `brand-secondary` if present), the font families in use (and which type roles each covers), which modes exist (`light`, `dark`, or both), and — once the project is scaffolded — the framework and component library and whether Figma plan files are present. **No preset names** (see "Core principle" above): the scales themselves are shown in sections 3 and 4.
+- *Modes line is mandatory* (`contracts-proposals.md`, "Light/dark mode files"): it must say plainly which mode(s) exist and that the other mode's file was **not** generated, so an agent never assumes a dark file exists.
+- *Source:* ramps from `color.primitive.json`; modes = which `color.semantic.<mode>.json` exist; font families from `typography.primitive.json`. Framework/library/Figma come from the scaffolded project's own files at write time (e.g. `package.json`, `components.json`, the Figma plan files) or the flags `generate` already receives (`--framework`, `--tailwind`) — never from a saved copy of the seed. A row whose fact can't be read from current files is omitted.
+- *Text:* **Fixed** labels, **Filled** values.
+
+**2. Color roles (by token name) and safe text pairings**
+- *Contains:* two parts.
+  - **Roles table:** every semantic color token this project actually has, grouped (Background / Text / Action / Border / Status / Overlay), each with a one-line "what it's for." **Related tokens share one row** (decided 2026-10-21) — e.g. all of `action.primary`'s states in one row, all `status.error*` tokens in one row — about 25 rows instead of one per token. Example wording below. Tokens that exist only conditionally (`action.secondary*` without a secondary color) are listed only when present.
+  - **Text-on-background pairings:** a small table of "text token on background token" pairs, each with its measured contrast, per mode that exists. **Which pairs are checked** is one **fixed** list, the same for every project (e.g. `text.primary` on `background.primary` / `background.secondary` / `background.surface`; `text.secondary` on the same three; `text.on-primary` on `action.primary`; `text.inverse` on `background.inverse`; `status.<role>-text` on `status.<role>-bg`; `text.disabled` on `background.primary`). **Whether each pair passes** depends on this project's colors, so the tool computes it per project. Each row shows the ratio (a plain number like `7.2:1`; colors never shown) and a **neutral** note (decided 2026-10-21): **Meets AA for body text** (≥ 4.5:1), **Meets AA for large text and UI only** (≥ 3:1), or **Below AA contrast — this is the designer's choice; don't change it** (< 3:1). No "don't use" verdicts: the designer owns contrast decisions, not the agent. One **fixed** line under the table says the same thing plainly, so an agent following `foundations-rules.md`'s contrast rules doesn't "fix" a designer's color on its own.
+- *Source:* token names from `color.semantic.<mode>.json`; resolved values from the same files plus `color.primitive.json` (aliases resolved, as `generate/swiftui.ts` already does); ratio math from `cli/src/color/contrast.ts`. **(new data):** nothing missing from the inputs, but the pairing check is **new code** — today `promote` doesn't write contrast results anywhere persistent (`warnings` is the advisory-flagging hook; no pair is wired to it, see `pipeline-plan.md`, "Accessibility checks are advisory"). This section's check is advisory in the same sense: a failing pair is *listed as failing*, never hidden or auto-fixed.
+- *Text:* descriptions **Fixed** (keyed by token name); the ratio label **Filled**.
+- *Unknown tokens:* any semantic token present in the files but missing from the tool's description catalog is still listed, with the description cell left blank and nothing else invented. The next tool release adds the wording.
+
+Draft wording for the fixed role catalog (current 49-token set; written once, kept in the tool):
+
+| Token | "What it's for" |
+|---|---|
+| `background.primary` | The page itself — the base layer behind everything. |
+| `background.secondary` | A quieter band or panel sitting on the page (sidebars, section strips, subtle fills). |
+| `background.surface` | Raised containers on the page — cards, popovers, dialogs. |
+| `background.inverse` | A high-contrast block, opposite to the page (toasts, tooltips). |
+| `background.surface-hover` | Hover fill for a clickable card-like surface. |
+| `background.field-disabled` | Fill of a disabled text input or textarea. |
+| `text.primary` | Main reading text and headings. |
+| `text.secondary` | Supporting text — descriptions, helper text, metadata. |
+| `text.disabled` | Text on a disabled control. Not for anything a user needs to read. |
+| `text.on-primary` | Text or icons placed on `action.primary` (and `action.secondary`). |
+| `text.on-surface` | Text placed on `background.surface`. |
+| `text.inverse` | Text placed on `background.inverse`. |
+| `text.field-disabled` | Placeholder text inside a disabled input. |
+| `text.tab-inactive` | Label of a tab that isn't selected. |
+| `text.label-disabled` | Label of a disabled form field. |
+| `action.primary` / `-hover` / `-active` / `-pressed` / `-disabled` | The main call to action (buttons, links-as-buttons) in its resting / hovered / pressed-down / disabled states. `-active` and `-pressed` currently share a value but are separate tokens. |
+| `action.primary-hover-soft` | A lighter hover fill for components whose real hover is a softened primary. |
+| `action.secondary` (and its states) | A second brand-colored action. Present only when a secondary brand color was chosen. |
+| `border.default` | Standard outline of inputs, buttons, and dividers. |
+| `border.subtle` | Quiet dividers and card edges. |
+| `border.focus` | The keyboard-focus indicator color. |
+| `border.focus-ring` | The soft glow around a focused control (a faded version of `border.focus`). |
+| `border.on-primary` | Outline drawn on top of an `action.primary` fill. |
+| `border.field-disabled` | Outline of a disabled input. |
+| `status.<role>` | Strong color for a status (error, success, warning, info, promo) — icons, badges. |
+| `status.<role>-bg` | Pale background tint for a status message box. |
+| `status.<role>-text` | Text color for a status message. |
+| `status.<role>-border` | Outline for a status message box. |
+| `status.error-ring` | The soft glow around an invalid control. |
+| `overlay.scrim` | The dimmed layer behind modals and drawers. |
+
+(In the generated file, related tokens are grouped into one row — e.g. one row per status role covering its strong color, `-bg`, `-text` and `-border` — per the 2026-10-21 decision.)
+
+**3. Type scale**
+- *Contains:* a table of the type roles this project has — `caption`, `body-sm`, `body`, `body-lg`, `heading-sm`, `heading-md`, `heading-lg`, `display` — each with its resolved size, the available weights (as the real composite token names, e.g. `body-semibold`), which font family it uses (primary or secondary, by name), and a one-line "what it's for" (e.g. `heading-lg`: page title; `heading-md`: section heading; `body`: default paragraph text; `caption`: fine print, labels under inputs, metadata). Also one fixed line: pick a role, don't pick a raw size.
+- *Source:* `typography.semantic.json` aliased through `typography.primitive.json` (sizes in px are fine — they aren't hex). The 8 role names are fixed by the contract above, so the description catalog is small and complete.
+- *Text:* uses **Fixed**; sizes and families **Filled**.
+
+**4. Spacing, radius, and layout**
+- *Contains:* (a) the resolved spacing scale as one line (`key → px`, e.g. `1=4, 2=8, 3=12 …`). (b) The radius tokens (`none`, `sm`, `md`, `lg`, `xl`, `full`) with resolved px. (c) One line on the fixed breakpoints and grid tiers, pointing at `breakpoint.json` / `grid.json`. (d) An empty **"How this project uses spacing and corners"** sub-section with a fixed note: until the designer fills it in, agents pick steps from this project's scale for review; once filled in (typically with rules taken from approved pages), agents follow it.
+- **No "typical uses" values** (decided 2026-10-21): the tool doesn't assign scale steps to uses like "page padding" or "card corners." The scale depends on the user's setup choices and later edits, and only the team knows how they'll use it in their own project. The sub-section heading exists as a placeholder; it never contains placeholder values.
+- *Source:* `spacing.json`, `radius.json`, `breakpoint.json`, `grid.json`. All already available to Generate.
+- *Text:* labels and the placeholder note **Fixed**; the scales **Filled**.
+- *Not included:* shadow and opacity values are not restated here beyond one line pointing at the files — their meaning per level is library-specific (`contracts-and-seeds.md`, "Shadow").
+
+**5. Available components**
+- *Contains:* only components actually present in the project, as a table: component name, its variants (and sizes), a one-line **"pick this when"** per variant (e.g. Button: `default` main action on the page, `outline` secondary action, `ghost` low-emphasis action in toolbars, `destructive` irreversible actions, `link` inline text action), and the import path. Followed by one fixed warning block: files listed here may have been customized — check `sdsgt-vendored-components.json` (hash mismatch = customized) and never blindly re-run the library's install/add command (this cross-links `AGENTS.md`'s vendored-component rule, one line, not a restatement).
+- *Which components "actually exist":* read from what's physically in the project at scaffold time (`sdsgt-vendored-components.json` for Tailwind-vendored libraries — shadcn/ui, shadcn-vue, RNR — or the components folder). **No pruning step is needed first** (decided 2026-10-21): the table is a **snapshot of the original batch** of components, and a **fixed** line above it says so and points to the components folder as the real, current list — components added or deleted later show up there, not here.
+- *Variants:* read from each component's source file (its `cva` variant table) **(new data / new code)** — today only the Figma components plan (`figma-components-push-plan.json`, about 35 shadcn/ui components) knows variant names, and only for the components it covers. Reading variants directly from the source files would cover every vendored component uniformly.
+- *"Pick this when" wording:* a **Fixed** catalog keyed by component + variant, written once in the tool, starting with the shadcn/ui component set (the one library with real vendored components and a Figma component push today). A component or variant with no catalog entry is listed by name only, with no description — never guessed.
+- *Libraries that don't vendor components* (MUI, React-Bootstrap, Vuetify, bootstrap-vue-next, Compose Material3, SwiftUI native; RN Paper's thin wrappers) get a short **Fixed** paragraph instead of a table: components come from the library package, imported from its own path (or `./components/` for RN Paper's wrappers, per `AGENTS.md`), themed by the generated theme file. No variant table is promised for them.
+
+**6. Page recipes**
+- *Contains:* a few small, fixed patterns — **page shell** (page background, page padding, max-width/column), **section** (heading role + spacing between sections), **card** (surface background, border, radius, inner padding), **form** (field spacing, label/input/helper-text roles, primary + secondary action row). Each is a short snippet in the project's own stack, built only from tokens and components that exist in sections 2-5.
+- *Source:* a **Fixed** recipe set written once per supported stack, with token/component names filled in from this project's files, never a literal `px-4` that might not exist on this project's scale. **v1 scope (decided 2026-10-21): Next.js + shadcn/ui only.** Every other stack gets one **Fixed** line ("No page recipes have been written for this stack yet") rather than recipes borrowed from a different stack (the "don't cross-wire another design language's conventions" rule in `AGENTS.md`).
+- *Spacing in recipes (decided 2026-10-21):* recipes show **structure only** — which background, which components, which type roles. Spacing comes from three places, and recipes don't fix any of them:
+  - **Inside components:** the vendored shadcn/ui components' own spacing.
+  - **Page layout:** the grid and breakpoint tokens (`grid.json`, `breakpoint.json`).
+  - **Between sections and elements:** chosen by the agent on the fly from this project's spacing scale (real tokens only), so the designer can review and pick what they like. Each recipe marks these spots with a **fixed** note pointing to section 4's "How this project uses spacing and corners."
+- Over time, the designer can copy the spacing rules they approved on real pages into that section of `design.md`, so future pages stay consistent. Once filled in, agents follow it instead of choosing on the fly.
+- *Text:* snippet shapes **Fixed**; token names **Filled**.
+
+**7. Known limits and disclosures**
+- **Known limits live in `AGENTS.md`; `design.md` points to them** (decided 2026-10-21). Section 7 holds no disclosure wording of its own — just a **fixed** pointer to `AGENTS.md`'s known-limits content, plus the names of the topics that apply to this project (so an agent knows what to look up), each switched on by a flag the generator already knows.
+- *Topics:* non-linear spacing preset on Tailwind (`hasUnboundTailwindSpacing`); RN fonts fall back to the system font (React Native targets); Figma sizes snapped to the nearest token and some states approximated (shadcn/ui + Figma-managed); MUI/Vuetify shadows are a different kind of scale than the 5-tier `shadow.json`; RNR shadows don't render multi-layer values on native; MD3/MD2 spacing is Tailwind's scale underneath; grid tiers use Tailwind breakpoints.
+- *(new code)* Some of these topics (spacing fallback, RNR spacing/typography, NativeWind, `tailwind-merge`) already exist in `AGENTS.md`; others (RN font fallback, Figma approximations, MUI/Vuetify shadows, RNR multi-layer shadows, MD3/MD2 spacing, grid tiers) don't yet and would need adding to `AGENTS.md`, precisely worded per the disclosure rule, before section 7 can point to them.
+- *Text:* **Fixed** pointer; topic names switched by flags. Points by topic, not rule number (rule numbers shift between projects because some rules are conditional).
+
+**8. Where things live**
+- *Contains:* a short list of real file paths in the generated project: the token spec files, the generated theme file(s) (e.g. `shadcn/theme.css`, `tailwind/theme.css`, or the library's equivalent), the components folder, `sdsgt-vendored-components.json`, the Figma plan files if the project is Figma-managed, `AGENTS.md`, `foundations-rules.md`.
+- *Source:* a **Fixed** per-stack list of paths, each included only if the file really exists in the project at write time. Because `scaffold` moves some files (theme CSS lands in `src/app/` for Next.js), the paths reflect the *scaffolded* layout, not the `generate` output folder (see "When the file gets written").
+- *Text:* **Fixed** labels, paths **Filled**.
+
+#### Illustrative skeleton (not final wording)
+
+````markdown
+# design.md
+
+How to build new pages in THIS project's design system. Rules for how to
+write code live in AGENTS.md; accessibility rules in foundations-rules.md.
+
+## 1. Summary
+| | |
+|---|---|
+| Framework / component library | Next.js / shadcn/ui |
+| Modes | light and dark (both generated) |
+| Brand colors | brand; brand-secondary |
+| Fonts | Inter (headings), Source Sans 3 (body, captions) |
+| Figma | plan files present |
+
+## 2. Color roles
+| Token | Use it for |
+|---|---|
+| background.primary | The page itself. |
+| background.surface | Cards, popovers, dialogs. |
+| action.primary | The main call to action. |
+| ... | ... |
+
+Text-on-background pairings (light mode)
+| Text | On | Contrast | Note |
+|---|---|---|---|
+| text.primary | background.primary | 14.2:1 | Meets AA for body text |
+| text.secondary | background.surface | 7.9:1 | Meets AA for body text |
+| text.on-primary | action.primary | 4.9:1 | Meets AA for body text |
+| text.disabled | background.primary | 2.6:1 | Below AA contrast — designer's choice; don't change it |
+Colors here were chosen by the designer. If a pairing is below AA, don't
+swap tokens to fix it — that decision belongs to the designer.
+
+## 3. Type scale
+| Role | Size | Weights | Font | Use it for |
+|---|---|---|---|---|
+| heading-lg | 30px | heading-lg-semibold, heading-lg-bold | Inter | Page title. |
+| body | 16px | body-regular, body-semibold | Source Sans 3 | Default paragraph text. |
+| ... | ... | ... | ... | ... |
+
+## 4. Spacing and radius
+Spacing keys: 1=4px, 2=8px, 3=12px, 4=16px, 6=24px, 12=48px ...
+Radius: none=0 · sm=4px · md=6px · lg=8px · xl=12px · full
+
+### How this project uses spacing and corners
+(For the team to fill in.)
+
+## 5. Components
+Snapshot of the components installed when the project was created. The
+components folder (src/components/ui/) is the current list.
+| Component | Variants | Pick this when |
+|---|---|---|
+| Button | default | Main action on the page. |
+|  | outline | Secondary action. |
+|  | destructive | Irreversible actions. |
+| Badge | ... | ... |
+Customized files: check sdsgt-vendored-components.json; never re-run `shadcn add`.
+
+## 6. Page recipes
+(page shell, section, card, form — short snippets)
+
+## 7. Known limits
+Known limits are listed in AGENTS.md. Topics that apply to this project:
+spacing fallback · Figma approximations.
+
+## 8. Where things live
+Tokens: tokens/ · Theme CSS: src/app/theme.css, theme-light.css, theme-dark.css · Components: src/components/ui/
+````
+
+#### Determinism rules
+
+1. **Same inputs, same bytes.** The file is a pure function of: the project's current token files, the component folder contents, the flags the step already receives, and the tool's own fixed catalogs. Never a saved copy of the setup-form choices. No timestamps, no random ordering, no model-written text.
+2. **All "what it's for" wording lives in fixed catalogs inside the tool**, keyed by semantic role / type role / radius name / component + variant / disclosure id. Authoring or changing wording is a tool release, not a per-run decision.
+3. **Fixed ordering.** Sections always appear in the order above; rows follow the catalog's order (the contract's own order for color and type roles, alphabetical for components, ascending px for spacing), never filesystem or insertion order.
+4. **Unknown names are listed, never invented.** A token, component, or variant found in the project but missing from a catalog is listed by name with an empty description cell. A catalog entry whose token/component is absent from the project is omitted (so a single-mode or no-secondary-color project never mentions the missing pieces — except for the one mandatory "which modes exist" line).
+5. **Conditional text is switched by data, not judgment.** Each known-limit topic or per-stack block is included if and only if its stated flag is true.
+6. **Numbers are computed by fixed rules** (WCAG ratio for pairings, rounded to one decimal), never estimated.
+7. **No hex, ever.** A guard in the writer fails the run (or strips the line) if a `#rrggbb`/`rgb()` string would be emitted.
+
+#### What the generator would need that it doesn't have yet
+
+- **No seed summary (decided 2026-10-21).** An earlier draft proposed `promote` save a `seed-summary.json`; rejected — see "Core principle." Everything comes from current project files or flags the step already receives.
+- **Known-limit topics added to `AGENTS.md` (new code).** See section 7: several topics aren't in `AGENTS.md` yet.
+- **A component inventory + variant reader (new code).** Section 5 needs what's really in the components folder and each component's variants (read from the source's variant table). Nothing parses variants today except the Figma components plan, for its covered subset. Requires reading from the scaffolded project, which `generate` doesn't see.
+- **A write step that runs after `scaffold`.** `generate` runs *before* `scaffold` and writes `design.md` into the code-tokens folder; `scaffold` then copies it into the project. At `generate` time no components exist and theme CSS hasn't moved. So sections 5, 6 (component names), and 8 (paths) can only be completed after `scaffold` (see "When the file gets written").
+- **A contrast-pair check (new code).** The pair list is new, and the check uses existing math (`cli/src/color/contrast.ts`) on alias-resolved values.
+- **Fixed catalogs (new content, not new data).** Color-role, type-role, component+variant, and recipe text. The color-role and type-role catalogs are drafted above; the component and recipe catalogs need to be written (shadcn/ui first).
+- **No new design-language/preset data is needed** — resolved scales are already readable from the token files.
+
+#### When the file gets written
+
+**Decided 2026-10-21:** `generate` writes `design.md` alongside `AGENTS.md` and `foundations-rules.md` — sections 1, 2, 3, 4, 7 and a partial 8 (token and theme files that exist at that point). `scaffold` then rewrites it in the project root once the components exist, from the same inputs plus the real component folder, adding 5, 6, and the final paths for 8. For projects that stop at `generate` (design system files only), `design.md` keeps sections 1-4 and 7 and states under 5 that no components were scaffolded.
+
+After that it's **frozen with the project** like everything else generated — no auto-refresh when tokens are synced or components are added/removed later. Instead, a **fixed** line near the top says: "Written when this project was created. If it disagrees with the token files or the components folder, those files win."
+
+#### Decisions (2026-10-21)
+
+1. **When it's written:** `generate` writes it with `AGENTS.md`/`foundations-rules.md`; `scaffold` rewrites it once components exist. See "When the file gets written."
+2. **No saved setup choices:** `design.md` reads only the project's current files; no `seed-summary.json`, no preset names. See "Core principle."
+3. **No hex values anywhere**, including the summary.
+4. **No auto-refresh:** frozen with the project, with a fixed "those files win" line.
+5. **No pruning step first:** the components table is a snapshot of the original batch and points to the components folder for the current list.
+6. **Grouped color table:** related tokens share a row (about 25 rows).
+7. **Neutral contrast notes:** the fixed pair list is checked per project; failing pairs are shown as "below AA — designer's choice; don't change it," never as a "don't use" verdict. The designer, not the agent, owns contrast decisions.
+8. **Page recipes:** v1 covers Next.js + shadcn/ui; other stacks get a "not written yet" line.
+9. **Known limits stay in `AGENTS.md`;** `design.md` points to them by topic.
+10. **No typical-use spacing or radius values:** the section exists as a placeholder for the team to fill in, never with placeholder values.
+
+11. **Spacing in page recipes:** recipes show structure only. Spacing inside components comes from the shadcn/ui components, page layout from the grid and breakpoints, and spacing between sections/elements is chosen by the agent on the fly (real scale tokens only) for the designer to review. The designer can later copy approved spacing rules into section 4 for future consistency.
+
+No open questions remain. Next: update `pipeline-plan.md`/`CLAUDE.md` to say the contract is decided, then build it.
+
+`cli/src/generate/project-docs.ts` keeps writing its minimal placeholder `design.md` on every `generate` run in the meantime (a title plus pointers to `AGENTS.md`/`foundations-rules.md`) — purely so `AGENTS.md`'s pointer to it resolves to a real file, not a design decision about its eventual content.
 
 ## Seeds we actually have
 
