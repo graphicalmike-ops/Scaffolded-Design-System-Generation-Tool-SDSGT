@@ -41,8 +41,9 @@
 //
 // create-vuetify also writes its own generic AGENTS.md/README.md (no flag
 // found to suppress this, unlike create-next-app's --no-agents-md) — both
-// get overwritten with SDSGT's own versions after the fact, same net effect
-// as suppressing them, just one step later.
+// get replaced with SDSGT's own versions after the fact (AGENTS.md is
+// overwritten, or removed when the project's rules file is CLAUDE.md — see
+// copyAgentDocs), same net effect as suppressing them, just one step later.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
@@ -393,7 +394,7 @@ function removeBoilerplate(outDir: string): void {
   }
 }
 
-function writeReadme(outDir: string, projectName: string): void {
+function writeReadme(outDir: string, projectName: string, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -420,7 +421,7 @@ function writeReadme(outDir: string, projectName: string): void {
     "- `src/styles/theme.css` — your real brand fonts, plus the",
     "  `--v-font-body`/`--v-font-heading` custom properties Vuetify's own SCSS",
     "  reads for typography.",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     "",
@@ -507,12 +508,12 @@ export function scaffoldVuejsVuetify(opts: ScaffoldVuejsVuetifyOptions): Scaffol
     filesWritten.push("src/App.vue");
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName);
+    writeReadme(outDir, projectName, agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 

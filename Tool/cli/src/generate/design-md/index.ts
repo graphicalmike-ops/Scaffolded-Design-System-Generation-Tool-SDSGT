@@ -26,7 +26,8 @@ import { join } from "node:path";
 import { computeTextPairings } from "./contrast-pairs.ts";
 import { readComponentInventory, VENDORED_MANIFEST, type ComponentInventory } from "./components.ts";
 import { DARK_FILE, LIGHT_FILE } from "../index.ts";
-import type { AgentRulesOptions } from "../project-docs.ts";
+import { rulesFileName, type AgentRulesOptions, type RulesFileName } from "../project-docs.ts";
+import type { AgentTool } from "../../types/seed-config.ts";
 import { readJson, type ColorPrimitivesFile, type SemanticFile, type SemanticTree, isSemanticToken } from "../read-tokens.ts";
 
 // ---------------------------------------------------------------------------
@@ -80,10 +81,11 @@ function replaceBetween(text: string, start: string, end: string, inner: string)
 // Inputs
 // ---------------------------------------------------------------------------
 
-// AGENTS.md's switches plus the few extra facts design.md's summary and the
+// The rules file's switches plus the few extra facts design.md's summary and the
 // known-limit rules need (each from a flag `generate` already receives).
 export interface DesignMdOptions extends AgentRulesOptions {
   framework?: string; // from --framework, when passed
+  agentTool?: AgentTool; // from --agent-tool, when passed; missing means "other"
   hasBootstrap: boolean;
   hasMd2: boolean;
   hasMd3: boolean;
@@ -347,7 +349,7 @@ function sectionSpacing(tokensDir: string, existingBlocks: Partial<Record<Design
   return parts.join("\n");
 }
 
-export function buildComponentsSlot(inventory: ComponentInventory | null): string {
+export function buildComponentsSlot(inventory: ComponentInventory | null, rulesFile: RulesFileName): string {
   if (!inventory) {
     return "No components have been installed in this folder. If this project uses a component library that isn't copied into the project (for example MUI or Vuetify), its components come from the library package and are themed by the generated theme file.";
   }
@@ -385,7 +387,7 @@ export function buildComponentsSlot(inventory: ComponentInventory | null): strin
     "",
     `Also available (no variants): ${without.map((c) => code(c.name)).join(", ")}.`,
     "",
-    `Some of these files may have been customized. Check ${code(VENDORED_MANIFEST)} before re-installing any of them (see AGENTS.md).`,
+    `Some of these files may have been customized. Check ${code(VENDORED_MANIFEST)} before re-installing any of them (see ${rulesFile}).`,
   ].join("\n");
 }
 
@@ -401,7 +403,7 @@ function sectionPagePatterns(existingBlocks: Partial<Record<DesignerBlock, strin
 }
 
 function sectionLimits(o: DesignMdOptions): string {
-  // Only topics that exist as AGENTS.md rules today (generate/project-docs.ts).
+  // Only topics that exist as rules-file rules today (generate/project-docs.ts).
   const topics: string[] = [];
   if (o.hasUnboundTailwindSpacing) topics.push("spacing utilities that fall back to Tailwind's default");
   if (o.hasShadcn) topics.push("Figma component names, snapped sizes and approximated states");
@@ -417,15 +419,19 @@ function sectionLimits(o: DesignMdOptions): string {
     "## 7. Known limits",
     "",
     topics.length
-      ? `Known limits are described in AGENTS.md. Topics that apply to this project: ${topics.join("; ")}.`
+      ? `Known limits are described in ${rulesFileName(o.agentTool)}. Topics that apply to this project: ${topics.join("; ")}.`
       : "No known limits apply to this project.",
   ].join("\n");
 }
 
 // Fixed candidate list (any stack), each listed only if it exists in `dir`.
 const PATH_CANDIDATES: Array<[string, string]> = [
+  ["CLAUDE.md", "Rules for writing code against the tokens"],
   ["AGENTS.md", "Rules for writing code against the tokens"],
   ["foundations-rules.md", "Accessibility and UX rules"],
+  ["research-and-insights.md", "The team's research findings and insights"],
+  ["decisions.md", "Log of the project's important decisions"],
+  ["to-do.md", "Items the team has postponed"],
   ["css/", "Plain CSS token variables"],
   ["tailwind/", "Tailwind theme files"],
   ["shadcn/", "shadcn/ui theme file"],
@@ -457,17 +463,19 @@ function sectionPaths(slotContent: string): string {
 // Assembly + refresh
 // ---------------------------------------------------------------------------
 
-const INTRO = [
-  "# design.md",
-  "",
-  "How to build new pages in THIS project's design system. Rules for writing code live in `AGENTS.md`; accessibility rules live in `foundations-rules.md`.",
-  "",
-  "Most of this file is rebuilt by the tool from the project's current files whenever tokens are regenerated or the project is updated. Only the marked designer-owned blocks are kept — anything written outside them is replaced. Put your own notes in Team conventions.",
-].join("\n");
+function intro(rulesFile: RulesFileName): string {
+  return [
+    "# design.md",
+    "",
+    `How to build new pages in THIS project's design system. Rules for writing code live in \`${rulesFile}\`; accessibility rules live in \`foundations-rules.md\`.`,
+    "",
+    "Most of this file is rebuilt by the tool from the project's current files whenever tokens are regenerated or the project is updated. Only the marked designer-owned blocks are kept — anything written outside them is replaced. Put your own notes in Team conventions.",
+  ].join("\n");
+}
 
 export function buildDesignMd(tokensDir: string, outDir: string, o: DesignMdOptions, existingBlocks: Partial<Record<DesignerBlock, string>> = {}): string {
   return [
-    INTRO,
+    intro(rulesFileName(o.agentTool)),
     ["## Team conventions", "", designerBlock("team-conventions", existingBlocks["team-conventions"] ?? DESIGNER_DEFAULTS["team-conventions"])].join("\n"),
     sectionSummary(tokensDir, o),
     sectionColors(tokensDir),
@@ -526,7 +534,7 @@ export function readDesignerBlocks(existing: string | null): DesignerBlocksRead 
 // tool slots for this project, and carry over the project's designer blocks.
 // `force` rebuilds even when markers are broken, keeping whichever blocks
 // could still be read.
-export function refreshProjectDesignMd(generated: string, projectDir: string, existing: string | null, force = false): { content: string | null; warning?: string } {
+export function refreshProjectDesignMd(generated: string, projectDir: string, existing: string | null, rulesFile: RulesFileName, force = false): { content: string | null; warning?: string } {
   const { blocks, problem } = readDesignerBlocks(existing);
   if (problem && !force) return { content: null, warning: problem };
 
@@ -534,7 +542,7 @@ export function refreshProjectDesignMd(generated: string, projectDir: string, ex
   for (const name of DESIGNER_BLOCKS) {
     if (blocks[name] !== undefined) out = replaceBetween(out, designerStart(name), designerEnd(name), blocks[name]!);
   }
-  out = replaceBetween(out, slotStart("components"), slotEnd("components"), buildComponentsSlot(readComponentInventory(projectDir)));
+  out = replaceBetween(out, slotStart("components"), slotEnd("components"), buildComponentsSlot(readComponentInventory(projectDir), rulesFile));
   out = replaceBetween(out, slotStart("paths"), slotEnd("paths"), buildPathsSlot(projectDir));
   return { content: out };
 }

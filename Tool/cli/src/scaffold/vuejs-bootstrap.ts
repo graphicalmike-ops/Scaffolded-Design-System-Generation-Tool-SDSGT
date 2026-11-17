@@ -272,7 +272,7 @@ function writeMainTs(outDir: string): void {
   writeFileSync(join(outDir, "src", "main.ts"), content, "utf-8");
 }
 
-function writeReadme(outDir: string, projectName: string): void {
+function writeReadme(outDir: string, projectName: string, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -303,7 +303,7 @@ function writeReadme(outDir: string, projectName: string): void {
     "- `bootstrap-icons` is installed and imported in `main.ts` — use any icon",
     "  with a plain class, e.g. `<i class=\"bi bi-heart\"></i>` (full list at",
     "  icons.getbootstrap.com).",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     "- `.npmrc` — sets `legacy-peer-deps=true`. Needed because of a real,",
@@ -386,12 +386,12 @@ export function scaffoldVuejsBootstrap(opts: ScaffoldVuejsBootstrapOptions): Sca
     filesWritten.push("src/main.ts");
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName);
+    writeReadme(outDir, projectName, agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 

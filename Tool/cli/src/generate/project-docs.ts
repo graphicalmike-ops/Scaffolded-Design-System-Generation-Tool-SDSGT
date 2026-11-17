@@ -1,15 +1,15 @@
-// Writes the three agent-facing docs a generated project gets, alongside its
+// Writes the agent-facing docs a generated project gets, alongside its
 // code tokens — see pipeline-plan.md, "Agent rule files" and "design.md — a
 // second doc, separate from foundations-rules.md, and it IS generated," plus
 // contracts-and-seeds.md, "foundations-rules.md content" and "AGENTS.md
 // template content."
 //
-// AGENTS.md is the canonical file (read natively by Codex); CLAUDE.md and
-// .cursor/rules would be thin mirrors of it, per "Agent rule files" — not
-// built yet, not scoped here.
+// The agent rules file is named after the seed's agentTool (--agent-tool):
+// CLAUDE.md for Claude Code, AGENTS.md otherwise. Only one is ever written,
+// and every generated mention of it uses the same name.
 //
-// foundations-rules.md is universal and static: same content on every run,
-// regardless of seed or which platform flags were passed. AGENTS.md is
+// foundations-rules.md is universal: same content on every run, apart from
+// the rules file's name. The rules file is
 // mostly static too, except for two always/never rules that only apply to
 // specific targets (see AgentRulesOptions below) — Generate can't infer
 // those from the token spec the way it infers "which platform flag was
@@ -19,19 +19,32 @@
 // design.md is built by generate/design-md/ (contract: contracts-and-seeds.md,
 // "design.md (contract decided — not built)"). Its designer-owned blocks are
 // carried over from the existing file on every run.
+//
+// The three designer-filled project notes (research-and-insights.md,
+// decisions.md, to-do.md) come from generate/project-notes.ts.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { GenerateResult } from "./index.ts";
 import { buildDesignMd, readDesignerBlocks, type DesignMdOptions } from "./design-md/index.ts";
+import type { AgentTool } from "../types/seed-config.ts";
+import { buildProjectNotes } from "./project-notes.ts";
 
-export const FOUNDATIONS_RULES_MD = `# foundations-rules.md
+export const RULES_FILE_NAMES = ["CLAUDE.md", "AGENTS.md"] as const;
+export type RulesFileName = (typeof RULES_FILE_NAMES)[number];
+
+export function rulesFileName(agentTool?: AgentTool): RulesFileName {
+  return agentTool === "claude" ? "CLAUDE.md" : "AGENTS.md";
+}
+
+export function buildFoundationsRulesMd(rulesFile: RulesFileName): string {
+  return `# foundations-rules.md
 
 Universal accessibility/UX rules for this project's UI. Same content on
 every SDSGT-generated project — not specific to this project's tokens or
 components (see \`design.md\` for that). Token-usage discipline (how to
-write code against this project's token spec) lives in \`AGENTS.md\`
+write code against this project's token spec) lives in \`${rulesFile}\`
 instead — a different audience.
 
 ## Contrast
@@ -78,6 +91,7 @@ never blocked. A failing check doesn't stop token generation and doesn't
 get silently auto-corrected; it's surfaced so a human or agent can decide
 whether and how to address it.
 `;
+}
 
 export interface AgentRulesOptions {
   // Whether --tailwind was passed to this generate run. Gates the
@@ -119,7 +133,7 @@ export interface AgentRulesOptions {
   hasUnboundTailwindSpacing: boolean;
 }
 
-function buildAgentsMd({ framework, hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify, hasMd2, hasMd3, hasUnboundTailwindSpacing }: DesignMdOptions): string {
+function buildAgentsMd({ framework, agentTool, hasTailwind, isReactNative, hasShadcn, hasRnr, hasRnPaper, hasVuetify, hasMd2, hasMd3, hasUnboundTailwindSpacing }: DesignMdOptions): string {
   const rules: string[] = [
     "Never blindly re-run a vendored component's install/add command once it's been customized. There's no merge logic — it silently overwrites. Mark customized files clearly.",
   ];
@@ -216,16 +230,36 @@ function buildAgentsMd({ framework, hasTailwind, isReactNative, hasShadcn, hasRn
 
   const rulesList = rules.map((r, i) => `${i + 1}. ${r}`).join("\n");
 
-  return `# AGENTS.md
+  const rulesFile = rulesFileName(agentTool);
+  const readBy =
+    rulesFile === "CLAUDE.md"
+      ? "Claude Code reads it at the start of every session."
+      : "Codex, Cursor and other AI coding tools read it natively.";
+
+  return `# ${rulesFile}
 
 Read this file before writing any UI code in this project. It's the
-canonical agent-rules file — read natively by Codex; other tools' rule
-files (\`CLAUDE.md\`, \`.cursor/rules\`) are meant to mirror it, not restate it.
+project's agent rules file — ${readBy}
 
-- Accessibility/UX rules (how the UI should behave): see
-  \`foundations-rules.md\`.
-- This project's actual tokens, scales, and components (how to use
-  *this* project's design system specifically): see \`design.md\`.
+## Project files — when to read them
+
+Don't read these every session. Open each one when its moment comes up:
+
+- \`design.md\` — before building or changing UI: which tokens, components
+  and scales this project has.
+- \`foundations-rules.md\` — before building or reviewing anything interactive
+  (contrast, touch targets, focus, motion, states).
+- \`research-and-insights.md\` — before agreeing to a change in a user flow,
+  the order of steps in a journey, a feature, or what a screen shows or
+  prioritizes.
+- \`decisions.md\` — before suggesting a change to something that may already
+  have been decided (a flow, scope, component, token or convention), and
+  whenever a new decision is made in conversation, to offer logging it.
+- \`to-do.md\` — when starting work on a screen, flow or feature: check the
+  Area column for pending items there. Also whenever something gets
+  postponed, to offer logging it.
+
+Each file explains how to use and write to it — follow its "For agents" section.
 
 ## Core rule
 
@@ -245,9 +279,20 @@ ${rulesList}
 export function writeProjectDocs(outDir: string, tokensDir: string, options: DesignMdOptions): GenerateResult & { warnings: string[] } {
   mkdirSync(outDir, { recursive: true });
 
-  writeFileSync(join(outDir, "foundations-rules.md"), FOUNDATIONS_RULES_MD, "utf-8");
-  writeFileSync(join(outDir, "AGENTS.md"), buildAgentsMd(options), "utf-8");
-  const filesWritten = ["foundations-rules.md", "AGENTS.md"];
+  const rulesFile = rulesFileName(options.agentTool);
+  writeFileSync(join(outDir, "foundations-rules.md"), buildFoundationsRulesMd(rulesFile), "utf-8");
+  writeFileSync(join(outDir, rulesFile), buildAgentsMd(options), "utf-8");
+  // This folder is generate's own output, so a rules file under the other
+  // name can only be left over from an earlier run with a different choice.
+  // Removing it leaves scaffold exactly one to pick up.
+  for (const other of RULES_FILE_NAMES) {
+    if (other !== rulesFile) rmSync(join(outDir, other), { force: true });
+  }
+  const filesWritten = ["foundations-rules.md", rulesFile];
+  for (const [file, content] of Object.entries(buildProjectNotes(rulesFile))) {
+    writeFileSync(join(outDir, file), content, "utf-8");
+    filesWritten.push(file);
+  }
   const warnings: string[] = [];
 
   // Keep any designer-owned blocks already in this folder's design.md;

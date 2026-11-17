@@ -9,13 +9,19 @@
 // in pipeline-plan.md.
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, copyFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, copyFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 import { slugFont, FONT_WEIGHTS } from "./font-slug.ts";
 import { refreshProjectDesignMd } from "../generate/design-md/index.ts";
+import { RULES_FILE_NAMES, type RulesFileName } from "../generate/project-docs.ts";
+import { PROJECT_NOTE_FILES } from "../generate/project-notes.ts";
 
-export const AGENT_DOC_FILES = ["AGENTS.md", "foundations-rules.md", "design.md"];
+// generate writes exactly one rules file (CLAUDE.md or AGENTS.md, from
+// --agent-tool), so whichever one is in --code-dir is the project's choice.
+export function rulesFileIn(codeDir: string): RulesFileName {
+  return existsSync(join(codeDir, "CLAUDE.md")) ? "CLAUDE.md" : "AGENTS.md";
+}
 
 export function hashFile(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -210,25 +216,47 @@ export function collectFilesRecursive(dir: string): string[] {
 // project (components, final paths) and the project's own designer-owned
 // blocks are carried over — see generate/design-md/index.ts. Runs on a
 // fresh scaffold and on every `--update`.
-export function copyAgentDocs(codeDir: string, outDir: string, opts: { force: boolean }): { files: string[]; warnings: string[] } {
+//
+// Every other doc is written once, on the fresh scaffold, and never again:
+// an `--update` only creates one if the project is missing it. The project
+// owns them from then on (the designer may have edited them).
+//
+// On a fresh scaffold, a rules file under the other name can only come from
+// the framework's own setup tool (create-vuetify writes a generic AGENTS.md
+// with no flag to stop it), so it's removed — one rules file per project.
+// On an `--update`, the rules file the project already has wins, even if
+// generate was re-run with a different --agent-tool since.
+export function copyAgentDocs(codeDir: string, outDir: string, opts: { force: boolean; update: boolean }): { files: string[]; warnings: string[]; rulesFile: RulesFileName } {
   const files: string[] = [];
   const warnings: string[] = [];
-  for (const file of AGENT_DOC_FILES) {
+  const generatedRulesFile = rulesFileIn(codeDir);
+  const projectRulesFile = opts.update ? RULES_FILE_NAMES.find((n) => existsSync(join(outDir, n))) : undefined;
+  const rulesFile = projectRulesFile ?? generatedRulesFile;
+  if (!opts.update) {
+    for (const other of RULES_FILE_NAMES) {
+      if (other !== rulesFile) rmSync(join(outDir, other), { force: true });
+    }
+  }
+  for (const file of [generatedRulesFile, "foundations-rules.md", ...PROJECT_NOTE_FILES, "design.md"]) {
     const src = join(codeDir, file);
     if (!existsSync(src)) continue;
-    const dest = join(outDir, file);
+    const destName = file === generatedRulesFile ? rulesFile : file;
+    const dest = join(outDir, destName);
+    if (file !== "design.md" && opts.update && existsSync(dest)) continue;
+    // Mentions of the rules file follow the name this project actually uses.
+    const generated = readFileSync(src, "utf-8").replaceAll(generatedRulesFile, rulesFile);
     if (file === "design.md") {
       const existing = existsSync(dest) ? readFileSync(dest, "utf-8") : null;
-      const { content, warning } = refreshProjectDesignMd(readFileSync(src, "utf-8"), outDir, existing, opts.force);
+      const { content, warning } = refreshProjectDesignMd(generated, outDir, existing, rulesFile, opts.force);
       if (warning) warnings.push(warning);
       if (content === null) continue;
       writeFileSync(dest, content, "utf-8");
     } else {
-      copyFileSync(src, dest);
+      writeFileSync(dest, generated, "utf-8");
     }
-    files.push(file);
+    files.push(destName);
   }
-  return { files, warnings };
+  return { files, warnings, rulesFile };
 }
 
 // Tailwind's own platform (generate/tailwind.ts) names this token

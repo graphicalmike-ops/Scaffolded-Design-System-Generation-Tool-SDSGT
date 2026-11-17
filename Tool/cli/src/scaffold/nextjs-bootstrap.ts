@@ -229,7 +229,7 @@ function writePageTsx(appDir: string, projectName: string): void {
   writeFileSync(join(appDir, "page.tsx"), content, "utf-8");
 }
 
-function writeReadme(outDir: string, projectName: string): void {
+function writeReadme(outDir: string, projectName: string, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -261,9 +261,9 @@ function writeReadme(outDir: string, projectName: string): void {
     "  list at icons.getbootstrap.com).",
     "- Any file that renders a `react-bootstrap` component needs its own",
     "  `\"use client\"` directive at the top — react-bootstrap doesn't ship",
-    "  one itself (see `src/app/page.tsx` for an example). `AGENTS.md`",
+    "  one itself (see `src/app/page.tsx` for an example). `" + rulesFile + "`",
     "  already tells a coding agent this.",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     "",
@@ -342,12 +342,12 @@ export function scaffoldNextjsBootstrap(opts: ScaffoldNextjsBootstrapOptions): S
     filesWritten.push("src/app/page.tsx");
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName);
+    writeReadme(outDir, projectName, agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 

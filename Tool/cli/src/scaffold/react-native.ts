@@ -526,7 +526,7 @@ function buildRnrVendoredManifest(outDir: string): string {
   return `${JSON.stringify({ rnr: entries }, null, 2)}\n`;
 }
 
-function writeReadme(outDir: string, projectName: string, hasRnr: boolean): void {
+function writeReadme(outDir: string, projectName: string, hasRnr: boolean, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -560,7 +560,7 @@ function writeReadme(outDir: string, projectName: string, hasRnr: boolean): void
     "- `tailwind.config.js` — maps those variables onto Tailwind color names",
     "  (`bg-primary`, `text-foreground`, etc.) usable in any component's",
     "  `className`.",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     ...(hasRnr
@@ -570,7 +570,7 @@ function writeReadme(outDir: string, projectName: string, hasRnr: boolean): void
           "- `sdsgt-vendored-components.json` — a hash of each vendored component's",
           "  original content. If you customize a component, don't blindly re-run",
           "  `@react-native-reusables/cli add` on it later — check this file first",
-          "  (an AI agent reading `AGENTS.md` already knows to).",
+          "  (an AI agent reading `" + rulesFile + "` already knows to).",
         ]
       : []),
     "",
@@ -681,12 +681,12 @@ export function scaffoldReactNative(opts: ScaffoldReactNativeOptions): ScaffoldR
     }
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName, componentLibrary === "rnr");
+    writeReadme(outDir, projectName, componentLibrary === "rnr", agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 

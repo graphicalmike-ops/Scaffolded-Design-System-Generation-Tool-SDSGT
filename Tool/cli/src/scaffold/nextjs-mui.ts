@@ -461,7 +461,7 @@ function writePageTsx(appDir: string, projectName: string): void {
   writeFileSync(join(appDir, "page.tsx"), content, "utf-8");
 }
 
-function writeReadme(outDir: string, projectName: string): void {
+function writeReadme(outDir: string, projectName: string, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -493,9 +493,9 @@ function writeReadme(outDir: string, projectName: string): void {
     "  `import CheckCircleIcon from \"@mui/icons-material/CheckCircle\";`.",
     "- MUI's own components (`Button`, `ThemeProvider`, every icon) already",
     "  ship their own `\"use client\"` directive, so most pages using them",
-    "  don't need one themselves — `AGENTS.md` already tells a coding agent",
+    "  don't need one themselves — `" + rulesFile + "` already tells a coding agent",
     "  this.",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     "",
@@ -615,12 +615,12 @@ export function scaffoldNextjsMui(opts: ScaffoldNextjsMuiOptions): ScaffoldResul
     filesWritten.push("src/app/page.tsx");
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName);
+    writeReadme(outDir, projectName, agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 

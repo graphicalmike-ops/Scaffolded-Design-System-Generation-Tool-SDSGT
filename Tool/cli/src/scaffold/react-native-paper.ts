@@ -147,7 +147,7 @@ function rewriteAppTsx(outDir: string, projectName: string, hasLight: boolean, h
   writeFileSync(join(outDir, "App.tsx"), content, "utf-8");
 }
 
-function writeReadme(outDir: string, projectName: string): void {
+function writeReadme(outDir: string, projectName: string, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -174,7 +174,7 @@ function writeReadme(outDir: string, projectName: string): void {
     "  hand-edited file.",
     "- `App.tsx` — wraps the app in `PaperProvider` with that theme, switching",
     "  between light/dark automatically if both exist.",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     "",
@@ -220,7 +220,7 @@ function writeReadme(outDir: string, projectName: string): void {
     "  Font FAMILY stays Paper's own default — see the known gap below.",
     "",
     "**Known gap:** custom fonts aren't wired into this project — see",
-    "`AGENTS.md` for why (same reason as every SDSGT React Native scaffold).",
+    "`" + rulesFile + "` for why (same reason as every SDSGT React Native scaffold).",
     "",
   ].join("\n");
   writeFileSync(join(outDir, "README.md"), content, "utf-8");
@@ -304,12 +304,12 @@ export function scaffoldReactNativePaper(opts: ScaffoldReactNativePaperOptions):
     filesWritten.push("App.tsx");
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName);
+    writeReadme(outDir, projectName, agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 

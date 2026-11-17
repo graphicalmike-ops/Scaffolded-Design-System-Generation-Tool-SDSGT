@@ -64,8 +64,9 @@ finishes, before the generate/no-generate question gets asked. `generate`
 writes `<platform>-design-system-demo.html` (adapted to the user's actual
 chosen framework/design language — same banner treatment, different
 wording) and it's sent after step 8's confirmed `generate` run, alongside
-direct links to the other files `generate` wrote (`AGENTS.md`,
-`foundations-rules.md`, `design.md`). See "Running the flow," steps 7 and 9.
+direct links to the other files `generate` wrote (the rules file —
+`CLAUDE.md` or `AGENTS.md` — plus `foundations-rules.md`, `design.md` and
+the three project notes). See "Running the flow," steps 7 and 9.
 
 This skill's own job in both reports is just fonts: neither `promote` nor
 `generate` ever touches the network, so they default to a system-font
@@ -86,12 +87,14 @@ is that plan's implementation in the actual conversation.
 |---|---|---|---|---|
 | 1 | Full new project, or just the design-system files? | Menu — `Scaffold` / `Design system files only` | Framework is still asked next either way — see row 2. `promote` never reads this either way. Real scaffolding exists for Next.js (its Tailwind path and its Bootstrap/React-Bootstrap path); for Vue.js (its Tailwind path, its Material Design/Vuetify path, and its Bootstrap/bootstrap-vue-next path); and for React Native/Expo (both its Tailwind/NativeWind path and its Material Design/React Native Paper path) — see step 10, "Running the flow," and "Known gaps." Kotlin and SwiftUI are both real exceptions, not "no effect" cases: neither has an official scaffolding CLI at all (Android/Compose and Xcode/SwiftUI, checked independently, same conclusion), so `generate` itself always writes a real setup guide (`md3/SCAFFOLD_GUIDE.md` or `swiftui/SCAFFOLD_GUIDE.md`) regardless of this answer — see step 9. Next.js with MD3/MD2 (MUI) still records this answer with genuinely no effect (React Native has no Bootstrap option at all — see "Suggestion logic"). | `scaffoldMode` (`"scaffold"` \| `"files-only"`) |
 | 2 | Which framework/platform? | **Two sequential menus, not one** — `AskUserQuestion` caps a single question at 4 options and this row has 5 real leaf values, so row 2 is asked as **2a** then, conditionally, **2b**: **2a** — `Web` (Next.js or Vue.js) / `React Native (Expo)` / `Native` (Kotlin or SwiftUI). If `React Native (Expo)` is picked, that's the final answer, skip 2b entirely. **2b** — only if 2a was `Web`: `Next.js` (React, web) / `Vue.js` (web); only if 2a was `Native`: `Kotlin` (Jetpack Compose, native Android) / `SwiftUI` (native iOS). | Fixed list, just split across two menus instead of one — see "Known gaps," "`AskUserQuestion` requires at least 2 options per question," for why. Selecting the final leaf value marks a suggested Component library in row 4 (see "Suggestion logic," below). `promote` doesn't branch on this — every token preset it writes is platform-agnostic DTCG JSON. `generate` does read it, though, to pick between `--swiftui` and everything else, and to set `--framework` — see "Running the flow," step 8. | `targetFramework` |
+| 2c | *(only if row 1 = `Scaffold` AND row 2 is `Next.js`, `Vue.js`, or `React Native (Expo)` — skip for `Kotlin`/`SwiftUI`, which have no scaffold step)* Where should the new project folder be created? | In chat — a real path on the user's own machine | Asked here, right after the framework pick, instead of at step 10, so the destination is settled up front. Must not be inside this tool's own `out/` folders (a scaffolded project is meant to become the user's own independent project, not live inside SDSGT's repo — see `pipeline-plan.md`, "Who this is for, and the bar for 'done'"). Must not already exist — the official CLI being driven creates it fresh; check with `ls` right away and ask again if it exists. Nothing is created yet at this point. Not stored in the seed JSON (the CLI's `promote`/`generate` never read it) — keep it in the conversation and use it at step 10's `--out`. | *(not in `SeedConfig` — held in conversation, used as step 10's `--out`)* |
 | 3 | Which design language? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Marks Type-scale (row 13), Spacing (row 14), Border-roundness (row 15), Shadows (row 18 — Tailwind for an MD3/MD2 pick, since Material shadow presets were removed 2026-10-21), and Component library (row 4) as "(Suggested)" further down — see "Suggestion logic." Not read by `promote` — each preset choice below is independent, this just seeds their defaults. `generate` does read it, to pick which platform flag to pass (`--tailwind`/`--bootstrap`/`--md2`/`--md3`) — see "Running the flow," step 8. | `targetDesignLanguage` |
 | 4 | Which component library? | Menu, filtered by framework + design language — see "Suggestion logic" | `generate` now reads this. `shadcn/ui` (and `shadcn-vue`), `RNR`, `React Native Paper`, and `Vuetify` each add their own extra flag (`--shadcn`/`--rnr`/`--rn-paper`/`--vuetify`) — for React Native, this is the ONLY flag passed (no base platform flag — see step 8's real exception, below); for every other framework it's additive alongside the base platform flag from row 3. Every other option (`MUI`, `React-Bootstrap`, `bootstrap-vue-next`, `Jetpack Compose Material3`, `SwiftUI native components`) already gets its theming from the base platform flag alone (`--md2`/`--bootstrap`/`--md3`/`--swiftui`) — no extra flag exists or is needed. At `generate` time this only ever affects the *theme* file, regardless of library — whether real component source or a real install also happens depends on whether the project later gets *scaffolded* (row 1) with that same library, and now for eight combinations (shadcn/ui on Next.js+Tailwind, shadcn-vue on Vue.js+Tailwind, RNR on React Native+Tailwind, Vuetify on Vue.js+Material Design, React Native Paper on React Native+Material Design, bootstrap-vue-next on Vue.js+Bootstrap, React-Bootstrap on Next.js+Bootstrap, MUI on Next.js+Material Design) — see "Known gaps" for exactly what each does, and step 10 below for when it runs. No component library option is theme-only-forever anymore: `Jetpack Compose Material3`/`SwiftUI native components` get a real filled-in `SCAFFOLD_GUIDE.md` instead of a scaffold (see step 9/10's own Kotlin/SwiftUI handling), a different mechanism from the eight above but still more than a theme file. **Disclose the real, current fidelity gap right here, before they pick — this now covers all eight combinations, not just the five "installed and wired" libraries, and spans radius/padding/typography-size/shadow/opacity, not just geometry** — see "Known gaps," **"Geometry, shadow, and opacity fidelity, by library"** for the full exact per-library detail. The short version: React-Bootstrap/bootstrap-vue-next, MUI, Vuetify, and React Native Paper all have color/radius/padding/typography-size/opacity fully real-token-bound (as of 2026-09-16) — nothing left open on those five dimensions for any of those four. shadcn/ui and shadcn-vue have shadow bound for every preset, and spacing bound for every preset including `bootstrap` now (2026-09-16) — though `bootstrap`'s own fix only covers the exact keys it defines (0-5); any fractional class or key beyond 5 still falls back to Tailwind's raw default, disclosed same as RNR's own spacing gap. RNR has spacing (partial) and typography size (complete) bound; its Tailwind `shadow-*` classes can't render this project's shadows on device (the native CSS-to-RN translation library drops multi-layer shadows outright), so the project instead gets `shadows.ts` — the shadow tokens as React Native's own `boxShadow` styles (all layers, iOS and Android 9+) — and RNR's own components keep their weak class-based shadows. MUI's and Vuetify's own SHADOW/elevation systems are a genuinely different, physically-modeled numeric depth scale (not a named size scale) with no real, non-arbitrary mapping from this pipeline's own 5-tier scale — disclosed, not fabricated. RN Paper's own elevation is already correct via a different, real MD3-appropriate mechanism (surface tinting, not box-shadow). Don't wait until step 8/10 to say this for the first time — it should inform the pick, not just narrate it afterward. **Separately, if row 5 might end up `Figma-managed`, also mention here that only `nextjs` + `tailwind` + shadcn/ui gets a real components push to Figma — a settled v1 scope decision (2026-09-22), not a "not yet built" gap — every other pick here still gets tokens-as-variables only, see "Known gaps," "Figma component push — scope, not just fidelity."** | `componentLibrary` |
 | 5 | Manage tokens via Figma, or code only? | Menu — `Figma-managed` / `Code-only` | `pipeline-plan.md` says this is meant to be asked at Generate, not seed input — but `SeedConfig.figmaManaged` is a required field today, so ask it now as a stand-in until Generate is its own step. **Disclose here, not just at row 4 or step 10, since this is the question a "will my components show up in Figma too?" assumption actually attaches to**: `Figma-managed` only ever pushes real component structure for one combination — `nextjs` + `tailwind` + shadcn/ui, a settled v1 scope decision (2026-09-22), not a "not yet built" gap — everything else (every other framework/library, `files-only` mode) still gets tokens-as-variables in Figma, nothing more, regardless of this answer. See "Known gaps," "Figma component push — scope, not just fidelity" for the exact current wording. | `figmaManaged` (boolean) |
 | 5a | *(only if row 5 = `Figma-managed`)* Paste the Figma file link to push tokens into | In chat — a Figma URL | Must actually look like a Figma URL (`figma.com/design/...` or `figma.com/file/...`) — if what's pasted doesn't parse as one, say so and ask again rather than guessing a file key out of it. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a, for when this actually gets used — pushing happens right after `promote`, using this link, not at seed-input time. | `figmaFileUrl` (string, optional — only set when row 5 is `Figma-managed`) |
 | 5b | *(only if row 5 = `Figma-managed`)* Which Figma MCP should the push use? | Menu — `Official Figma MCP` / `Southleft MCP` | A real choice that genuinely branches the push (`SDSGT-figma-push` step 0, verified 2026-09-23) — **not asked it anyway, disclose the gap treatment.** Official Figma MCP connects straight to the file via OAuth, no Desktop Bridge/manual file-open step needed; Southleft needs Figma Desktop open with the bridge plugin running. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaMcp` (`"official"` \| `"southleft"`, optional — only set when row 5 is `Figma-managed`) |
 | 5c | *(only if row 5 = `Figma-managed`)* Is that Figma file on a free plan or a paid plan? | Menu — `Free plan` / `Paid plan` | Unlike row 5b, **this one actually changes what gets built**: on a free plan, Figma caps a variable collection at one mode with no error raised, so the push uses two separate collections (`Tokens - Light`/`Tokens - Dark`) instead of one collection with two real modes. Only matters if row 6 ends up being `Both Light and Dark mode` — say so if the user seems unsure why this is being asked before row 6. If they don't know which plan they're on, tell them to check figma.com/files → their workspace name → look for "Free"/"Professional"/"Organization"/"Enterprise" in the plan badge, rather than guessing for them. Not asked at all if row 5 = `Code-only`. See "Running the flow," step 7a. | `figmaPlan` (`"free"` \| `"paid"`, optional — only set when row 5 is `Figma-managed`) |
+| 5d | *(always asked — unlike 5a–5c, not tied to row 5's answer)* Which AI coding tool will this project use? | Menu — `Claude Code` / `Other (Cursor, Codex, etc.)` | Decides the name of the project's agent rules file: `Claude Code` → `CLAUDE.md` (Claude Code reads it at the start of every session); `Other` → `AGENTS.md` (read by Codex, Cursor and others). Every generated file that mentions the rules file uses the chosen name. Not read by `promote`; passed to `generate` as `--agent-tool` — see "Running the flow," step 8. | `agentTool` (`"claude"` \| `"other"`) |
 | 6 | Light mode, dark mode, or both? | Menu — `Light Mode only` / `Dark mode only` / `Both Light and Dark mode` | Decides which `color.semantic.*.json` file(s) get written. If Figma-managed and row 6 isn't `Both`, mention that row 5c's answer ends up not mattering — a single mode never reaches the collection-count question at all. | `lightDarkMode` (`"light"` \| `"dark"` \| `"both"`) |
 | 7 | Primary brand color? | `#hex` in chat, or a screenshot | If illegible, ambiguous (e.g. two colors given and it's unclear which is primary vs. secondary), or otherwise not directly readable — ask, don't assume. | `primaryColor` |
 | 8 | Secondary brand color? (optional) | `#hex` in chat, or a screenshot | Same clarification rule as row 7. Skip if the user has none. | `secondaryColor` |
@@ -905,8 +908,9 @@ override any of the four independently — they don't have to move together.
   visual template as `report.html`, relabeled with that platform's real
   generated identifiers, and flagged at the top of the page as adapted to
   that specific platform (versus `report.html`'s own top-of-page flag that
-  it's platform-agnostic). Every `generate` run also writes `AGENTS.md` and
-  `foundations-rules.md` unconditionally (plus `design.md`, this project's
+  it's platform-agnostic). Every `generate` run also writes the rules file
+  (`CLAUDE.md` or `AGENTS.md`, from `--agent-tool`), `foundations-rules.md`
+  and the three project notes unconditionally (plus `design.md`, this project's
   own guide to its tokens and components, which `scaffold` later completes
   and `scaffold --update` refreshes) — always pass
   `--framework <targetFramework>` too (same five string values as
@@ -1071,6 +1075,10 @@ override any of the four independently — they don't have to move together.
    specimens in the system-font fallback, even if step 5 fetched real font
    files for `promote`'s `report.html` — a known inconsistency between the
    two reports, not something to try to work around here.
+   Always also pass `--agent-tool <agentTool>` (the exact value from the
+   seed, `claude` or `other`) — it decides whether the agent rules file is
+   written as `CLAUDE.md` or `AGENTS.md`. If an older seed has no
+   `agentTool`, omit the flag (it then defaults to `AGENTS.md`).
 
    **Right before running this command, restate the real geometry-fidelity
    gap from row 4's own disclosure for whichever `componentLibrary` was
@@ -1099,7 +1107,7 @@ override any of the four independently — they don't have to move together.
    this step goes; only tokens will. See "Known gaps," "Figma component
    push — scope, not just fidelity."
    ```
-   node src/cli.ts generate --tokens-dir "out/DTCG Token spec (non-consumables)/<short-project-slug>" --out "out/Code tokens (consumables)/<short-project-slug>" --<platform-flag> [--<component-library-flag>] --framework <targetFramework>
+   node src/cli.ts generate --tokens-dir "out/DTCG Token spec (non-consumables)/<short-project-slug>" --out "out/Code tokens (consumables)/<short-project-slug>" --<platform-flag> [--<component-library-flag>] --framework <targetFramework> [--agent-tool <agentTool>]
    ```
    If this fails, don't lose the promote result over it — the token spec
    from step 6 still exists either way — just say plainly that code-token
@@ -1113,19 +1121,28 @@ override any of the four independently — they don't have to move together.
      but adapted to the actual chosen framework/design language rather than
      `report.html`'s platform-agnostic view (each page says so at the top —
      see `report/html-utils.ts`'s `stageBannerHtml`).
-   - `AGENTS.md`, `foundations-rules.md`, and `design.md` — the other
+   - The rules file (`CLAUDE.md` or `AGENTS.md`, per row 5d),
+     `foundations-rules.md`, `design.md`, and the three project notes
+     (`research-and-insights.md`, `decisions.md`, `to-do.md`) — the other
      contracts `generate` wrote alongside the code tokens — with a second
-     `SendUserFile` call (`status: "normal"`, `display: "attach"`, all
-     three files together), so the user has direct links to them rather
-     than just a folder path. Briefly say what each is for: `AGENTS.md` is
-     the canonical rules file a coding agent should read before touching
-     this project's UI code; `foundations-rules.md` is the universal
+     `SendUserFile` call (`status: "normal"`, `display: "attach"`, all six
+     files together), so the user has direct links to them rather than
+     just a folder path. Briefly say what each is for: the rules file is
+     what a coding agent reads before touching this project's UI code, and
+     it tells the agent when to open each of the other files;
+     `foundations-rules.md` is the universal
      accessibility/UX rules; `design.md` is this project's own guide for
      building new pages (color roles, contrast pairings, type scale,
      spacing, and — once scaffolded — components). It's refreshed from the
      current files on every `generate`/`scaffold --update`; only its three
      designer-owned blocks (Team conventions, spacing usage, page
-     patterns) are kept as the designer wrote them.
+     patterns) are kept as the designer wrote them. The three project
+     notes start empty, with instructions only: they're for the team to
+     fill in (research findings, a decisions log, postponed to-dos), and
+     agents ask before writing to them. Say plainly that once the project
+     is scaffolded, the rules file, `foundations-rules.md` and the three
+     notes are never overwritten by `scaffold --update` — only `design.md`
+     is refreshed.
    - **If `targetFramework` is `kotlin`: also send `md3/SCAFFOLD_GUIDE.md`**
      (`SendUserFile`, `status: "normal"`, `display: "render"` — same
      treatment as the demo HTML above, since this is the next real thing
@@ -1199,13 +1216,10 @@ override any of the four independently — they don't have to move together.
     stop here — mention the command below can be run later, and don't run
     it in this session.
 
-    If they confirm, ask in chat where they want the new project folder
-    created — a real path on their own machine, not inside this tool's own
-    `out/` folders (see `pipeline-plan.md`, "Who this is for, and the bar
-    for 'done'" — a scaffolded project is meant to become the user's own
-    independent project, not live inside SDSGT's repo). The path must not
-    already exist yet; the official CLI being driven creates it fresh. Then
-    run the command matching the seed's combination:
+    If they confirm, use the project path already collected at row 2c as
+    `--out` — don't ask for it again. Re-check that it still doesn't exist
+    (it may have been created since row 2c); if it does, ask for a new
+    path. Then run the command matching the seed's combination:
 
     **`nextjs` + `tailwind`:**
     ```

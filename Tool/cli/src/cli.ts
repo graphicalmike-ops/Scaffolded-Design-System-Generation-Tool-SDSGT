@@ -20,7 +20,7 @@ import { generateRnPaper } from "./generate/rn-paper.ts";
 import { generateVuetify } from "./generate/vuetify.ts";
 import { writeProjectDocs } from "./generate/project-docs.ts";
 import { buildTailwindDemo, buildBootstrapDemo, buildMuiDemo, buildMd3Demo, buildSwiftUIDemo, buildShadcnDemo, buildRnrDemo, buildRnPaperDemo, buildVuetifyDemo } from "./generate/demo.ts";
-import type { SeedConfig, TargetFramework } from "./types/seed-config.ts";
+import type { AgentTool, SeedConfig, TargetFramework } from "./types/seed-config.ts";
 import type { FontFilesMap } from "./report/index.ts";
 import { slugFont, FONT_WEIGHTS } from "./shared/font-slug.ts";
 import { scaffoldNextjs } from "./scaffold/nextjs.ts";
@@ -150,8 +150,8 @@ const USAGE = [
   "    project — opt-in, same reason as --tailwind. See",
   "    contracts-and-seeds.md, \"Vuetify theming.\"",
   "",
-  "  Every generate run also writes AGENTS.md, foundations-rules.md, and",
-  "  design.md (see contracts-and-seeds.md/pipeline-plan.md, \"Agent rule",
+  "  Every generate run also writes the agent rules file (AGENTS.md or",
+  "  CLAUDE.md, see --agent-tool), foundations-rules.md, and design.md (see contracts-and-seeds.md/pipeline-plan.md, \"Agent rule",
   "  files\") — unconditional, not gated by any platform flag. Each platform",
   "  flag above additionally writes a matching",
   "  <platform>-design-system-demo.html proof-of-work page next to its code",
@@ -160,9 +160,13 @@ const USAGE = [
   "",
   "    --framework <nextjs|vuejs|react-native|kotlin|swiftui>: states the",
   "    original seed's targetFramework, same opt-in reasoning as the",
-  "    platform flags above. Only affects AGENTS.md's NativeWind rule, which",
+  "    platform flags above. Only affects the rules file's NativeWind rule, which",
   "    only applies to a React Native + Tailwind (NativeWind) project —",
   "    omitted entirely if this flag isn't passed, or isn't react-native.",
+  "",
+  "    --agent-tool <claude|other>: states the original seed's agentTool.",
+  "    \"claude\" names the agent rules file CLAUDE.md; \"other\" (or omitting",
+  "    the flag) names it AGENTS.md.",
   "",
   '  node src/cli.ts scaffold --framework nextjs --code-dir "<dir>" --out "<dir>" [--shadcn] [--fonts-dir <dir>]',
   "    Layer 3 (pipeline-plan.md, \"Who this is for, and the bar for 'done'\").",
@@ -512,6 +516,11 @@ async function runGenerate(rest: string[]) {
     console.error(`No token spec found at ${tokensDir} — run promote first (or pass --tokens-dir pointing at its output).`);
     process.exit(1);
   }
+  const agentTool = args["agent-tool"];
+  if (agentTool !== undefined && agentTool !== "claude" && agentTool !== "other") {
+    console.error(`--agent-tool must be "claude" or "other" (got "${agentTool}").`);
+    process.exit(1);
+  }
 
   const { filesWritten } = await generateCodeTokens(tokensDir, outDir);
 
@@ -579,6 +588,7 @@ async function runGenerate(rest: string[]) {
   const framework = args.framework as TargetFramework | undefined;
   const docs = writeProjectDocs(outDir, tokensDir, {
     framework,
+    agentTool: agentTool as AgentTool | undefined,
     hasTailwind: args.tailwind !== undefined,
     isReactNative: framework === "react-native",
     hasShadcn: args.shadcn !== undefined,

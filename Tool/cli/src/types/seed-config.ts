@@ -13,6 +13,10 @@ export type OpacityPreset = "tailwind" | "bootstrap";
 // MD3/MD2 shadow presets removed 2026-10-21 — they stored elevation numbers,
 // not drawable shadows (see contracts-and-seeds.md, "Shadow").
 export type ShadowPreset = "tailwind" | "bootstrap";
+// Which AI coding tool the project will be used with. Decides the agent
+// rules file's name: "claude" → CLAUDE.md (read by Claude Code at the start
+// of every session), "other" → AGENTS.md (read by Codex, Cursor, etc.).
+export type AgentTool = "claude" | "other";
 // One per framework's "Suggestion logic" table in the SDSGT-start skill /
 // contracts-and-seeds.md's "Seed inputs" table. "shadcn" also covers
 // shadcn-vue and "react-bootstrap" also covers bootstrap-vue-next — both
@@ -68,6 +72,9 @@ export interface SeedConfig {
   // the multi-mode question at all, so this is a no-op if the user didn't
   // also pick "both" for row 6. See contracts-and-seeds.md, "Figma push."
   figmaPlan?: "free" | "paid";
+  // Not read by promote() — passed to `generate` as --agent-tool. Optional
+  // so older seeds still work; missing means "other" (AGENTS.md).
+  agentTool?: AgentTool;
   lightDarkMode: LightDarkMode;
 
   primaryColor: string; // #hex

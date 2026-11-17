@@ -406,7 +406,7 @@ function buildVendoredManifest(outDir: string): string {
   return `${JSON.stringify({ "shadcn-vue": entries }, null, 2)}\n`;
 }
 
-function writeReadme(outDir: string, projectName: string, hasShadcn: boolean): void {
+function writeReadme(outDir: string, projectName: string, hasShadcn: boolean, rulesFile: string): void {
   const content = [
     `# ${projectName}`,
     "",
@@ -428,7 +428,7 @@ function writeReadme(outDir: string, projectName: string, hasShadcn: boolean): v
     "  --update` (same flags, --out pointing back at this project) to",
     "  refresh these in place; don't hand-edit them directly — an update run",
     "  warns instead of silently overwriting a hand-edited file.",
-    "- `AGENTS.md` — rules an AI coding agent should follow when adding UI to",
+    "- `" + rulesFile + "` — rules an AI coding agent should follow when adding UI to",
     "  this project, so it uses your design system correctly.",
     "- `foundations-rules.md` — universal accessibility/UX rules.",
     "- `.npmrc` — sets `legacy-peer-deps=true`. Needed because of a real,",
@@ -442,7 +442,7 @@ function writeReadme(outDir: string, projectName: string, hasShadcn: boolean): v
           "- `sdsgt-vendored-components.json` — a hash of each vendored component's",
           "  original content. If you customize a component, don't blindly re-run",
           "  `shadcn-vue add` on it later — check this file first (an AI agent",
-          "  reading `AGENTS.md` already knows to).",
+          "  reading `" + rulesFile + "` already knows to).",
         ]
       : []),
     "",
@@ -592,12 +592,12 @@ export function scaffoldVuejs(opts: ScaffoldVuejsOptions): ScaffoldResult {
     guarded(join("src", "assets", "main.css"), buildMainCss({ hasDark, fontFaceCss }));
   }
 
-  const agentDocs = copyAgentDocs(codeDir, outDir, { force });
+  const agentDocs = copyAgentDocs(codeDir, outDir, { force, update });
   filesWritten.push(...agentDocs.files);
   warnings.push(...agentDocs.warnings);
 
   if (!update) {
-    writeReadme(outDir, projectName, componentLibrary === "shadcn");
+    writeReadme(outDir, projectName, componentLibrary === "shadcn", agentDocs.rulesFile);
     filesWritten.push("README.md");
   }
 
