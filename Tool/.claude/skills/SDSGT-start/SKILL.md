@@ -100,8 +100,8 @@ is that plan's implementation in the actual conversation.
 | 8 | Secondary brand color? (optional) | `#hex` in chat, or a screenshot | Same clarification rule as row 7. Skip if the user has none. | `secondaryColor` |
 | 9 | Neutral grays: brand-tinted or pure gray? | Menu — `Brand-tinted` / `Pure achromatic gray` | Brand-tinted = faint hint of the brand hue at 50% lightness; pure gray = 0% saturation. Full formula in `contracts-and-seeds.md`, "Neutral base." | `neutralColorStyle` (`"brand-tinted"` \| `"pure-gray"`) |
 | 10 | Disclosure: status colors are fixed | Two options — `Continue` / `Why isn't this a choice?` | No real choice — always the boilerplate status palette (fixed hue per role, brand-independent). A brand-derived variant (nudging status hues toward the brand color) was considered and dropped, not deferred — there's no plan to add it back. | *(not in `SeedConfig` — hardcoded in `cli/src/color/status.ts`)* |
-| 11 | Primary font family? | In chat, or a screenshot | Google Fonts only. Include the link https://fonts.google.com so the user can browse, pick a font, then come back and type the name — don't expect them to already know one. If the user names a non-Google font, say so and ask them to pick a Google Font — never silently substitute. Once collected, this is one of the fonts fetched later — see "Fetching fonts," below. | `primaryFont` |
-| 12 | Secondary font family? (optional) | In chat, or a screenshot | Same Google-Fonts-only rule as row 11 — include the https://fonts.google.com link here too. State before the user confirms: this font covers `body*`/`caption` roles; primary covers `heading-*`/`display`. Left blank, primary is used everywhere. | `secondaryFont` |
+| 11 | Heading font? | In chat, or a screenshot | Required. Google Fonts only. Include the link https://fonts.google.com so the user can browse, pick a font, then come back and type the name — don't expect them to already know one. If the user names a non-Google font, say so and ask them to pick a Google Font — never silently substitute. State before the user confirms: this font covers the `heading-*`/`display` text styles. Once collected, this is one of the fonts fetched later — see "Fetching fonts," below. | `headingFont` |
+| 12 | Body font? | In chat, or a screenshot | Required — never left blank. Same Google-Fonts-only rule as row 11 — include the https://fonts.google.com link here too. State all three before the user confirms: (a) this font covers the `body*`/`caption` text styles; (b) **it is also the font every component uses**, in code and in Figma; (c) they can enter the same font as the heading font if they want one font throughout — in that case, record the row 11 font here too. | `bodyFont` |
 | 13 | Type-scale preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend ("Suggested") whichever was picked in row 3. Show the actual px scale before asking — table in `contracts-and-seeds.md`, "Type-scale." | `typeScalePreset` |
 | 14 | Spacing preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend the row-3 match. **If MD3 or MD2 is picked, say plainly that spacing runs on Tailwind's scale under the hood** — neither MD3 nor MD2 has its own named spacing scale. Show the key→px table (`contracts-and-seeds.md`, "Spacing") so the index-vs-pixel distinction (`spacing.4` = 16px, not 4px) isn't a surprise later. | `spacingPreset` |
 | 15 | Corner-roundness preset? | Menu — `Tailwind` / `Bootstrap` / `Material Design 3` / `Material Design 2` | Recommend the row-3 match. Show the px scale (`contracts-and-seeds.md`, "Radius"). | `radiusPreset` |
@@ -963,7 +963,8 @@ override any of the four independently — they don't have to move together.
    `cli/seeds/` directory if it doesn't exist yet — keep it separate from
    `cli/examples/`, which holds the tool's own sample configs, not real
    projects).
-5. Fetch the real font files for `primaryFont` (and `secondaryFont`, if set)
+5. Fetch the real font files for `headingFont` and `bodyFont` (once, if both
+   name the same font)
    — see "Fetching fonts," below — so the report renders in the actual
    chosen fonts instead of falling back to a system font. Not fatal if this
    fails (no network, font not found): skip it and continue: `promote` still
@@ -1521,7 +1522,7 @@ real font files is instead something the agent running this skill does,
 once, before calling `promote` — the same technique used to build the very
 first proof-of-work report for this project:
 
-1. For each font in play (`primaryFont`, and `secondaryFont` if set), fetch
+1. For each distinct font in play (`headingFont` and `bodyFont`), fetch
    `https://fonts.googleapis.com/css2?family=<Font+Name>:wght@400;600;700&display=swap`
    with a browser-like `User-Agent` header (Google serves different CSS —
    sometimes missing distinct per-weight files — to unrecognized clients).

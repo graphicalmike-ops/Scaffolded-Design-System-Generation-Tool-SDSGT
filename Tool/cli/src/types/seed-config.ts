@@ -81,8 +81,10 @@ export interface SeedConfig {
   secondaryColor?: string; // #hex
   neutralColorStyle: NeutralColorStyle;
 
-  primaryFont: string;
-  secondaryFont?: string;
+  // Both required. bodyFont may name the same family as headingFont.
+  // bodyFont is also the font every component uses.
+  headingFont: string;
+  bodyFont: string;
 
   typeScalePreset: DesignLanguage;
   spacingPreset: DesignLanguage;

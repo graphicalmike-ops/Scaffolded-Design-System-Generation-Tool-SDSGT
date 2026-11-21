@@ -10,8 +10,8 @@
   "secondaryColor": "#F97316",
   "neutralColorStyle": "brand-tinted",
 
-  "primaryFont": "Inter",
-  "secondaryFont": "Source Sans Pro",
+  "headingFont": "Inter",
+  "bodyFont": "Source Sans Pro",
 
   "typeScalePreset": "tailwind",
   "spacingPreset": "tailwind",

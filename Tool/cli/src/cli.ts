@@ -60,7 +60,7 @@ function parseArgs(argv: string[]) {
 // scaffold step needs to look up these exact same files later.
 function loadFontFiles(fontsDir: string | undefined, seed: SeedConfig): FontFilesMap | undefined {
   if (!fontsDir) return undefined;
-  const families = [seed.primaryFont, seed.secondaryFont].filter((f): f is string => Boolean(f));
+  const families = [...new Set([seed.headingFont, seed.bodyFont])];
   const result: FontFilesMap = {};
   for (const family of families) {
     for (const weight of FONT_WEIGHTS) {
@@ -470,6 +470,11 @@ function runPromote(rest: string[]) {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error(`Config file is not valid JSON: ${configPath}\n  ${detail}`);
+    process.exit(1);
+  }
+
+  if (!seed.headingFont || !seed.bodyFont) {
+    console.error(`Config file needs both "headingFont" and "bodyFont" (they may be the same font): ${configPath}`);
     process.exit(1);
   }
 

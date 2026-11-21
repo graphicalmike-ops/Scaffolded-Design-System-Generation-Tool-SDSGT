@@ -44,7 +44,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/1",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Primary button"
     },
@@ -91,7 +91,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/0",
       "fontSizeVariable": "typography/primitive/fontSize/12",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "New"
     },
@@ -116,7 +116,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/1",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Toggle"
     },
@@ -144,7 +144,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/2",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Heads up!",
       "secondaryTextVariable": "color/semantic/text/secondary",
@@ -168,7 +168,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/1",
       "fontSizeVariable": "typography/primitive/fontSize/16",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Placeholder"
     },
@@ -188,7 +188,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/2",
       "fontSizeVariable": "typography/primitive/fontSize/16",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Placeholder"
     },
@@ -206,7 +206,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/lg",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "sectionGapVariable": "spacing/4",
       "sections": [
         {
@@ -258,7 +258,7 @@
       "paddingHorizontalVariable": "spacing/1",
       "paddingVerticalVariable": "spacing/1",
       "fontSizeVariable": "typography/primitive/fontSize/12",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "⌘"
     },
@@ -278,7 +278,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/1",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Select an option"
     },
@@ -299,7 +299,7 @@
       "paddingHorizontalVariable": "spacing/2",
       "paddingVerticalVariable": "spacing/2",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "JD"
     },
@@ -318,7 +318,7 @@
       "paddingHorizontalVariable": "spacing/0",
       "paddingVerticalVariable": "spacing/0",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Label"
     },
@@ -336,7 +336,7 @@
       "radiusVariable": "radius/sm",
       "paddingHorizontalVariable": "spacing/12",
       "paddingVerticalVariable": "spacing/3",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary"
+      "fontFamilyVariable": "typography/primitive/fontFamily/body"
     },
     {
       "name": "Breadcrumb",
@@ -349,7 +349,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/none",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "sectionGapVariable": "spacing/1",
       "sections": [
         {
@@ -407,7 +407,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/lg",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "sectionGapVariable": "spacing/6",
       "sections": [
         {
@@ -455,7 +455,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/none",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "sectionGapVariable": "spacing/2",
       "sections": [
         {
@@ -507,7 +507,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/none",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "line": {
         "colorVariable": "color/semantic/border/default",
         "thicknessPx": 1,
@@ -525,7 +525,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/none",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "line": {
         "colorVariable": "color/semantic/border/default",
         "thicknessPx": 1,
@@ -563,7 +563,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/md",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "sectionGapVariable": "spacing/2",
       "sections": [
         {
@@ -602,7 +602,7 @@
       "paddingHorizontalVariable": "spacing/0",
       "paddingVerticalVariable": "spacing/0",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Marker"
     },
@@ -655,7 +655,7 @@
       "paddingHorizontalVariable": "spacing/3",
       "paddingVerticalVariable": "spacing/2",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Hi there! How can I help?"
     },
@@ -670,7 +670,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/full",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "bar": {
         "trackColorVariable": "color/semantic/background/secondary",
         "indicatorColorVariable": "color/semantic/action/primary",
@@ -701,7 +701,7 @@
       "paddingHorizontalVariable": "spacing/1",
       "paddingVerticalVariable": "spacing/0",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Tab"
     },
@@ -720,7 +720,7 @@
       "paddingHorizontalVariable": "spacing/0",
       "paddingVerticalVariable": "spacing/2",
       "fontSizeVariable": "typography/primitive/fontSize/14",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Is it accessible?"
     },
@@ -740,7 +740,7 @@
       "paddingHorizontalVariable": "spacing/3",
       "paddingVerticalVariable": "spacing/1",
       "fontSizeVariable": "typography/primitive/fontSize/12",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "labelPropertyName": "Label",
       "defaultLabel": "Add to library"
     },
@@ -769,7 +769,7 @@
       "skippedVariants": [],
       "radiusVariable": "radius/sm",
       "fixedSizePx": 16,
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary"
+      "fontFamilyVariable": "typography/primitive/fontFamily/body"
     },
     {
       "name": "Spinner",
@@ -782,7 +782,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/none",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "icon": {
         "viewBox": "0 0 24 24",
         "pathData": "M21 12a9 9 0 1 1-6.219-8.56",
@@ -823,7 +823,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/full",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary"
+      "fontFamilyVariable": "typography/primitive/fontFamily/body"
     },
     {
       "name": "RadioGroup",
@@ -848,7 +848,7 @@
       "skippedVariants": [],
       "radiusVariable": "radius/full",
       "fixedSizePx": 16,
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary"
+      "fontFamilyVariable": "typography/primitive/fontFamily/body"
     },
     {
       "name": "Attachment",
@@ -864,7 +864,7 @@
       ],
       "skippedVariants": [],
       "radiusVariable": "radius/lg",
-      "fontFamilyVariable": "typography/primitive/fontFamily/primary",
+      "fontFamilyVariable": "typography/primitive/fontFamily/body",
       "sectionGapVariable": "spacing/2",
       "sections": [
         {

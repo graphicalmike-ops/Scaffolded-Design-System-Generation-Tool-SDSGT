@@ -86,6 +86,7 @@ import {
   SDSGT_BLOCK_END,
   ensureThemeImports,
 } from "../shared/scaffold-common.ts";
+import type { FontFamilies } from "../shared/scaffold-common.ts";
 import { buildFigmaComponentsPushPlanWithSources } from "./figma-components-plan.ts";
 import { serializeFigmaComponentsSources } from "./figma-components-sources.ts";
 
@@ -189,11 +190,11 @@ function runShadcnAddAll(projectDir: string): void {
 // finds the block by its start/end markers and REPLACES it in place on a
 // second or Nth run (e.g. `scaffold --update`), rather than appending a
 // duplicate copy after it forever.
-function buildShadcnThemeBlock(shadcnThemeCss: string, families: { primary: string; secondary?: string }): string {
+function buildShadcnThemeBlock(shadcnThemeCss: string, families: FontFamilies): string {
   const fontOverride = [
     ":root {",
-    `  --font-sans: ${families.secondary ?? families.primary}, sans-serif;`,
-    `  --font-heading: ${families.primary}, sans-serif;`,
+    `  --font-sans: ${families.body}, sans-serif;`,
+    `  --font-heading: ${families.heading}, sans-serif;`,
     "}",
   ].join("\n");
 
@@ -256,7 +257,7 @@ function buildGlobalsCss(opts: { hasDark: boolean; fontFaceCss: string }): strin
       "body {",
       "  background: var(--color-semantic-background-primary);",
       "  color: var(--color-semantic-text-primary);",
-      "  font-family: var(--typography-primitive-fontFamily-secondary, var(--typography-primitive-fontFamily-primary));",
+      "  font-family: var(--typography-primitive-fontFamily-body);",
       "}",
     ].join("\n"),
   );

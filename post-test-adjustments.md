@@ -21,23 +21,36 @@ once it's built. Settled decisions should then be folded into
 - **What was seen:** the seed treats the secondary font as optional, and the
   fonts are called "primary" and "secondary". In the last run, DM Serif Display
   was primary (headings) and Plus Jakarta Sans was secondary (body).
-- **Adjustment:** to be thought through, not decided. Make both fonts required
-  and rename them to heading font and body (UI) font. Open points to settle
-  before building: the seed field names, the question wording in
-  `SDSGT-start` (rows 11 and 12), `contracts-and-seeds.md`, and what happens
-  to existing seeds that only have a primary font.
-- **Status:** open (needs a decision)
+- **Adjustment (decided 2026-11-20):** both fonts are required and renamed
+  to heading font and body font, everywhere:
+  - Seed fields `headingFont` and `bodyFont` (were `primaryFont` and
+    `secondaryFont`). The CLI stops with a clear message if either is missing.
+  - Tokens `typography.primitive.fontFamily.heading` and `.body` (were
+    `primary` and `secondary`), so the Figma variables and code variables are
+    renamed too. Both tokens are always created, even when the same font is
+    entered for both.
+  - `SDSGT-start` rows 11 and 12 ask "Heading font?" and "Body font?". The
+    body font question says it is the font every component uses, and that the
+    user can enter the same font as the heading font.
+  - All saved seeds and example seeds were updated in place. Seeds with only
+    one font got it as both heading and body font. Projects generated before
+    this keep the old token names.
+- **Status:** done
 
 ### 2. shadcn components should use the body font, except heading-like ones
 
 - **What was seen:** the vendored shadcn components don't clearly split fonts
   by role.
-- **Adjustment:** shadcn's generated components use the body font by default.
-  Components that act as headings (for example card titles, dialog titles) use
-  the heading font. The list of which components count as headings still needs
-  to be settled.
-- **Status:** open
-- **Related:** depends on adjustment 1 if the fonts get renamed.
+- **Found when checking:** in code, the scaffolds already gave components the
+  secondary (body) font. In Figma, the component push plan bound every
+  component's text to the primary (heading) font. So whenever a project had
+  two different fonts, Figma components drifted from code (in the 2026-10-24
+  run: DM Serif Display in Figma, Plus Jakarta Sans in code).
+- **Adjustment (decided 2026-11-20):** every component uses the body font, in
+  code and in Figma, with no exceptions. The heading-like exception (card
+  titles, dialog titles) was dropped. The Figma component plan now binds all
+  29 components to `typography/primitive/fontFamily/body`.
+- **Status:** done
 
 ### 3. Ask which AI tool the output is for, and name the rules file to match
 
@@ -275,7 +288,8 @@ once it's built. Settled decisions should then be folded into
 ### 16. Font family variables in Figma are plain text, not font selections
 
 - **What was seen:** in Figma, the primitive font family variables
-  (`typography/primitive/fontFamily/primary` and `secondary`) hold plain text,
+  (`typography/primitive/fontFamily/primary` and `secondary`, renamed to
+  `heading` and `body` by adjustment 1) hold plain text,
   such as "DM Serif Display". They are not actual font selections the designer
   can pick from the font list.
 - **Found when checking the push plan:** each one is a text (`STRING`) variable

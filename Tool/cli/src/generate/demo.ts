@@ -138,8 +138,8 @@ function loadCommonGroups(tokensDir: string): CommonGroups {
   const typoPrimitiveFile = tryReadJson<TypographyPrimitiveFile>(join(tokensDir, "typography.primitive.json"));
   const typoSemanticFile = tryReadJson<TypographySemanticFile>(join(tokensDir, "typography.semantic.json"));
   const primitive = typoPrimitiveFile?.typography.primitive;
-  const headingFont = primitive?.fontFamily.primary?.$value ?? "system-ui";
-  const bodyFont = primitive?.fontFamily.secondary?.$value ?? headingFont;
+  const headingFont = primitive?.fontFamily.heading?.$value ?? "system-ui";
+  const bodyFont = primitive?.fontFamily.body?.$value ?? "system-ui";
 
   const typeSpecimens: TypographySpecimen[] = [];
   if (primitive && typoSemanticFile) {

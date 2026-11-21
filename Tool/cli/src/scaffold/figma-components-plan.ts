@@ -1986,7 +1986,7 @@ function buildButtonPlan(tokensCss: string, buttonSource: string, notes: string[
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Primary button",
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
@@ -2313,7 +2313,7 @@ function buildBadgePlan(tokensCss: string, badgeSource: string, notes: string[])
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "New",
     ...(hasStates ? { statePropertyName: "State" as const, disclosures: badgeDisclosures } : {}),
@@ -2433,7 +2433,7 @@ function buildTogglePlan(tokensCss: string, toggleSource: string, notes: string[
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Toggle",
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
@@ -2553,7 +2553,7 @@ function buildAlertPlan(tokensCss: string, alertSource: string, notes: string[])
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Heads up!",
     secondaryTextVariable: descColor?.variable ?? sdsgtPathToFigmaName("text.secondary"),
@@ -2797,7 +2797,7 @@ function buildInputPlan(tokensCss: string, inputSource: string, notes: string[])
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Placeholder",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
@@ -2860,7 +2860,7 @@ function buildTextareaPlan(tokensCss: string, textareaSource: string, notes: str
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Placeholder",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
@@ -3025,7 +3025,7 @@ function buildCardPlan(tokensCss: string, cardSource: string, notes: string[]): 
     variants: [cardVariant],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     sectionGapVariable: cardSpacingMatch.figmaName,
     sections: buildSections(cardSpacingMatch.figmaName, titleFontSize.figmaName, descriptionFontSize.figmaName, bodyFontSize.figmaName, defaultCardOrigins),
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
@@ -3258,7 +3258,7 @@ function buildKbdPlan(tokensCss: string, kbdSource: string, notes: string[]): Fi
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "⌘",
   };
@@ -3387,7 +3387,7 @@ function buildNativeSelectPlan(tokensCss: string, nativeSelectSource: string, no
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Select an option",
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
@@ -3616,7 +3616,7 @@ function buildAvatarPlan(tokensCss: string, avatarSource: string, notes: string[
     paddingHorizontalVariable: paddingMatch.figmaName,
     paddingVerticalVariable: paddingMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "JD",
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
@@ -3794,7 +3794,7 @@ function buildLabelPlan(tokensCss: string, labelSource: string, notes: string[])
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Label",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
@@ -3927,7 +3927,7 @@ function buildSkeletonPlan(tokensCss: string, skeletonSource: string, notes: str
     // present, neither of which Skeleton sets. Kept as a real, valid
     // variable name (not a dummy string) purely for interface parity with
     // every other component, not because anything binds to it.
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
   };
   tagFields(skeleton, skeletonOrigins);
   return skeleton;
@@ -4040,7 +4040,7 @@ function buildBreadcrumbPlan(tokensCss: string, breadcrumbSource: string, notes:
     variants: [{ name: "Default", underline: false }],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     sectionGapVariable: itemGapMatch.figmaName,
     sections: [
       {
@@ -4198,7 +4198,7 @@ function buildEmptyPlan(tokensCss: string, emptySource: string, notes: string[])
     ],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     sectionGapVariable: sectionGapMatch.figmaName,
     sections: [
       {
@@ -4466,7 +4466,7 @@ function buildFieldPlan(tokensCss: string, fieldSource: string, notes: string[])
     ],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     sectionGapVariable: sectionGapMatch.figmaName,
     sections: buildSections(),
     ...(extraAxes.length > 0 ? { extraAxes } : {}),
@@ -4600,7 +4600,7 @@ function buildSeparatorPlan(tokensCss: string, separatorSource: string, notes: s
     variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own here — the line's own color lives on `line.colorVariable` instead, see that field's own comment
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     line: {
       colorVariable: colors.fillVariable,
       thicknessPx: 1,
@@ -4766,7 +4766,7 @@ function buildFieldSeparatorPlan(tokensCss: string, fieldSource: string, notes: 
     variants: [{ name: "Default", underline: false }],
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     line: {
       colorVariable: sdsgtPathToFigmaName("border.default"), // see this function's own header comment — reused from Separator's own real derivation, not re-parsed here
       thicknessPx: 1,
@@ -4952,7 +4952,7 @@ function buildItemPlan(tokensCss: string, itemSource: string, notes: string[]): 
     variants,
     skippedVariants,
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     sectionGapVariable: paddingVMatch.figmaName,
     sections: buildSections(paddingHMatch.figmaName, descriptionFontSize.figmaName, itemDefaultOrigins),
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
@@ -5314,7 +5314,7 @@ function buildMarkerPlan(tokensCss: string, markerSource: string, notes: string[
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Marker",
     ...(disclosures.length > 0 ? { disclosures } : {}),
@@ -5526,7 +5526,7 @@ function buildBubblePlan(tokensCss: string, bubbleSource: string, notes: string[
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Hi there! How can I help?",
     ...(bubbleClickable.built ? { extraAxes: bubbleClickable.axes, statePropertyName: "State" as const, disclosures: bubbleClickable.disclosures } : {}),
@@ -5594,7 +5594,7 @@ function buildProgressPlan(tokensCss: string, progressSource: string, notes: str
     variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own at this level — see `bar` instead
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName, // mirrors bar.radiusVariable — interface-shape parity only, same precedent `line` already established
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     bar: {
       trackColorVariable: trackColors.fillVariable,
       indicatorColorVariable: indicatorColors.fillVariable,
@@ -5893,7 +5893,7 @@ function buildTabsPlan(tokensCss: string, tabsSource: string, notes: string[]): 
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Tab",
     ...(extraAxes.length > 0 ? { extraAxes } : {}),
@@ -6078,7 +6078,7 @@ function buildAccordionPlan(tokensCss: string, accordionSource: string, notes: s
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Is it accessible?",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
@@ -6224,7 +6224,7 @@ function buildTooltipPlan(tokensCss: string, tooltipSource: string, notes: strin
     paddingHorizontalVariable: paddingHMatch.figmaName,
     paddingVerticalVariable: paddingVMatch.figmaName,
     fontSizeVariable: fontSizeMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     labelPropertyName: "Label",
     defaultLabel: "Add to library",
   };
@@ -6427,7 +6427,7 @@ function buildCheckboxPlan(tokensCss: string, checkboxSource: string, notes: str
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     fixedSizePx: 16,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
   tag(checkbox, "radiusVariable", classOrigin(radiusClass, classMatch[1], radiusTargetPx !== undefined ? snapOf(radiusTargetPx, radiusMatch, radius) : undefined));
@@ -6485,7 +6485,7 @@ function buildSpinnerPlan(tokensCss: string, spinnerSource: string, notes: strin
     variants: [{ name: "Default", underline: false }], // no real fill/text/stroke of its own at this level — see top-level `icon` instead
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     icon: {
       viewBox: LUCIDE_ICONS.loaderCircle.viewBox,
       pathData: LUCIDE_ICONS.loaderCircle.pathData,
@@ -6637,7 +6637,7 @@ function buildSwitchPlan(tokensCss: string, switchSource: string, notes: string[
     variants: switchVariants,
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName, // interface-shape parity only, mirrors thumb.radiusVariable — same precedent line/bar already established
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     ...(sizeAxis ? { extraAxes: [sizeAxis] } : {}),
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
@@ -6793,7 +6793,7 @@ function buildRadioGroupPlan(tokensCss: string, radioSource: string, notes: stri
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
     fixedSizePx: 16, // real size-4/aspect-square, same fixed-square treatment as Checkbox
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     ...(stateDisclosures.length > 0 ? { statePropertyName: "State" as const, disclosures: stateDisclosures } : {}),
   };
   tag(radioGroup, "radiusVariable", radiusMatch.origin);
@@ -6953,7 +6953,7 @@ function buildAttachmentPlan(tokensCss: string, attachmentSource: string, notes:
     variants: attachmentVariants,
     skippedVariants: [],
     radiusVariable: radiusMatch.figmaName,
-    fontFamilyVariable: "typography/primitive/fontFamily/primary",
+    fontFamilyVariable: "typography/primitive/fontFamily/body",
     sectionGapVariable: paddingVMatch.figmaName,
     sections: buildSections(paddingHMatch.figmaName, titleFontSize.figmaName, attachmentDefaultOrigins),
     ...(extraAxes.length > 0 ? { extraAxes } : {}),
@@ -7339,8 +7339,8 @@ export function buildFigmaComponentsPushPlanWithSources(
       setSourceContext(filename, source);
       try {
         const component = build(tokensCss, source, notes);
-        // Every component's text binds the same project-wide font family token.
-        tag(component, "fontFamilyVariable", derivedOrigin("the project's primary font family token, applied to every component's text globally (shadcn's base font), not set by a class in this component"));
+        // Every component's text binds the same project-wide body font family token.
+        tag(component, "fontFamilyVariable", derivedOrigin("the project's body font family token, applied to every component's text globally (shadcn's base font, --font-sans), not set by a class in this component"));
         components.push(component);
       } finally {
         clearSourceContext();

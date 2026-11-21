@@ -65,6 +65,7 @@ import {
   SDSGT_FONT_BLOCK_END,
   ensureThemeImports,
 } from "../shared/scaffold-common.ts";
+import type { FontFamilies } from "../shared/scaffold-common.ts";
 
 export interface ScaffoldVuejsOptions {
   codeDir: string; // output of `generate --tailwind [--shadcn] --framework vuejs`
@@ -248,7 +249,7 @@ function buildMainCss(opts: { hasDark: boolean; fontFaceCss: string }): string {
       "body {",
       "  background: var(--color-semantic-background-primary);",
       "  color: var(--color-semantic-text-primary);",
-      "  font-family: var(--typography-primitive-fontFamily-secondary, var(--typography-primitive-fontFamily-primary));",
+      "  font-family: var(--typography-primitive-fontFamily-body);",
       "}",
     ].join("\n"),
   );
@@ -311,11 +312,11 @@ function installChartDeps(projectDir: string): void {
 // declared values in place instead of relying on the cascade — kept this
 // block's own declaration too (harmless, and correct again if shadcn-vue's
 // template ever drops `inline`), not removed.
-function buildShadcnMainCssBlock(shadcnThemeCss: string, families: { primary: string; secondary?: string }): string {
+function buildShadcnMainCssBlock(shadcnThemeCss: string, families: FontFamilies): string {
   const fontOverride = [
     ":root {",
-    `  --font-sans: ${families.secondary ?? families.primary}, sans-serif;`,
-    `  --font-heading: ${families.primary}, sans-serif;`,
+    `  --font-sans: ${families.body}, sans-serif;`,
+    `  --font-heading: ${families.heading}, sans-serif;`,
     "}",
   ].join("\n");
 
@@ -356,9 +357,9 @@ function stripDefaultGoogleFontsImport(mainCss: string): string {
 // property name replaces whatever value is currently there, stale or not),
 // so — unlike the @font-face block — no separate start/end markers are
 // needed for this one.
-function patchShadcnDefaultFontVars(mainCss: string, families: { primary: string; secondary?: string }): string {
-  const bodyFont = `${families.secondary ?? families.primary}, sans-serif`;
-  const headingFont = `${families.primary}, sans-serif`;
+function patchShadcnDefaultFontVars(mainCss: string, families: FontFamilies): string {
+  const bodyFont = `${families.body}, sans-serif`;
+  const headingFont = `${families.heading}, sans-serif`;
   return mainCss.replace(/--font-sans:\s*[^;]+;/, `--font-sans: ${bodyFont};`).replace(/--font-heading:\s*[^;]+;/, `--font-heading: ${headingFont};`);
 }
 

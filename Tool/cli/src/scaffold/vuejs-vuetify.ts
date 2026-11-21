@@ -50,6 +50,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import { copyAgentDocs, parseFontFamiliesFromPlainCss, buildFontFaces, readCssScale, nearestScalePx, readThemeManifest, writeThemeManifest, guardedWriteFile } from "../shared/scaffold-common.ts";
+import type { FontFamilies } from "../shared/scaffold-common.ts";
 
 // Reads a single `--<name>: <N>px;` custom property out of the base
 // plain-CSS platform's own css/tokens.css — same reasoning as
@@ -346,8 +347,8 @@ function writeMainTs(outDir: string): void {
 // Vuetify's own SCSS already reads --v-font-body/--v-font-heading with a
 // Roboto fallback (see file header) — setting them here is enough, no Sass
 // override needed.
-function buildThemeCss(families: { primary: string; secondary?: string }, fontFaceCss: string): string {
-  const parts = [fontFaceCss, [":root {", `  --v-font-body: ${families.secondary ?? families.primary}, sans-serif;`, `  --v-font-heading: ${families.primary}, sans-serif;`, "}"].join("\n")].filter(
+function buildThemeCss(families: FontFamilies, fontFaceCss: string): string {
+  const parts = [fontFaceCss, [":root {", `  --v-font-body: ${families.body}, sans-serif;`, `  --v-font-heading: ${families.heading}, sans-serif;`, "}"].join("\n")].filter(
     Boolean,
   );
   return `${parts.join("\n\n")}\n`;

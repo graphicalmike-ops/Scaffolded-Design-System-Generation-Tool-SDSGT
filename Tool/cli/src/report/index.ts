@@ -28,7 +28,7 @@ export interface TypographySpecimen {
   lineHeight: number;
 }
 
-// Keyed by exact font family name (matches seed.primaryFont / secondaryFont),
+// Keyed by exact font family name (matches seed.headingFont / bodyFont),
 // then by weight (400/600/700 — the only weights typography.primitive ever
 // uses), value is the raw base64 of a .woff2 file (no "data:" prefix).
 export type FontFilesMap = Record<string, Partial<Record<400 | 600 | 700, string>>>;
@@ -266,8 +266,8 @@ export function buildReportHtml(seed: SeedConfig, data: ReportData): string {
     ["Figma", seed.figmaManaged ? "figma-managed (not wired up yet)" : "code-only"],
     ["Modes", seed.lightDarkMode],
     ["Neutral style", seed.neutralColorStyle],
-    ["Heading font", seed.primaryFont],
-    ...(seed.secondaryFont ? ([["Body font", seed.secondaryFont]] as Array<[string, string]>) : []),
+    ["Heading font", seed.headingFont],
+    ["Body font (components)", seed.bodyFont],
   ];
 
   const runFieldsHtml = runFields
@@ -283,7 +283,8 @@ export function buildReportHtml(seed: SeedConfig, data: ReportData): string {
       : []),
   ].join("\n");
 
-  const fontFacesCss = [fontFaceCss(fontFiles, seed.primaryFont), fontFaceCss(fontFiles, seed.secondaryFont)]
+  const fontFacesCss = [...new Set([seed.headingFont, seed.bodyFont])]
+    .map((family) => fontFaceCss(fontFiles, family))
     .filter(Boolean)
     .join("\n  ");
 
@@ -293,7 +294,7 @@ export function buildReportHtml(seed: SeedConfig, data: ReportData): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Token report</title>
-${buildPageStyleCss({ fontFacesCss, brandHex: brandRamp["600"], bodyFont: escapeHtml(seed.secondaryFont ?? seed.primaryFont), headingFont: escapeHtml(seed.primaryFont) })}
+${buildPageStyleCss({ fontFacesCss, brandHex: brandRamp["600"], bodyFont: escapeHtml(seed.bodyFont), headingFont: escapeHtml(seed.headingFont) })}
 </head>
 <body>
 <div class="page">

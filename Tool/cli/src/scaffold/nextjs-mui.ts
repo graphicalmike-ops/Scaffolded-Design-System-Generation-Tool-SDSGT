@@ -108,6 +108,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { copyAgentDocs, parseFontFamiliesFromPlainCss, buildFontFaces, readCssScale, nearestScalePx, readThemeManifest, writeThemeManifest, guardedWriteFile, hashFile } from "../shared/scaffold-common.ts";
+import type { FontFamilies } from "../shared/scaffold-common.ts";
 
 // Reads a single `--<name>: <N>px;` custom property out of the base
 // plain-CSS platform's own css/tokens.css — same source/reasoning as
@@ -241,7 +242,7 @@ const MUI_ACTION_OPACITY_DEFAULTS: Record<string, number> = {
 };
 
 function buildThemeTs(
-  families: { primary: string; secondary?: string },
+  families: FontFamilies,
   borderRadius: number,
   buttonPaddingY: number,
   buttonPaddingX: number,
@@ -249,8 +250,8 @@ function buildThemeTs(
   opacityScale: Record<string, number>,
 ): string {
   const unquote = (f: string) => f.replace(/^['"]|['"]$/g, "");
-  const bodyFont = `${unquote(families.secondary ?? families.primary)}, sans-serif`;
-  const headingFont = `${unquote(families.primary)}, sans-serif`;
+  const bodyFont = `${unquote(families.body)}, sans-serif`;
+  const headingFont = `${unquote(families.heading)}, sans-serif`;
   const variantSize = (variant: string) => nearestScalePx(MUI_VARIANT_DEFAULT_PX[variant], fontSizeScale);
   const actionOpacity = (key: string) => nearestScalePx(MUI_ACTION_OPACITY_DEFAULTS[key], opacityScale);
 

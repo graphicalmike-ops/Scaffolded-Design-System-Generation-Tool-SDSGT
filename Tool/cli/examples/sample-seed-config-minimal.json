@@ -8,7 +8,8 @@
   "primaryColor": "#8B5CF6",
   "neutralColorStyle": "pure-gray",
 
-  "primaryFont": "Roboto",
+  "headingFont": "Roboto",
+  "bodyFont": "Roboto",
 
   "typeScalePreset": "md3",
   "spacingPreset": "md3",

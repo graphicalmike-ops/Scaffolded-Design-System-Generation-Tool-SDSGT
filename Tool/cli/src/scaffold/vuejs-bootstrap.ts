@@ -57,6 +57,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 import { copyAgentDocs, parseFontFamiliesFromPlainCss, buildFontFaces, readThemeManifest, writeThemeManifest, guardedWriteFile } from "../shared/scaffold-common.ts";
+import type { FontFamilies } from "../shared/scaffold-common.ts";
 
 export interface ScaffoldVuejsBootstrapOptions {
   codeDir: string; // output of `generate --bootstrap --framework vuejs`
@@ -236,9 +237,9 @@ function writeMainScss(assetsDir: string): void {
 
 // Plain-CSS font override, applied after the compiled Bootstrap CSS loads —
 // see file header for why this needs no Sass recompilation.
-function buildThemeCss(families: { primary: string; secondary?: string }, fontFaceCss: string): string {
-  const bodyFont = families.secondary ?? families.primary;
-  const parts = [fontFaceCss, [":root {", `  --bs-font-sans-serif: ${bodyFont}, sans-serif;`, "}", "", `h1, h2, h3, h4, h5, h6 {`, `  font-family: ${families.primary}, sans-serif;`, "}"].join("\n")].filter(
+function buildThemeCss(families: FontFamilies, fontFaceCss: string): string {
+  const bodyFont = families.body;
+  const parts = [fontFaceCss, [":root {", `  --bs-font-sans-serif: ${bodyFont}, sans-serif;`, "}", "", `h1, h2, h3, h4, h5, h6 {`, `  font-family: ${families.heading}, sans-serif;`, "}"].join("\n")].filter(
     Boolean,
   );
   return `${parts.join("\n\n")}\n`;

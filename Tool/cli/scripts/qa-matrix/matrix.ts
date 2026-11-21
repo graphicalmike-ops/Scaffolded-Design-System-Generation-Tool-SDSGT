@@ -47,7 +47,7 @@ function seed(
     targetFramework: "nextjs",
     targetDesignLanguage: lang,
     figmaManaged: false,
-    primaryFont: "Inter",
+    headingFont: "Inter", bodyFont: "Inter",
     typeScalePreset: lang,
     spacingPreset: lang,
     radiusPreset: lang,
@@ -61,25 +61,25 @@ function seed(
 
 function core(): QaCase[] {
   return [
-    { id: "CORE-A1", group: "core", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "light", primaryColor: "#2563EB", secondaryColor: "#F97316", neutralColorStyle: "brand-tinted", primaryFont: "Inter", secondaryFont: "Source Sans Pro" }) },
-    { id: "CORE-A2", group: "core", seed: seed("tailwind", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#10B981", secondaryColor: "#EC4899", neutralColorStyle: "pure-gray", primaryFont: "Inter", secondaryFont: "Poppins" }) },
-    { id: "CORE-A3", group: "core", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#6366F1", neutralColorStyle: "brand-tinted", primaryFont: "Roboto" }) },
-    { id: "CORE-A4", group: "core", seed: seed("tailwind", { targetFramework: "vuejs", lightDarkMode: "light", primaryColor: "#EF4444", neutralColorStyle: "pure-gray", primaryFont: "Nunito" }) },
+    { id: "CORE-A1", group: "core", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "light", primaryColor: "#2563EB", secondaryColor: "#F97316", neutralColorStyle: "brand-tinted", headingFont: "Inter", bodyFont: "Source Sans Pro" }) },
+    { id: "CORE-A2", group: "core", seed: seed("tailwind", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#10B981", secondaryColor: "#EC4899", neutralColorStyle: "pure-gray", headingFont: "Inter", bodyFont: "Poppins" }) },
+    { id: "CORE-A3", group: "core", seed: seed("tailwind", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#6366F1", neutralColorStyle: "brand-tinted", headingFont: "Roboto", bodyFont: "Roboto" }) },
+    { id: "CORE-A4", group: "core", seed: seed("tailwind", { targetFramework: "vuejs", lightDarkMode: "light", primaryColor: "#EF4444", neutralColorStyle: "pure-gray", headingFont: "Nunito", bodyFont: "Nunito" }) },
 
-    { id: "CORE-B1", group: "core", seed: seed("bootstrap", { targetFramework: "nextjs", lightDarkMode: "dark", primaryColor: "#0D6EFD", secondaryColor: "#6F42C1", neutralColorStyle: "brand-tinted", primaryFont: "Source Sans Pro", secondaryFont: "Inter" }) },
-    { id: "CORE-B2", group: "core", seed: seed("bootstrap", { targetFramework: "vuejs", lightDarkMode: "both", primaryColor: "#198754", secondaryColor: "#FD7E14", neutralColorStyle: "pure-gray", primaryFont: "Roboto", secondaryFont: "Montserrat" }) },
-    { id: "CORE-B3", group: "core", seed: seed("bootstrap", { targetFramework: "nextjs", lightDarkMode: "light", primaryColor: "#DC3545", neutralColorStyle: "brand-tinted", primaryFont: "Nunito" }) },
-    { id: "CORE-B4", group: "core", seed: seed("bootstrap", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#20C997", neutralColorStyle: "pure-gray", primaryFont: "Inter" }) },
+    { id: "CORE-B1", group: "core", seed: seed("bootstrap", { targetFramework: "nextjs", lightDarkMode: "dark", primaryColor: "#0D6EFD", secondaryColor: "#6F42C1", neutralColorStyle: "brand-tinted", headingFont: "Source Sans Pro", bodyFont: "Inter" }) },
+    { id: "CORE-B2", group: "core", seed: seed("bootstrap", { targetFramework: "vuejs", lightDarkMode: "both", primaryColor: "#198754", secondaryColor: "#FD7E14", neutralColorStyle: "pure-gray", headingFont: "Roboto", bodyFont: "Montserrat" }) },
+    { id: "CORE-B3", group: "core", seed: seed("bootstrap", { targetFramework: "nextjs", lightDarkMode: "light", primaryColor: "#DC3545", neutralColorStyle: "brand-tinted", headingFont: "Nunito", bodyFont: "Nunito" }) },
+    { id: "CORE-B4", group: "core", seed: seed("bootstrap", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#20C997", neutralColorStyle: "pure-gray", headingFont: "Inter", bodyFont: "Inter" }) },
 
-    { id: "CORE-C1", group: "core", seed: seed("md3", { targetFramework: "kotlin", lightDarkMode: "both", primaryColor: "#8B5CF6", secondaryColor: "#F59E0B", neutralColorStyle: "brand-tinted", primaryFont: "Roboto", secondaryFont: "Noto Sans" }) },
-    { id: "CORE-C2", group: "core", seed: seed("md3", { targetFramework: "swiftui", lightDarkMode: "light", primaryColor: "#06B6D4", secondaryColor: "#F43F5E", neutralColorStyle: "pure-gray", primaryFont: "Roboto", secondaryFont: "Inter" }) },
-    { id: "CORE-C3", group: "core", seed: seed("md3", { targetFramework: "kotlin", lightDarkMode: "dark", primaryColor: "#7C3AED", neutralColorStyle: "brand-tinted", primaryFont: "Roboto" }) },
-    { id: "CORE-C4", group: "core", seed: seed("md3", { targetFramework: "swiftui", lightDarkMode: "both", primaryColor: "#14B8A6", neutralColorStyle: "pure-gray", primaryFont: "Roboto" }) },
+    { id: "CORE-C1", group: "core", seed: seed("md3", { targetFramework: "kotlin", lightDarkMode: "both", primaryColor: "#8B5CF6", secondaryColor: "#F59E0B", neutralColorStyle: "brand-tinted", headingFont: "Roboto", bodyFont: "Noto Sans" }) },
+    { id: "CORE-C2", group: "core", seed: seed("md3", { targetFramework: "swiftui", lightDarkMode: "light", primaryColor: "#06B6D4", secondaryColor: "#F43F5E", neutralColorStyle: "pure-gray", headingFont: "Roboto", bodyFont: "Inter" }) },
+    { id: "CORE-C3", group: "core", seed: seed("md3", { targetFramework: "kotlin", lightDarkMode: "dark", primaryColor: "#7C3AED", neutralColorStyle: "brand-tinted", headingFont: "Roboto", bodyFont: "Roboto" }) },
+    { id: "CORE-C4", group: "core", seed: seed("md3", { targetFramework: "swiftui", lightDarkMode: "both", primaryColor: "#14B8A6", neutralColorStyle: "pure-gray", headingFont: "Roboto", bodyFont: "Roboto" }) },
 
-    { id: "CORE-D1", group: "core", seed: seed("md2", { targetFramework: "nextjs", lightDarkMode: "light", primaryColor: "#3F51B5", secondaryColor: "#FF4081", neutralColorStyle: "brand-tinted", primaryFont: "Roboto", secondaryFont: "Inter" }) },
-    { id: "CORE-D2", group: "core", seed: seed("md2", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#009688", secondaryColor: "#FFC107", neutralColorStyle: "pure-gray", primaryFont: "Roboto", secondaryFont: "Nunito" }) },
-    { id: "CORE-D3", group: "core", seed: seed("md2", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#9C27B0", neutralColorStyle: "brand-tinted", primaryFont: "Roboto" }) },
-    { id: "CORE-D4", group: "core", seed: seed("md2", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#F44336", neutralColorStyle: "pure-gray", primaryFont: "Roboto" }) },
+    { id: "CORE-D1", group: "core", seed: seed("md2", { targetFramework: "nextjs", lightDarkMode: "light", primaryColor: "#3F51B5", secondaryColor: "#FF4081", neutralColorStyle: "brand-tinted", headingFont: "Roboto", bodyFont: "Inter" }) },
+    { id: "CORE-D2", group: "core", seed: seed("md2", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#009688", secondaryColor: "#FFC107", neutralColorStyle: "pure-gray", headingFont: "Roboto", bodyFont: "Nunito" }) },
+    { id: "CORE-D3", group: "core", seed: seed("md2", { targetFramework: "nextjs", lightDarkMode: "both", primaryColor: "#9C27B0", neutralColorStyle: "brand-tinted", headingFont: "Roboto", bodyFont: "Roboto" }) },
+    { id: "CORE-D4", group: "core", seed: seed("md2", { targetFramework: "vuejs", lightDarkMode: "dark", primaryColor: "#F44336", neutralColorStyle: "pure-gray", headingFont: "Roboto", bodyFont: "Roboto" }) },
   ];
 }
 

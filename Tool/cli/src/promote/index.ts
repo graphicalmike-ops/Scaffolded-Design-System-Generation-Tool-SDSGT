@@ -338,11 +338,9 @@ function buildTypography(seed: SeedConfig, typeScale: Record<string, number>) {
     "heading-lg": ["semibold", "bold"],
     display: ["bold"],
   };
-  const PRIMARY_ROLES = new Set(["heading-sm", "heading-md", "heading-lg", "display"]);
+  const HEADING_ROLES = new Set(["heading-sm", "heading-md", "heading-lg", "display"]);
 
-  const hasSecondary = Boolean(seed.secondaryFont);
-  const familyFor = (role: string) =>
-    PRIMARY_ROLES.has(role) || !hasSecondary ? "primary" : "secondary";
+  const familyFor = (role: string) => (HEADING_ROLES.has(role) ? "heading" : "body");
 
   const WEIGHT_NUMBERS: Record<string, number> = { regular: 400, semibold: 600, bold: 700 };
 
@@ -353,7 +351,7 @@ function buildTypography(seed: SeedConfig, typeScale: Record<string, number>) {
 
   for (const [role, weights] of Object.entries(ROLE_WEIGHTS)) {
     const px = typeScale[role];
-    const isBodyish = !PRIMARY_ROLES.has(role);
+    const isBodyish = !HEADING_ROLES.has(role);
     const lh = Math.round(px * (isBodyish ? 1.5 : 1.2));
 
     fontSizeEntries[String(px)] = dimension(px);
@@ -370,7 +368,7 @@ function buildTypography(seed: SeedConfig, typeScale: Record<string, number>) {
           lineHeight: `{typography.primitive.lineHeight.${lh}}`,
         },
       };
-      const family = familyFor(role) === "primary" ? seed.primaryFont : (seed.secondaryFont ?? seed.primaryFont);
+      const family = familyFor(role) === "heading" ? seed.headingFont : seed.bodyFont;
       specimens.push({ token: tokenName, family, weight: WEIGHT_NUMBERS[weight], size: px, lineHeight: lh });
     }
   }
@@ -379,10 +377,8 @@ function buildTypography(seed: SeedConfig, typeScale: Record<string, number>) {
     typography: {
       primitive: {
         fontFamily: {
-          primary: { $type: "fontFamily", $value: seed.primaryFont },
-          ...(hasSecondary
-            ? { secondary: { $type: "fontFamily", $value: seed.secondaryFont } }
-            : {}),
+          heading: { $type: "fontFamily", $value: seed.headingFont },
+          body: { $type: "fontFamily", $value: seed.bodyFont },
         },
         fontWeight: {
           regular: { $type: "fontWeight", $value: 400 },
